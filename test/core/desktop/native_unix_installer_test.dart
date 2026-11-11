@@ -140,7 +140,7 @@ void main() {
       final installed = await manager.installLatest(NativeCoreKind.hysteria2);
       expect(p.basename(installed.executable), 'hysteria');
       expect(await File(installed.executable).readAsBytes(), binary);
-        expect((await File(installed.executable).stat()).mode & 0x40, isNot(0));
+      expect((await File(installed.executable).stat()).mode & 0x40, isNot(0));
     },
   );
 
