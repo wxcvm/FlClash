@@ -55,6 +55,46 @@ Future<NativeHttpEndpoint?> detectNativeHttpEndpoint(
   return matches.length == 1 ? matches.single : null;
 }
 
+/// A single sing-box TUN inbound configured to route system traffic.
+/// Detecting configuration is not proof that the OS has installed the route.
+final class NativeTunConfiguration {
+  final String? interfaceName;
+  final String? dnsMode;
+
+  const NativeTunConfiguration({this.interfaceName, this.dnsMode});
+}
+
+Future<NativeTunConfiguration?> detectNativeTunConfiguration(
+  NativeCoreSpec spec,
+) async {
+  // Xray-core has no equivalent built-in TUN inbound.
+  if (spec.kind != NativeCoreKind.singBox) return null;
+  final Object? json;
+  try {
+    json = jsonDecode(await File(spec.absoluteConfigPath).readAsString());
+  } on FormatException {
+    return null;
+  }
+  if (json is! Map || json['inbounds'] is! List) return null;
+  final inbounds = json['inbounds'] as List;
+  final routedTun = inbounds.where(
+    (inbound) =>
+        inbound is Map &&
+        inbound['type'] == 'tun' &&
+        inbound['auto_route'] == true,
+  );
+  if (routedTun.length != 1) return null;
+  final inbound = routedTun.single as Map;
+  return NativeTunConfiguration(
+    interfaceName: inbound['interface_name'] is String
+        ? inbound['interface_name'] as String
+        : null,
+    dnsMode: inbound['dns_mode'] is String
+        ? inbound['dns_mode'] as String
+        : null,
+  );
+}
+
 /// Wait until the native process actually exposes its HTTP port. A successful
 /// Process.start only means spawn succeeded, not that listeners are ready.
 Future<bool> waitForNativeHttpEndpoint(
