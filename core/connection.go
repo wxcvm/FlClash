@@ -52,10 +52,18 @@ func handleClearDnsCache() {
 	dns.ClearAll()
 }
 
+// resetNetworkResolver is replaceable for the network-change regression test.
+var resetNetworkResolver = resolver.ResetConnection
+
 // handleNetworkChanged is how the desktop host reports a new network, which
 // Android's NetworkObserver reports through handleResetNetwork.
 func handleNetworkChanged() {
-	handleClearDnsCache()
+	configMu.Lock()
+	defer configMu.Unlock()
+	dns.ClearAll()
+	// Cached upstream sockets may still point at the previous interface.
+	resetNetworkResolver()
+	// The host already invalidates its probe cache on connectivity changes.
 }
 
 // A connection that went out over a network the device has left hangs until

@@ -55,3 +55,23 @@ func TestProxyOnlyTrafficLeavesOutADirectProxyOfAnyName(t *testing.T) {
 	}
 	statistic.DefaultManager.ResetStatistic()
 }
+
+// Desktop connectivity events already bump the host's probe epoch; the Core
+// only needs to release resolver connections tied to the previous interface.
+func TestNetworkChangeResetsResolverWithoutMovingRoute(t *testing.T) {
+	previous := resetNetworkResolver
+	called := 0
+	resetNetworkResolver = func() { called++ }
+	t.Cleanup(func() { resetNetworkResolver = previous })
+	beforeEpoch, beforeVersion := routeStamp()
+
+	handleNetworkChanged()
+
+	if called != 1 {
+		t.Errorf("resolver resets = %d, want 1", called)
+	}
+	afterEpoch, afterVersion := routeStamp()
+	if afterEpoch != beforeEpoch || afterVersion != beforeVersion {
+		t.Errorf("network change moved route from (%d, %d) to (%d, %d)", beforeEpoch, beforeVersion, afterEpoch, afterVersion)
+	}
+}
