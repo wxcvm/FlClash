@@ -264,39 +264,42 @@ void main() {
     },
   );
 
-  test('sing-box TUN auto_route takes precedence over HTTP system proxy',
-      () async {
-    final tunHandoff = NativeCoreHandoff(
-      runtime: runtime,
-      isMihomoRunning: () => mihomoRunning,
-      setMihomoRunning: (running) async {
-        calls.add('mihomo:$running');
-        mihomoRunning = running;
-        return true;
-      },
-      releaseMihomoProxy: () async => calls.add('release proxy'),
-      useNativeSystemProxy: () => true,
-      detectTun: (_) async => const NativeTunConfiguration(
-        interfaceName: 'sing-tun',
-        dnsMode: 'hijack',
-      ),
-      detectHttpEndpoint: (_) async =>
-          throw StateError('HTTP endpoint must not be inspected for native TUN'),
-      activateNativeProxy: (_) async =>
-          throw StateError('system HTTP proxy must not be activated'),
-    );
+  test(
+    'sing-box TUN auto_route takes precedence over HTTP system proxy',
+    () async {
+      final tunHandoff = NativeCoreHandoff(
+        runtime: runtime,
+        isMihomoRunning: () => mihomoRunning,
+        setMihomoRunning: (running) async {
+          calls.add('mihomo:$running');
+          mihomoRunning = running;
+          return true;
+        },
+        releaseMihomoProxy: () async => calls.add('release proxy'),
+        useNativeSystemProxy: () => true,
+        detectTun: (_) async => const NativeTunConfiguration(
+          interfaceName: 'sing-tun',
+          dnsMode: 'hijack',
+        ),
+        detectHttpEndpoint: (_) async => throw StateError(
+          'HTTP endpoint must not be inspected for native TUN',
+        ),
+        activateNativeProxy: (_) async =>
+            throw StateError('system HTTP proxy must not be activated'),
+      );
 
-    await tunHandoff.activate(spec);
-    expect(tunHandoff.nativeTunConfigured, isTrue);
-    expect(tunHandoff.ownsNativeSystemProxy, isFalse);
-    expect(mihomoRunning, isFalse);
-    expect(calls, ['mihomo:false', 'release proxy']);
-    await tunHandoff.deactivate();
-    expect(tunHandoff.nativeTunConfigured, isFalse);
-    expect(mihomoRunning, isTrue);
-    expect(calls.last, 'mihomo:true');
-    await tunHandoff.close();
-  });
+      await tunHandoff.activate(spec);
+      expect(tunHandoff.nativeTunConfigured, isTrue);
+      expect(tunHandoff.ownsNativeSystemProxy, isFalse);
+      expect(mihomoRunning, isFalse);
+      expect(calls, ['mihomo:false', 'release proxy']);
+      await tunHandoff.deactivate();
+      expect(tunHandoff.nativeTunConfigured, isFalse);
+      expect(mihomoRunning, isTrue);
+      expect(calls.last, 'mihomo:true');
+      await tunHandoff.close();
+    },
+  );
 
   test('native TUN crash restores previously running Mihomo', () async {
     final tunHandoff = NativeCoreHandoff(
