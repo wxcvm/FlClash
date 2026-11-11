@@ -60,6 +60,7 @@ extension on ProxyField {
     ProxyField.clientFingerprint => l.clientFingerprint,
     ProxyField.realityPublicKey => 'Reality Public Key',
     ProxyField.realityShortId => 'Reality Short ID',
+    ProxyField.realityMlkem768 => 'REALITY X25519-MLKEM768',
     ProxyField.plugin => l.plugin,
     ProxyField.pluginMode => l.pluginMode,
     ProxyField.pluginHost => l.pluginHost,
@@ -143,7 +144,8 @@ extension on ProxyField {
     ProxyField.skipCertVerify ||
     ProxyField.clientFingerprint ||
     ProxyField.realityPublicKey ||
-    ProxyField.realityShortId => _OptionSection.tls,
+    ProxyField.realityShortId ||
+    ProxyField.realityMlkem768 => _OptionSection.tls,
     ProxyField.tfo ||
     ProxyField.mptcp ||
     ProxyField.interfaceName ||

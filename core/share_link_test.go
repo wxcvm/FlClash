@@ -113,12 +113,13 @@ func TestShareLinksReadBackThroughTheConverter(t *testing.T) {
 				"name": "vless reality", "type": "vless", "server": "d.example", "port": 443,
 				"uuid": "u-1", "flow": "xtls-rprx-vision", "tls": true, "servername": "www.example",
 				"client-fingerprint": "firefox", "network": "tcp",
-				"reality-opts": map[string]any{"public-key": "pk", "short-id": "ab"},
+				"reality-opts": map[string]any{"public-key": "pk", "short-id": "ab", "support-x25519mlkem768": true},
 			},
 			want: map[string]string{
 				"name": "vless reality", "uuid": "u-1", "flow": "xtls-rprx-vision", "tls": "true",
 				"servername": "www.example", "client-fingerprint": "firefox", "network": "tcp",
-				"reality-opts.public-key": "pk", "reality-opts.short-id": "ab", "xudp": "<nil>",
+				"reality-opts.public-key": "pk", "reality-opts.short-id": "ab",
+				"reality-opts.support-x25519mlkem768": "true", "xudp": "<nil>",
 			},
 		},
 		{

@@ -588,7 +588,9 @@ extension CustomProxyExt on CustomProxy {
         'anytls',
         'trusttunnel',
       }.contains(type),
-      ProxyField.realityPublicKey || ProxyField.realityShortId => const {
+      ProxyField.realityPublicKey ||
+      ProxyField.realityShortId ||
+      ProxyField.realityMlkem768 => const {
         'vmess',
         'vless',
         'trojan',
