@@ -100,7 +100,10 @@ class SystemAction extends _$SystemAction {
 
   @protected
   Future<void> closeCore() async {
-    await _core.close();
+    await Future.wait([
+      _core.close(),
+      if (system.isDesktop) nativeCoreRuntime.close(),
+    ]);
     commonPrint.log('exit');
   }
 
