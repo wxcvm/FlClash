@@ -7,22 +7,27 @@ import 'package:path/path.dart' as p;
 
 void main() {
   test('native cores keep their distinct check and run CLI flags', () {
-    expect(
-      NativeCoreKind.singBox.checkArguments('config.json'),
-      ['check', '-c', 'config.json'],
-    );
-    expect(
-      NativeCoreKind.singBox.runArguments('config.json'),
-      ['run', '-c', 'config.json'],
-    );
-    expect(
-      NativeCoreKind.xray.checkArguments('config.json'),
-      ['run', '-test', '-config', 'config.json'],
-    );
-    expect(
-      NativeCoreKind.xray.runArguments('config.json'),
-      ['run', '-config', 'config.json'],
-    );
+    expect(NativeCoreKind.singBox.checkArguments('config.json'), [
+      'check',
+      '-c',
+      'config.json',
+    ]);
+    expect(NativeCoreKind.singBox.runArguments('config.json'), [
+      'run',
+      '-c',
+      'config.json',
+    ]);
+    expect(NativeCoreKind.xray.checkArguments('config.json'), [
+      'run',
+      '-test',
+      '-config',
+      'config.json',
+    ]);
+    expect(NativeCoreKind.xray.runArguments('config.json'), [
+      'run',
+      '-config',
+      'config.json',
+    ]);
   });
 
   late Directory tempDir;
