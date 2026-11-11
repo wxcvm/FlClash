@@ -29,6 +29,14 @@ void main() {
         'sing-box-1.14.4-windows-arm64.zip',
       );
       expect(
+        nativeWindowsAssetName(
+          NativeCoreKind.hysteria2,
+          'v2.13.0',
+          Abi.windowsX64,
+        ),
+        'hysteria-windows-amd64.exe',
+      );
+      expect(
         nativeWindowsAssetName(NativeCoreKind.xray, 'v26.11.9', Abi.windowsX64),
         'Xray-windows-64.zip',
       );
@@ -144,6 +152,41 @@ void main() {
       expect(downloads, 1);
     },
   );
+
+  test('installs verified official Hysteria Windows executable', () async {
+    zip = [77, 90, 0, 1, 2, 3];
+    metadata = {
+      'tag_name': 'app/v2.13.0',
+      'assets': [
+        {
+          'name': 'hysteria-windows-amd64.exe',
+          'size': zip.length,
+          'digest': 'sha256:${sha256.convert(zip)}',
+        },
+      ],
+    };
+    final manager = installer();
+    final installed = await manager.installLatest(NativeCoreKind.hysteria2);
+    expect(installed.tag, 'v2.13.0');
+    expect(p.basename(installed.executable), 'hysteria.exe');
+    expect(await File(installed.executable).readAsBytes(), zip);
+    expect(
+      await manager.installedExecutable(NativeCoreKind.hysteria2),
+      installed.executable,
+    );
+    expect(downloads, 1);
+
+    final release = NativeCoreRelease.fromMetadata(
+      NativeCoreKind.hysteria2,
+      metadata,
+      Abi.windowsX64,
+    );
+    expect(
+      release.downloadUrl.toString(),
+      'https://github.com/HyNetworks/hysteria/releases/'
+      'download/app/v2.13.0/hysteria-windows-amd64.exe',
+    );
+  });
 
   test('rejects corrupted downloads without selecting an executable', () async {
     metadata['assets'][0]['digest'] = 'sha256:${'0' * 64}';
