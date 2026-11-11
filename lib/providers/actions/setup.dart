@@ -159,6 +159,11 @@ class SetupAction extends _$SetupAction {
   }
 
   Future<bool> setRunning(bool running, {bool initialize = false}) {
+    if (running && nativeCoreRuntime.blocksMihomoStart) {
+      return Future.error(
+        StateError('Stop the independent core before starting Mihomo'),
+      );
+    }
     if (running && !initialize && !ref.read(initProvider)) {
       return Future.value(true);
     }
