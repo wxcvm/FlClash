@@ -223,9 +223,7 @@ final class NativeCoreInstaller {
           if (bytes == null) {
             throw const FormatException('Archive entry has no content');
           }
-          await File(
-            p.join(stage.path, name),
-          ).writeAsBytes(bytes, flush: true);
+          await File(p.join(stage.path, name)).writeAsBytes(bytes, flush: true);
           if (name == filename) foundExecutable = true;
         }
         if (!foundExecutable) {
