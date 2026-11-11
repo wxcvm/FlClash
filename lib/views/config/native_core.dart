@@ -177,9 +177,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ListItem(
                 title: const Text('系统代理接管'),
                 subtitle: Text(
-                  nativeCoreHandoff.ownsNativeSystemProxy
-                      ? '外部内核已接管'
-                      : '未接管',
+                  nativeCoreHandoff.ownsNativeSystemProxy ? '外部内核已接管' : '未接管',
                 ),
               ),
               ListItem(
@@ -200,7 +198,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                     : () => _perform(_stop),
               ),
             ],
-            footer: '启动时先停用 Mihomo；启用系统代理时，仅在原生 JSON 存在唯一可用的本机 HTTP/mixed 入口后接管。停止或异常退出后恢复 Mihomo；TUN 仍由原生配置管理。',
+            footer:
+                '启动时先停用 Mihomo；启用系统代理时，仅在原生 JSON 存在唯一可用的本机 HTTP/mixed 入口后接管。停止或异常退出后恢复 Mihomo；TUN 仍由原生配置管理。',
           ),
           if (_result.isNotEmpty)
             Padding(
