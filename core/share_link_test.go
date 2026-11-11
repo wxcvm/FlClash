@@ -124,6 +124,45 @@ func TestShareLinksReadBackThroughTheConverter(t *testing.T) {
 		},
 		{
 			proxy: map[string]any{
+				"name": "vless xhttp", "type": "vless", "server": "x.example", "port": 443,
+				"uuid": "u-x", "tls": true, "network": "xhttp",
+				"xhttp-opts": map[string]any{
+					"path": "/up", "host": "cdn.example", "mode": "stream-up",
+					"headers":         map[string]any{"X-Client": "FlClash"},
+					"x-padding-bytes": "100-300", "x-padding-obfs-mode": false,
+					"no-grpc-header": true, "uplink-http-method": "POST",
+					"session-placement": "header", "session-key": "X-Session",
+					"uplink-chunk-size": 2048,
+					"reuse-settings": map[string]any{
+						"max-connections": "4", "h-keep-alive-period": 30,
+					},
+					"download-settings": map[string]any{
+						"server": "down.example", "port": 8443, "tls": true,
+						"servername": "down.example", "client-fingerprint": "chrome",
+						"path": "/down", "host": "cdn-down.example",
+						"headers":        map[string]any{"X-Down": "present"},
+						"reuse-settings": map[string]any{"max-concurrency": "2"},
+					},
+				},
+			},
+			prefix: "vless://u-x@x.example:443?",
+			want: map[string]string{
+				"network": "xhttp", "xhttp-opts.path": "/up",
+				"xhttp-opts.host": "cdn.example", "xhttp-opts.mode": "stream-up",
+				"xhttp-opts.headers.X-Client": "FlClash", "xhttp-opts.x-padding-bytes": "100-300",
+				"xhttp-opts.x-padding-obfs-mode": "false", "xhttp-opts.no-grpc-header": "true",
+				"xhttp-opts.uplink-http-method": "POST", "xhttp-opts.session-placement": "header",
+				"xhttp-opts.session-key": "X-Session", "xhttp-opts.uplink-chunk-size": "2048",
+				"xhttp-opts.reuse-settings.max-connections": "4", "xhttp-opts.reuse-settings.h-keep-alive-period": "30",
+				"xhttp-opts.download-settings.server": "down.example", "xhttp-opts.download-settings.port": "8443",
+				"xhttp-opts.download-settings.tls": "true", "xhttp-opts.download-settings.servername": "down.example",
+				"xhttp-opts.download-settings.client-fingerprint": "chrome", "xhttp-opts.download-settings.path": "/down",
+				"xhttp-opts.download-settings.host": "cdn-down.example", "xhttp-opts.download-settings.headers.X-Down": "present",
+				"xhttp-opts.download-settings.reuse-settings.max-concurrency": "2",
+			},
+		},
+		{
+			proxy: map[string]any{
 				"name": "vless h2", "type": "vless", "server": "d.example", "port": 443,
 				"uuid": "u-2", "xudp": true, "network": "h2",
 				"h2-opts": map[string]any{"path": "/h2", "host": []any{"h2.example"}},
