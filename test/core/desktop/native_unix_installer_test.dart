@@ -122,25 +122,27 @@ void main() {
     },
   );
 
-  test('installs raw Hysteria Linux release with executable permission',
-      () async {
-    final binary = [127, 69, 76, 70, 1, 2, 3];
-    final metadata = {
-      'tag_name': 'app/v2.13.0',
-      'assets': [
-        {
-          'name': 'hysteria-linux-amd64',
-          'size': binary.length,
-          'digest': 'sha256:${sha256.convert(binary)}',
-        },
-      ],
-    };
-    final manager = installer(Abi.linuxX64, metadata, binary);
-    final installed = await manager.installLatest(NativeCoreKind.hysteria2);
-    expect(p.basename(installed.executable), 'hysteria');
-    expect(await File(installed.executable).readAsBytes(), binary);
-    expect((await File(installed.executable).stat()).mode & 0x40, isNot(0));
-  });
+  test(
+    'installs raw Hysteria Linux release with executable permission',
+    () async {
+      final binary = [127, 69, 76, 70, 1, 2, 3];
+      final metadata = {
+        'tag_name': 'app/v2.13.0',
+        'assets': [
+          {
+            'name': 'hysteria-linux-amd64',
+            'size': binary.length,
+            'digest': 'sha256:${sha256.convert(binary)}',
+          },
+        ],
+      };
+      final manager = installer(Abi.linuxX64, metadata, binary);
+      final installed = await manager.installLatest(NativeCoreKind.hysteria2);
+      expect(p.basename(installed.executable), 'hysteria');
+      expect(await File(installed.executable).readAsBytes(), binary);
+        expect((await File(installed.executable).stat()).mode & 0x40, isNot(0));
+    },
+  );
 
   test('installs Linux Xray zip without losing geo resources', () async {
     final zip = Archive()
