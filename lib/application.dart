@@ -14,6 +14,7 @@ import 'package:fl_clash/plugins/app.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/ui/ui.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
@@ -52,6 +53,28 @@ Widget buildManagerStack({
   );
 }
 
+// Ignore VPN-only interface events, but never discard a physical disconnect
+// or reconnect just because the VPN adapter changed in the same event.
+bool shouldRefreshAfterConnectivityChange(
+  List<ConnectivityResult>? previous,
+  List<ConnectivityResult> current,
+) {
+  final hasVpn = current.contains(ConnectivityResult.vpn);
+  if (previous == null) {
+    return !hasVpn;
+  }
+  final hadVpn = previous.contains(ConnectivityResult.vpn);
+  if (hadVpn == hasVpn) {
+    // A reconnect can report the same transport type (e.g. Wi-Fi).
+    return true;
+  }
+  final before = previous
+      .where((type) => type != ConnectivityResult.vpn)
+      .toSet();
+  final after = current.where((type) => type != ConnectivityResult.vpn).toSet();
+  return !setEquals(before, after);
+}
+
 class Application extends ConsumerStatefulWidget {
   const Application({super.key});
 
@@ -61,7 +84,7 @@ class Application extends ConsumerStatefulWidget {
 
 class ApplicationState extends ConsumerState<Application> {
   Timer? _autoUpdateProfilesTaskTimer;
-  bool _preHasVpn = false;
+  List<ConnectivityResult>? _previousConnectivityResults;
   // Windows can only watch SIGINT and SIGHUP.
   final _terminateSignals = system.isDesktop && !system.isWindows
       ? ProcessSignal.sigterm.watch()
@@ -132,8 +155,12 @@ class ApplicationState extends ConsumerState<Application> {
     commonPrint.log('connectivityChanged ${results.toString()}');
     unawaited(systemDnsCoordinator?.resync() ?? Future.value());
     unawaited(ref.read(systemActionProvider.notifier).updateLocalIp());
-    final hasVpn = results.contains(ConnectivityResult.vpn);
-    if (_preHasVpn == hasVpn) {
+    final changed = shouldRefreshAfterConnectivityChange(
+      _previousConnectivityResults,
+      results,
+    );
+    _previousConnectivityResults = List.of(results);
+    if (changed) {
       ref.read(routeTrackerProvider.notifier).bumpHostEpoch();
       // Android's NetworkObserver tells the Core about a new network itself.
       if (system.isDesktop) {
@@ -144,7 +171,6 @@ class ApplicationState extends ConsumerState<Application> {
         );
       }
     }
-    _preHasVpn = hasVpn;
   }
 
   @override
