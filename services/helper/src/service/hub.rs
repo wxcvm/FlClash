@@ -878,10 +878,12 @@ mod tests {
     const ALLOWED_CORE_ADDRESS: &str = "/tmp/FlClashSocket_4821.sock";
 
     fn spawn_placeholder_core() -> Child {
+        // An immediately exiting cmd.exe can die before AssignProcessToJobObject
+        // takes ownership on a loaded Windows runner (ERROR_ACCESS_DENIED).
         #[cfg(windows)]
         let mut command = {
-            let mut command = Command::new("cmd");
-            command.args(["/c", "exit"]);
+            let mut command = Command::new("ping");
+            command.args(["-n", "2", "127.0.0.1"]);
             command
         };
         #[cfg(not(windows))]
