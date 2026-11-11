@@ -51,6 +51,8 @@ final class NativeCoreHandoff {
 
   bool get hasMihomoToRestore => _restoreMihomo;
 
+  bool get ownsNativeSystemProxy => _nativeProxyOwned;
+
   bool get blocksMihomoStart => _busy || runtime.isRunning;
 
   Future<void> activate(NativeCoreSpec spec) async {
