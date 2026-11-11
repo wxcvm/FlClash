@@ -389,6 +389,29 @@ void main() {
       expect(container.read(pendingDelayTestsProvider), isEmpty);
     });
 
+    test('a late old result cannot overwrite a newer measurement', () async {
+      final earlier = Completer<Delay>();
+      final newer = Completer<Delay>();
+      var calls = 0;
+      when(
+        () => core.testDelay(_delayTest(_testUrl, 'HK-01')),
+      ).thenAnswer((_) => ++calls == 1 ? earlier.future : newer.future);
+      final container = _delayContainer(buildContainer);
+      final action = actionOf(container);
+
+      final first = action.proxyDelayTest(_proxy);
+      final second = action.proxyDelayTest(_proxy);
+      expect(calls, 2);
+
+      newer.complete(const Delay(name: 'HK-01', url: _testUrl, value: 56));
+      await second;
+      earlier.complete(const Delay(name: 'HK-01', url: _testUrl, value: 900));
+      await first;
+
+      expect(container.read(delayDataSourceProvider)[_testUrl]?['HK-01'], 56);
+      expect(container.read(pendingDelayTestsProvider), isEmpty);
+    });
+
     test('keeps the last measurement when the Core does not answer', () async {
       when(
         () => core.testDelay(_delayTest(_testUrl, 'HK-01')),
