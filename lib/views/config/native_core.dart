@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
+import 'package:fl_clash/core/desktop/native_installer.dart';
 import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
@@ -30,6 +31,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   @override
   void initState() {
     super.initState();
+    unawaited(_loadInstalledExecutable(_kind));
     void addLog(String line) {
       if (!mounted) return;
       setState(() {
@@ -47,6 +49,28 @@ class _NativeCoreViewState extends State<NativeCoreView> {
     unawaited(_logSubscription?.cancel());
     unawaited(_handoffSubscription?.cancel());
     super.dispose();
+  }
+
+  Future<void> _loadInstalledExecutable(NativeCoreKind kind) async {
+    final executable = await nativeCoreInstaller.installedExecutable(kind);
+    if (!mounted || _kind != kind || executable == null) return;
+    if (_executable == kind.executableName) {
+      setState(() => _executable = executable);
+    }
+  }
+
+  Future<String> _installOfficialCore() async {
+    if (nativeCoreRuntime.isRunning || nativeCoreHandoff.busy) {
+      throw StateError('请先停止独立内核再更新程序');
+    }
+    final kind = _kind;
+    final installed = await nativeCoreInstaller.installLatest(kind);
+    if (mounted && _kind == kind) {
+      setState(() => _executable = installed.executable);
+    }
+    return installed.alreadyInstalled
+        ? '${kind.label} ${installed.tag} 已安装，已选择程序路径'
+        : '${kind.label} ${installed.tag} 安装完成，SHA-256 校验通过';
   }
 
   Future<void> _chooseExecutable() async {
@@ -143,7 +167,22 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                       _executable = kind.executableName;
                     }
                   });
+                  unawaited(_loadInstalledExecutable(kind));
                 },
+              ),
+              ListItem(
+                title: const Text('下载 / 更新官方稳定版'),
+                subtitle: Text(
+                  nativeCoreInstaller.supported
+                      ? 'Windows x64 / ARM64，自动校验 SHA-256'
+                      : '当前平台请手动选择内核程序',
+                ),
+                onTap:
+                    _busy ||
+                        nativeCoreRuntime.isRunning ||
+                        !nativeCoreInstaller.supported
+                    ? null
+                    : () => _perform(_installOfficialCore),
               ),
               ListItem(
                 title: const Text('选择内核程序'),
