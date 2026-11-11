@@ -1,0 +1,178 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
+/// A native core uses its own configuration and CLI, not FlClash's Mihomo IPC.
+enum NativeCoreKind { singBox, xray }
+
+extension NativeCoreCommands on NativeCoreKind {
+  String get label => switch (this) {
+    NativeCoreKind.singBox => 'sing-box',
+    NativeCoreKind.xray => 'Xray-core',
+  };
+
+  String get executableName => switch (this) {
+    NativeCoreKind.singBox => 'sing-box',
+    NativeCoreKind.xray => 'xray',
+  };
+
+  List<String> checkArguments(String configPath) => switch (this) {
+    NativeCoreKind.singBox => ['check', '-c', configPath],
+    NativeCoreKind.xray => ['run', '-test', '-config', configPath],
+  };
+
+  List<String> runArguments(String configPath) => switch (this) {
+    NativeCoreKind.singBox => ['run', '-c', configPath],
+    NativeCoreKind.xray => ['run', '-config', configPath],
+  };
+}
+
+final class NativeCoreSpec {
+  final NativeCoreKind kind;
+  final String executable;
+  final String configPath;
+
+  const NativeCoreSpec({
+    required this.kind,
+    required this.executable,
+    required this.configPath,
+  });
+
+  String get absoluteConfigPath => p.absolute(configPath);
+
+  String get workingDirectory => p.dirname(absoluteConfigPath);
+}
+
+final class NativeCoreValidation {
+  final bool valid;
+  final String details;
+
+  const NativeCoreValidation({required this.valid, required this.details});
+}
+
+typedef NativeCoreRun = Future<ProcessResult> Function(
+  String executable,
+  List<String> arguments, {
+  String? workingDirectory,
+});
+
+typedef NativeCoreStart = Future<Process> Function(
+  String executable,
+  List<String> arguments, {
+  String? workingDirectory,
+});
+
+/// Runs an optional desktop core with its native JSON configuration.
+/// The application must coordinate network ownership before calling start().
+/// It never changes system proxy, DNS or TUN settings on its own.
+final class NativeCoreRuntime {
+  final NativeCoreRun _run;
+  final NativeCoreStart _start;
+  final StreamController<String> _logs = StreamController<String>.broadcast();
+  Process? _process;
+  NativeCoreKind? _activeKind;
+  bool _starting = false;
+  bool _stopping = false;
+
+  NativeCoreRuntime({
+    NativeCoreRun run = Process.run,
+    NativeCoreStart start = Process.start,
+  }) : _run = run,
+       _start = start;
+
+  Stream<String> get logs => _logs.stream;
+
+  NativeCoreKind? get activeKind => _activeKind;
+
+  bool get isRunning => _process != null;
+
+  Future<NativeCoreValidation> validate(NativeCoreSpec spec) async {
+    if (!await File(spec.absoluteConfigPath).exists()) {
+      return NativeCoreValidation(
+        valid: false,
+        details: 'Config file not found: ${spec.absoluteConfigPath}',
+      );
+    }
+    try {
+      final result = await _run(
+        spec.executable,
+        spec.kind.checkArguments(spec.absoluteConfigPath),
+        workingDirectory: spec.workingDirectory,
+      );
+      final details = [
+        result.stdout.toString().trim(),
+        result.stderr.toString().trim(),
+      ].where((line) => line.isNotEmpty).join('\n');
+      return NativeCoreValidation(
+        valid: result.exitCode == 0,
+        details: details,
+      );
+    } on ProcessException catch (error) {
+      return NativeCoreValidation(valid: false, details: error.toString());
+    }
+  }
+
+  Future<void> start(NativeCoreSpec spec) async {
+    if (_starting || _stopping || _process != null) {
+      throw StateError('A native core is already running or changing state');
+    }
+    _starting = true;
+    try {
+      final check = await validate(spec);
+      if (!check.valid) {
+        throw StateError('${spec.kind.label}: ${check.details}');
+      }
+      final process = await _start(
+        spec.executable,
+        spec.kind.runArguments(spec.absoluteConfigPath),
+        workingDirectory: spec.workingDirectory,
+      );
+      _process = process;
+      _activeKind = spec.kind;
+      process.stdout.transform(utf8.decoder).listen(_logs.add);
+      process.stderr.transform(utf8.decoder).listen(_logs.add);
+      unawaited(
+        process.exitCode.then((code) {
+          if (identical(_process, process)) {
+            _process = null;
+            _activeKind = null;
+          }
+          _logs.add('${spec.kind.label} exited with code $code');
+        }),
+      );
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> stop({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    if (_starting) {
+      throw StateError('Native core is still starting');
+    }
+    if (_stopping) {
+      throw StateError('Native core is already stopping');
+    }
+    final process = _process;
+    if (process == null) return;
+    _stopping = true;
+    try {
+      process.kill();
+      await process.exitCode.timeout(timeout);
+      if (identical(_process, process)) {
+        _process = null;
+        _activeKind = null;
+      }
+    } finally {
+      _stopping = false;
+    }
+  }
+
+  Future<void> close() async {
+    await stop();
+    await _logs.close();
+  }
+}
