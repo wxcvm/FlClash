@@ -217,7 +217,6 @@ class Bootstrap {
     // Saving here would rewrite the preferences file the user just chose to delete.
     await _container.read(systemActionProvider.notifier).handleExit(false);
   }
-
 }
 
 final bootstrap = Bootstrap();
