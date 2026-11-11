@@ -125,6 +125,22 @@ void main() {
     }
   });
 
+  testWidgets('IPv6 toggle updates VPN, core and DNS together', (tester) async {
+    await pumpItem(tester, const Ipv6Item());
+
+    for (final enabled in [true, false]) {
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      final patch = container.read(patchClashConfigProvider);
+      expect(container.read(vpnSettingProvider).ipv6, enabled);
+      expect(patch.ipv6, enabled);
+      expect(patch.dns.ipv6, enabled);
+      expect(patch.generalOverrideKeys, contains(GeneralOverrideKey.ipv6));
+      expect(patch.dnsOverrideKeys, contains(DnsOverrideKey.ipv6));
+    }
+  });
+
   group('option pickers', () {
     testWidgets('the stack picker writes the chosen tun stack', (tester) async {
       await pumpItem(tester, const TunStackItem());
