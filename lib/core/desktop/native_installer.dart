@@ -140,7 +140,8 @@ final class NativeCoreRelease {
         kind: kind,
         tag: tag,
         downloadUrl: Uri.parse(
-          'https://github.com/${_repository(kind)}/releases/download/$rawTag/$name',
+          'https://github.com/${_repository(kind)}/releases/download/'
+          '$rawTag/$name',
         ),
         sha256Hex: digest.substring('sha256:'.length).toLowerCase(),
         size: size,
@@ -244,7 +245,7 @@ final class NativeCoreInstaller {
           throw const FormatException('Downloaded archive SHA-256 mismatch');
         }
         if (release.kind == NativeCoreKind.hysteria2) {
-          // Hysteria's official releases are raw binaries, not zip/tar archives.
+          // Official Hysteria releases are raw binaries, not archives.
           await zip.rename(p.join(stage.path, filename));
         } else {
           final archiveBytes = await zip.readAsBytes();
@@ -275,7 +276,9 @@ final class NativeCoreInstaller {
             if (bytes == null) {
               throw const FormatException('Archive entry has no content');
             }
-            await File(p.join(stage.path, name)).writeAsBytes(bytes, flush: true);
+            await File(
+              p.join(stage.path, name),
+            ).writeAsBytes(bytes, flush: true);
             if (name == filename) foundExecutable = true;
           }
           if (!foundExecutable) {
