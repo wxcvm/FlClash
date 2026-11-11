@@ -20,8 +20,7 @@ bool _validTag(String tag) =>
 typedef NativeReleaseFetch = Future<Map<String, dynamic>> Function(Uri url);
 typedef NativeArchiveFetch = Future<void> Function(Uri url, File destination);
 
-/// Only official Windows releases are installed here. Other desktops can
-/// continue using the manual native executable picker.
+/// Resolves release asset names for the supported desktop platforms.
 String? nativeWindowsAssetName(NativeCoreKind kind, String tag, Abi abi) {
   if (!_validTag(tag)) return null;
   final architecture = switch (abi) {
@@ -37,6 +36,38 @@ String? nativeWindowsAssetName(NativeCoreKind kind, String tag, Abi abi) {
   return architecture == 'amd64'
       ? 'Xray-windows-64.zip'
       : 'Xray-windows-arm64-v8a.zip';
+}
+
+/// Linux/macOS use the upstream command-line releases rather than their
+/// graphical application packages.
+String? nativeReleaseAssetName(NativeCoreKind kind, String tag, Abi abi) {
+  final windows = nativeWindowsAssetName(kind, tag, abi);
+  if (windows != null) return windows;
+  if (!_validTag(tag)) return null;
+  final platform = switch (abi) {
+    Abi.linuxX64 => 'linux-amd64',
+    Abi.linuxArm64 => 'linux-arm64',
+    Abi.macosX64 => 'darwin-amd64',
+    Abi.macosArm64 => 'darwin-arm64',
+    _ => null,
+  };
+  if (platform == null) return null;
+  if (kind == NativeCoreKind.singBox) {
+    final version = tag.startsWith('v') ? tag.substring(1) : tag;
+    return 'sing-box-$version-$platform.tar.gz';
+  }
+  return switch (abi) {
+    Abi.linuxX64 => 'Xray-linux-64.zip',
+    Abi.linuxArm64 => 'Xray-linux-arm64-v8a.zip',
+    Abi.macosX64 => 'Xray-macos-64.zip',
+    Abi.macosArm64 => 'Xray-macos-arm64-v8a.zip',
+    _ => null,
+  };
+}
+
+String _nativeExecutableName(NativeCoreKind kind, Abi abi) {
+  final windows = abi == Abi.windowsX64 || abi == Abi.windowsArm64;
+  return '${kind.executableName}${windows ? '.exe' : ''}';
 }
 
 String _repository(NativeCoreKind kind) => switch (kind) {
@@ -68,7 +99,7 @@ final class NativeCoreRelease {
     if (tag is! String || !_validTag(tag)) {
       throw const FormatException('Invalid upstream release version');
     }
-    final name = nativeWindowsAssetName(kind, tag, abi);
+    final name = nativeReleaseAssetName(kind, tag, abi);
     if (name == null) {
       throw UnsupportedError(
         'Automatic installation is not available on this platform',
@@ -101,7 +132,7 @@ final class NativeCoreRelease {
         size: size,
       );
     }
-    throw FormatException('No official Windows core asset found: $name');
+    throw FormatException('No official core asset found: $name');
   }
 }
 
@@ -117,7 +148,7 @@ final class NativeCoreInstallation {
   });
 }
 
-/// Installs release-versioned binaries in writable application support data.
+/// Installs release-versioned desktop binaries in application support data.
 /// Never replaces FlClash's bundled Mihomo executable or an active native core.
 final class NativeCoreInstaller {
   final String? supportRoot;
@@ -136,7 +167,7 @@ final class NativeCoreInstaller {
        abi = abi ?? Abi.current();
 
   bool get supported =>
-      nativeWindowsAssetName(NativeCoreKind.singBox, 'v1.0.0', abi) != null;
+      nativeReleaseAssetName(NativeCoreKind.singBox, 'v1.0.0', abi) != null;
 
   Future<String> get _root async =>
       supportRoot ?? p.join(await appPath.homeDirPath, 'native-cores');
@@ -148,7 +179,7 @@ final class NativeCoreInstaller {
     final tag = (await marker.readAsString()).trim();
     if (!_validTag(tag)) return null;
     final executable = File(
-      p.join(directory, tag, '${kind.executableName}.exe'),
+      p.join(directory, tag, _nativeExecutableName(kind, abi)),
     );
     return await executable.exists() ? executable.path : null;
   }
@@ -173,13 +204,13 @@ final class NativeCoreInstaller {
 
   /// The caller must avoid installing while a native process is active.
   Future<NativeCoreInstallation> install(NativeCoreRelease release) async {
-    if (nativeWindowsAssetName(release.kind, release.tag, abi) == null) {
+    if (nativeReleaseAssetName(release.kind, release.tag, abi) == null) {
       throw UnsupportedError('Unsupported native core platform');
     }
     final kindDir = Directory(p.join(await _root, release.kind.name));
     await kindDir.create(recursive: true);
     final targetDir = Directory(p.join(kindDir.path, release.tag));
-    final filename = '${release.kind.executableName}.exe';
+    final filename = _nativeExecutableName(release.kind, abi);
     final executable = File(p.join(targetDir.path, filename));
     final exists = await executable.exists();
     if (!exists) {
@@ -198,10 +229,13 @@ final class NativeCoreInstaller {
         if (digest.toString().toLowerCase() != release.sha256Hex) {
           throw const FormatException('Downloaded archive SHA-256 mismatch');
         }
-        final archive = ZipDecoder().decodeBytes(
-          await zip.readAsBytes(),
-          verify: true,
-        );
+        final archiveBytes = await zip.readAsBytes();
+        final archive = release.downloadUrl.path.endsWith('.tar.gz')
+            ? TarDecoder().decodeBytes(
+                GZipDecoder().decodeBytes(archiveBytes, verify: true),
+                verify: true,
+              )
+            : ZipDecoder().decodeBytes(archiveBytes, verify: true);
         var foundExecutable = false;
         for (final entry in archive) {
           if (!entry.isFile || entry.isSymbolicLink) continue;
@@ -228,6 +262,20 @@ final class NativeCoreInstaller {
         }
         if (!foundExecutable) {
           throw const FormatException('Official core executable is missing');
+        }
+        if (abi == Abi.linuxX64 ||
+            abi == Abi.linuxArm64 ||
+            abi == Abi.macosX64 ||
+            abi == Abi.macosArm64) {
+          // Extracted Unix executables need executable permission. Apply it
+          // before selecting the new version, never to an active process.
+          final result = await Process.run('chmod', [
+            '755',
+            p.join(stage.path, filename),
+          ]);
+          if (result.exitCode != 0) {
+            throw StateError('Could not enable native core execution: ${result.stderr}');
+          }
         }
         await zip.delete();
         await stage.rename(targetDir.path);

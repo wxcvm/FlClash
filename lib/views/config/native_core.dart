@@ -171,7 +171,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 title: const Text('下载 / 更新官方稳定版'),
                 subtitle: Text(
                   nativeCoreInstaller.supported
-                      ? 'Windows x64 / ARM64，自动校验 SHA-256'
+                      ? 'Windows / Linux / macOS，自动校验 SHA-256'
                       : '当前平台请手动选择内核程序',
                 ),
                 onTap:
