@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:yaml/yaml.dart';
+
 import 'native_core.dart';
 
 /// A local HTTP-compatible listener that the OS proxy can safely point to.
@@ -17,6 +19,30 @@ final class NativeHttpEndpoint {
 Future<NativeHttpEndpoint?> detectNativeHttpEndpoint(
   NativeCoreSpec spec,
 ) async {
+  if (spec.kind == NativeCoreKind.hysteria2) {
+    try {
+      final config = loadYaml(
+        await File(spec.absoluteConfigPath).readAsString(),
+      );
+      if (config is! YamlMap) return null;
+      final http = config['http'];
+      if (http is! YamlMap ||
+          http['username'] != null ||
+          http['password'] != null) {
+        return null;
+      }
+      final listen = http['listen'];
+      if (listen is! String) return null;
+      final match = RegExp(r'^127\.0\.0\.1:([0-9]{1,5})$').firstMatch(listen);
+      final port = int.tryParse(match?.group(1) ?? '');
+      if (port != null && port >= 1 && port <= 65535) {
+        return NativeHttpEndpoint(port);
+      }
+    } on Exception {
+      return null;
+    }
+    return null;
+  }
   final Object? json;
   try {
     json = jsonDecode(await File(spec.absoluteConfigPath).readAsString());
@@ -38,6 +64,8 @@ Future<NativeHttpEndpoint?> detectNativeHttpEndpoint(
           continue;
         }
         port = inbound['listen_port'];
+      case NativeCoreKind.hysteria2:
+        continue;
       case NativeCoreKind.xray:
         if (inbound['protocol'] != 'http') continue;
         final settings = inbound['settings'];
