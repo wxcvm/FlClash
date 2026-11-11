@@ -93,6 +93,7 @@ final class NativeCoreRuntime {
   NativeCoreSpec? _activeSpec;
   bool _starting = false;
   bool _stopping = false;
+  bool _nativeMode = false;
 
   NativeCoreRuntime({
     NativeCoreRun run = Process.run,
@@ -109,6 +110,11 @@ final class NativeCoreRuntime {
   NativeCoreSpec? get activeSpec => _activeSpec;
 
   bool get isRunning => _process != null;
+
+  bool get blocksMihomoStart => _nativeMode || isRunning;
+
+  /// Held by the handoff while a native process owns or is acquiring routes.
+  void setNativeMode(bool active) => _nativeMode = active;
 
   Future<NativeCoreValidation> validate(NativeCoreSpec spec) async {
     if (!await File(spec.absoluteConfigPath).exists()) {
