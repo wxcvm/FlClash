@@ -75,6 +75,7 @@ final class NativeCoreRuntime {
   final StreamController<String> _logs = StreamController<String>.broadcast();
   Process? _process;
   NativeCoreKind? _activeKind;
+  NativeCoreSpec? _activeSpec;
   bool _starting = false;
   bool _stopping = false;
 
@@ -87,6 +88,8 @@ final class NativeCoreRuntime {
   Stream<String> get logs => _logs.stream;
 
   NativeCoreKind? get activeKind => _activeKind;
+
+  NativeCoreSpec? get activeSpec => _activeSpec;
 
   bool get isRunning => _process != null;
 
@@ -133,15 +136,18 @@ final class NativeCoreRuntime {
       );
       _process = process;
       _activeKind = spec.kind;
-      process.stdout.transform(utf8.decoder).listen(_logs.add);
-      process.stderr.transform(utf8.decoder).listen(_logs.add);
+      _activeSpec = spec;
+      process.stdout.transform(utf8.decoder).listen(_emitLog);
+      process.stderr.transform(utf8.decoder).listen(_emitLog);
+      _emitLog('${spec.kind.label} started (PID ${process.pid})');
       unawaited(
         process.exitCode.then((code) {
           if (identical(_process, process)) {
             _process = null;
             _activeKind = null;
+            _activeSpec = null;
           }
-          _logs.add('${spec.kind.label} exited with code $code');
+          _emitLog('${spec.kind.label} exited with code $code');
         }),
       );
     } finally {
@@ -165,14 +171,22 @@ final class NativeCoreRuntime {
       if (identical(_process, process)) {
         _process = null;
         _activeKind = null;
+        _activeSpec = null;
       }
     } finally {
       _stopping = false;
     }
   }
 
+  void _emitLog(String message) {
+    if (!_logs.isClosed) _logs.add(message);
+  }
+
   Future<void> close() async {
     await stop();
-    await _logs.close();
+    if (!_logs.isClosed) await _logs.close();
   }
 }
+
+/// A desktop-scoped runtime, shared across settings pages and stopped on exit.
+final nativeCoreRuntime = NativeCoreRuntime();

@@ -89,6 +89,7 @@ void main() {
     await runtime.start(spec);
     expect(runtime.isRunning, isTrue);
     expect(runtime.activeKind, NativeCoreKind.singBox);
+    expect(runtime.activeSpec, same(spec));
     expect(command, 'sing-box');
     expect(arguments, ['run', '-c', spec.absoluteConfigPath]);
     expect(cwd, tempDir.path);
@@ -98,6 +99,7 @@ void main() {
     expect(process.killed, isTrue);
     expect(runtime.isRunning, isFalse);
     expect(runtime.activeKind, isNull);
+    expect(runtime.activeSpec, isNull);
     await runtime.close();
   });
 
@@ -140,7 +142,22 @@ void main() {
     expect(await log, contains('code 7'));
     expect(runtime.isRunning, isFalse);
     expect(runtime.activeKind, isNull);
+    expect(runtime.activeSpec, isNull);
     await runtime.close();
+  });
+
+  test('closing the native runtime terminates its process', () async {
+    final process = _FakeProcess();
+    final runtime = NativeCoreRuntime(
+      run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
+      start: (_, _, {workingDirectory}) async => process,
+    );
+
+    await runtime.start(spec);
+    await runtime.close();
+    expect(process.killed, isTrue);
+    expect(runtime.isRunning, isFalse);
+    expect(runtime.activeSpec, isNull);
   });
 }
 
