@@ -161,11 +161,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 textBuilder: (kind) => kind.label,
                 onChanged: (kind) {
                   setState(() {
-                    final previousDefault = _kind.executableName;
                     _kind = kind;
-                    if (_executable == previousDefault) {
-                      _executable = kind.executableName;
-                    }
+                    _executable = kind.executableName;
                   });
                   unawaited(_loadInstalledExecutable(kind));
                 },
