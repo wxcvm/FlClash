@@ -5,6 +5,7 @@ import 'package:fl_clash/views/config/dns.dart';
 import 'package:fl_clash/views/config/filters.dart';
 import 'package:fl_clash/views/config/icon_sets.dart';
 import 'package:fl_clash/views/config/mitm.dart';
+import 'package:fl_clash/views/config/native_core.dart';
 import 'package:fl_clash/views/config/network.dart';
 import 'package:fl_clash/views/config/providers.dart';
 import 'package:fl_clash/views/config/scripts.dart';
@@ -20,6 +21,12 @@ class AdvancedConfigView extends StatelessWidget {
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
     final items = [
+      if (system.isDesktop)
+        ListItem.open(
+          title: const Text('独立内核'),
+          leading: const GlyphIcon(AppGlyphs.cpu),
+          widget: const NativeCoreView(),
+        ),
       ListItem.open(
         title: Text(appLocalizations.network),
         leading: const GlyphIcon(AppGlyphs.key),
