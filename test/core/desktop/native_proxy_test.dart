@@ -47,45 +47,51 @@ void main() {
     expect(endpoint?.port, 10809);
   });
 
-  test('does not treat SOCKS, wildcard or authenticated listeners as HTTP',
-      () async {
-    expect(
-      await resolve(NativeCoreKind.singBox, [
-        {'type': 'socks', 'listen': '127.0.0.1', 'listen_port': 7890},
-      ]),
-      isNull,
-    );
-    expect(
-      await resolve(NativeCoreKind.singBox, [
-        {'type': 'mixed', 'listen': '0.0.0.0', 'listen_port': 7890},
-      ]),
-      isNull,
-    );
-    expect(
-      await resolve(NativeCoreKind.singBox, [
-        {
-          'type': 'http',
-          'listen': '127.0.0.1',
-          'listen_port': 7890,
-          'users': [{'username': 'user', 'password': 'secret'}],
-        },
-      ]),
-      isNull,
-    );
-    expect(
-      await resolve(NativeCoreKind.xray, [
-        {
-          'protocol': 'http',
-          'listen': '127.0.0.1',
-          'port': 10809,
-          'settings': {
-            'accounts': [{'user': 'u', 'pass': 'p'}],
+  test(
+    'does not treat SOCKS, wildcard or authenticated listeners as HTTP',
+    () async {
+      expect(
+        await resolve(NativeCoreKind.singBox, [
+          {'type': 'socks', 'listen': '127.0.0.1', 'listen_port': 7890},
+        ]),
+        isNull,
+      );
+      expect(
+        await resolve(NativeCoreKind.singBox, [
+          {'type': 'mixed', 'listen': '0.0.0.0', 'listen_port': 7890},
+        ]),
+        isNull,
+      );
+      expect(
+        await resolve(NativeCoreKind.singBox, [
+          {
+            'type': 'http',
+            'listen': '127.0.0.1',
+            'listen_port': 7890,
+            'users': [
+              {'username': 'user', 'password': 'secret'},
+            ],
           },
-        },
-      ]),
-      isNull,
-    );
-  });
+        ]),
+        isNull,
+      );
+      expect(
+        await resolve(NativeCoreKind.xray, [
+          {
+            'protocol': 'http',
+            'listen': '127.0.0.1',
+            'port': 10809,
+            'settings': {
+              'accounts': [
+                {'user': 'u', 'pass': 'p'},
+              ],
+            },
+          },
+        ]),
+        isNull,
+      );
+    },
+  );
 
   test('ambiguous and invalid listener ports are not auto-selected', () async {
     expect(
