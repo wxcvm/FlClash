@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/metacubex/mihomo/common/convert"
@@ -328,10 +329,81 @@ func vShareQuery(f proxyFields) url.Values {
 		setIf(query, "path", opts.str("path"))
 		setIf(query, "host", opts.str("host"))
 		setIf(query, "mode", opts.str("mode"))
+		if extra := xhttpShareExtra(opts); len(extra) != 0 {
+			data, _ := json.Marshal(extra)
+			query.Set("extra", string(data))
+		}
 	default:
 		query.Set("type", network)
 	}
 	return query
+}
+
+func xhttpShareExtra(opts proxyFields) map[string]any {
+	extra := map[string]any{}
+	if headers := opts.sub("headers"); len(headers) > 0 {
+		extra["headers"] = headers
+	}
+	for _, field := range []struct{ source, target string }{
+		{"x-padding-bytes", "xPaddingBytes"},
+		{"x-padding-key", "xPaddingKey"},
+		{"x-padding-header", "xPaddingHeader"},
+		{"x-padding-placement", "xPaddingPlacement"},
+		{"x-padding-method", "xPaddingMethod"},
+		{"uplink-http-method", "uplinkHTTPMethod"},
+		{"session-placement", "sessionIDPlacement"},
+		{"session-key", "sessionIDKey"},
+		{"session-table", "sessionIDTable"},
+		{"session-length", "sessionIDLength"},
+		{"seq-placement", "seqPlacement"},
+		{"seq-key", "seqKey"},
+		{"uplink-data-placement", "uplinkDataPlacement"},
+		{"uplink-data-key", "uplinkDataKey"},
+	} {
+		setIfExtra(extra, field.target, opts.str(field.source))
+	}
+	if opts.flag("no-grpc-header") {
+		extra["noGRPCHeader"] = true
+	}
+	if enabled, ok := opts["x-padding-obfs-mode"].(bool); ok {
+		extra["xPaddingObfsMode"] = enabled
+	}
+	for _, field := range []struct{ source, target string }{
+		{"uplink-chunk-size", "uplinkChunkSize"},
+		{"sc-max-each-post-bytes", "scMaxEachPostBytes"},
+		{"sc-min-posts-interval-ms", "scMinPostsIntervalMs"},
+	} {
+		if value, err := strconv.Atoi(opts.str(field.source)); err == nil {
+			extra[field.target] = value
+		}
+	}
+	if reuse := xhttpReuseExtra(opts.sub("reuse-settings")); len(reuse) > 0 {
+		extra["xmux"] = reuse
+	}
+	return extra
+}
+
+func setIfExtra(target map[string]any, key, value string) {
+	if value != "" {
+		target[key] = value
+	}
+}
+
+func xhttpReuseExtra(reuse proxyFields) map[string]any {
+	xmux := map[string]any{}
+	for _, field := range []struct{ source, target string }{
+		{"max-connections", "maxConnections"},
+		{"max-concurrency", "maxConcurrency"},
+		{"c-max-reuse-times", "cMaxReuseTimes"},
+		{"h-max-request-times", "hMaxRequestTimes"},
+		{"h-max-reusable-secs", "hMaxReusableSecs"},
+	} {
+		setIfExtra(xmux, field.target, reuse.str(field.source))
+	}
+	if value, err := strconv.Atoi(reuse.str("h-keep-alive-period")); err == nil {
+		xmux["hKeepAlivePeriod"] = value
+	}
+	return xmux
 }
 
 func encodeTrojan(f proxyFields) string {
