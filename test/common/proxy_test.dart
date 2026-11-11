@@ -92,6 +92,41 @@ void main() {
     expect(proxy.calls, isEmpty);
   });
 
+  test('native owner keeps Mihomo watcher updates from overriding its port',
+      () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+
+    await queue.apply(_state(isStart: true));
+    expect(await queue.activateNative(8090, const []), isTrue);
+    await queue.apply(_state(isStart: false));
+    await queue.apply(_state(isStart: true));
+    await queue.releaseNative();
+    await queue.apply(_state(isStart: true));
+
+    expect(proxy.calls, ['start 7890', 'start 8090', 'stop', 'start 7890']);
+  });
+
+  test('failed native proxy activation returns false and restores ownership',
+      () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    proxy.held = Future.value(false);
+
+    expect(await queue.activateNative(8090, const []), isFalse);
+    await queue.apply(_state(isStart: true));
+    expect(proxy.calls, ['start 8090', 'stop', 'start 7890']);
+  });
+
+  test('closing the queue stops the native proxy owner', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+
+    expect(await queue.activateNative(8090, const []), isTrue);
+    await queue.close();
+    expect(proxy.calls, ['start 8090', 'stop']);
+  });
+
   test('tries a failed stop again on close', () async {
     final proxy = _FakeProxy();
     final queue = SystemProxyQueue(proxy);
