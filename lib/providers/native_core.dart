@@ -11,7 +11,7 @@ final nativeCoreHandoff = NativeCoreHandoff(
   runtime: nativeCoreRuntime,
   useNativeSystemProxy: () {
     final config = globalState.container.read(networkSettingProvider);
-    return config.systemProxy && !config.authenticated;
+    return config.systemProxy && !config.authentication.enable;
   },
   activateNativeProxy: (port) {
     final bypass = globalState.container
