@@ -41,8 +41,8 @@ Future<NativeHttpEndpoint?> detectNativeHttpEndpoint(
       case NativeCoreKind.xray:
         if (inbound['protocol'] != 'http') continue;
         final settings = inbound['settings'];
-        if (settings is Map && settings['accounts'] case final List accounts
-            when accounts.isNotEmpty) {
+        final accounts = settings is Map ? settings['accounts'] : null;
+        if (accounts is List && accounts.isNotEmpty) {
           continue;
         }
         port = inbound['port'];
@@ -71,7 +71,7 @@ Future<bool> waitForNativeHttpEndpoint(
       );
       socket.destroy();
       return true;
-    } on SocketException {
+    } on Exception {
       await Future.delayed(const Duration(milliseconds: 120));
     }
   }
