@@ -120,7 +120,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
     return BaseScaffold(
       title: '独立内核',
       body: ListView(
-        padding: EdgeInsets.symmetric(horizontal: 16).copyWith(
+        padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(
           top: context.sectionsTopPadding,
           bottom: 16 + context.bottomInset,
         ),
@@ -182,7 +182,10 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
               ListItem(
                 title: const Text('停止独立内核'),
-                onTap: _busy || (active == null && !nativeCoreHandoff.hasMihomoToRestore)
+                onTap:
+                    _busy ||
+                        (active == null &&
+                            !nativeCoreHandoff.hasMihomoToRestore)
                     ? null
                     : () => _perform(_stop),
               ),
