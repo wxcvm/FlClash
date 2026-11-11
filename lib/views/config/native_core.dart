@@ -15,8 +15,7 @@ class NativeCoreView extends StatefulWidget {
 }
 
 class _NativeCoreViewState extends State<NativeCoreView> {
-  NativeCoreKind _kind =
-      nativeCoreRuntime.activeKind ?? NativeCoreKind.singBox;
+  NativeCoreKind _kind = nativeCoreRuntime.activeKind ?? NativeCoreKind.singBox;
   String _executable =
       nativeCoreRuntime.activeSpec?.executable ??
       NativeCoreKind.singBox.executableName;
@@ -173,19 +172,14 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
               ListItem(
                 title: const Text('启动独立内核'),
-                onTap: _busy || active != null
-                    ? null
-                    : () => _perform(_start),
+                onTap: _busy || active != null ? null : () => _perform(_start),
               ),
               ListItem(
                 title: const Text('停止独立内核'),
-                onTap: _busy || active == null
-                    ? null
-                    : () => _perform(_stop),
+                onTap: _busy || active == null ? null : () => _perform(_stop),
               ),
             ],
-            footer:
-                '独立内核使用原生 JSON 配置运行。目前不会自动接管系统代理、TUN 或现有 Mihomo 配置。',
+            footer: '独立内核使用原生 JSON 配置运行。目前不会自动接管系统代理、TUN 或现有 Mihomo 配置。',
           ),
           if (_result.isNotEmpty)
             Padding(
@@ -195,11 +189,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
           if (_logs.isNotEmpty)
             generateSection(
               title: '运行日志',
-              items: [
-                ListItem(
-                  title: SelectableText(_logs.join('\n')),
-                ),
-              ],
+              items: [ListItem(title: SelectableText(_logs.join('\n')))],
             ),
         ],
       ),
