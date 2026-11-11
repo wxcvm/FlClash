@@ -65,9 +65,7 @@ final class NativeCoreHandoff {
         throw StateError('${spec.kind.label}: ${validation.details}');
       }
       final wantsSystemProxy = useNativeSystemProxy();
-      final endpoint = wantsSystemProxy
-          ? await detectHttpEndpoint(spec)
-          : null;
+      final endpoint = wantsSystemProxy ? await detectHttpEndpoint(spec) : null;
       if (wantsSystemProxy && endpoint == null) {
         throw StateError(
           'Native config needs one unauthenticated 127.0.0.1 HTTP/mixed '
@@ -96,7 +94,9 @@ final class NativeCoreHandoff {
           if (!await activateNativeProxy(endpoint.port)) {
             throw StateError('Could not activate native system proxy');
           }
-          _emit('${spec.kind.label} system proxy active on 127.0.0.1:${endpoint.port}');
+          _emit(
+            '${spec.kind.label} system proxy active on 127.0.0.1:${endpoint.port}',
+          );
         } else {
           _emit('${spec.kind.label} running without system proxy takeover');
         }
