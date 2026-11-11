@@ -40,6 +40,32 @@ void main() {
     }
   });
 
+  test('Hysteria YAML HTTP listener supports native proxy takeover', () async {
+    final spec = NativeCoreSpec(
+      kind: NativeCoreKind.hysteria2,
+      executable: 'hysteria',
+      configPath: file.path,
+    );
+    await file.writeAsString(
+      'server: example.org:443\nhttp:\n  listen: 127.0.0.1:8080\n',
+    );
+    expect((await detectNativeHttpEndpoint(spec))?.port, 8080);
+
+    await file.writeAsString(
+      'server: example.org:443\nhttp:\n'
+      '  listen: 127.0.0.1:8080\n  username: person\n',
+    );
+    expect(await detectNativeHttpEndpoint(spec), isNull);
+
+    await file.writeAsString(
+      'server: example.org:443\nhttp:\n  listen: 0.0.0.0:8080\n',
+    );
+    expect(await detectNativeHttpEndpoint(spec), isNull);
+
+    await file.writeAsString('not: [');
+    expect(await detectNativeHttpEndpoint(spec), isNull);
+  });
+
   test('Xray HTTP inbound supports system HTTP proxy', () async {
     final endpoint = await resolve(NativeCoreKind.xray, [
       {'protocol': 'http', 'listen': '127.0.0.1', 'port': 10809},
