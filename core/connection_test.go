@@ -56,18 +56,22 @@ func TestProxyOnlyTrafficLeavesOutADirectProxyOfAnyName(t *testing.T) {
 	statistic.DefaultManager.ResetStatistic()
 }
 
-// A network switch changes the underlying exit even when proxy names and
-// rules remain identical. Any previous probe answer belongs to the old path.
-func TestNetworkChangeInvalidatesProbeRoute(t *testing.T) {
+// Desktop connectivity events already bump the host's probe epoch; the Core
+// only needs to release resolver connections tied to the previous interface.
+func TestNetworkChangeResetsResolverWithoutMovingRoute(t *testing.T) {
+	previous := resetNetworkResolver
+	called := 0
+	resetNetworkResolver = func() { called++ }
+	t.Cleanup(func() { resetNetworkResolver = previous })
 	beforeEpoch, beforeVersion := routeStamp()
 
 	handleNetworkChanged()
 
-	afterEpoch, afterVersion := routeStamp()
-	if afterEpoch != beforeEpoch+1 {
-		t.Errorf("epoch after network change = %d, want %d", afterEpoch, beforeEpoch+1)
+	if called != 1 {
+		t.Errorf("resolver resets = %d, want 1", called)
 	}
-	if afterVersion != beforeVersion+1 {
-		t.Errorf("version after network change = %d, want %d", afterVersion, beforeVersion+1)
+	afterEpoch, afterVersion := routeStamp()
+	if afterEpoch != beforeEpoch || afterVersion != beforeVersion {
+		t.Errorf("network change moved route from (%d, %d) to (%d, %d)", beforeEpoch, beforeVersion, afterEpoch, afterVersion)
 	}
 }
