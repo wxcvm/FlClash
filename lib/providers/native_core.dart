@@ -14,11 +14,13 @@ final nativeCoreHandoff = NativeCoreHandoff(
     return config.systemProxy && !config.authenticated;
   },
   activateNativeProxy: (port) {
-    final bypass = globalState.container.read(networkSettingProvider).bypassDomain;
-    return systemProxyQueue?.activateNative(port, bypass) ?? Future.value(false);
+    final bypass = globalState.container
+        .read(networkSettingProvider)
+        .bypassDomain;
+    return systemProxyQueue?.activateNative(port, bypass) ??
+        Future.value(false);
   },
-  releaseNativeProxy: () =>
-      systemProxyQueue?.releaseNative() ?? Future.value(),
+  releaseNativeProxy: () => systemProxyQueue?.releaseNative() ?? Future.value(),
   isMihomoRunning: () => globalState.container.read(isStartProvider),
   setMihomoRunning: (running) => globalState.container
       .read(setupActionProvider.notifier)
