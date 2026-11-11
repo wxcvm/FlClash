@@ -33,6 +33,9 @@ String? nativeWindowsAssetName(NativeCoreKind kind, String tag, Abi abi) {
     final version = tag.startsWith('v') ? tag.substring(1) : tag;
     return 'sing-box-$version-windows-$architecture.zip';
   }
+  if (kind == NativeCoreKind.hysteria2) {
+    return 'hysteria-windows-$architecture.exe';
+  }
   return architecture == 'amd64'
       ? 'Xray-windows-64.zip'
       : 'Xray-windows-arm64-v8a.zip';
@@ -56,6 +59,9 @@ String? nativeReleaseAssetName(NativeCoreKind kind, String tag, Abi abi) {
     final version = tag.startsWith('v') ? tag.substring(1) : tag;
     return 'sing-box-$version-$platform.tar.gz';
   }
+  if (kind == NativeCoreKind.hysteria2) {
+    return 'hysteria-$platform';
+  }
   return switch (abi) {
     Abi.linuxX64 => 'Xray-linux-64.zip',
     Abi.linuxArm64 => 'Xray-linux-arm64-v8a.zip',
@@ -73,6 +79,7 @@ String _nativeExecutableName(NativeCoreKind kind, Abi abi) {
 String _repository(NativeCoreKind kind) => switch (kind) {
   NativeCoreKind.singBox => 'SagerNet/sing-box',
   NativeCoreKind.xray => 'XTLS/Xray-core',
+  NativeCoreKind.hysteria2 => 'HyNetworks/hysteria',
 };
 
 final class NativeCoreRelease {
@@ -95,7 +102,14 @@ final class NativeCoreRelease {
     Map<String, dynamic> metadata,
     Abi abi,
   ) {
-    final tag = metadata['tag_name'];
+    final rawTag = metadata['tag_name'];
+    // Hysteria releases use app/v2.x.y tags. Keep the full upstream tag
+    // for downloads, but use a path-safe version for local installation.
+    final tag = kind == NativeCoreKind.hysteria2 &&
+            rawTag is String &&
+            rawTag.startsWith('app/')
+        ? rawTag.substring(4)
+        : rawTag;
     if (tag is! String || !_validTag(tag)) {
       throw const FormatException('Invalid upstream release version');
     }
@@ -126,7 +140,7 @@ final class NativeCoreRelease {
         kind: kind,
         tag: tag,
         downloadUrl: Uri.parse(
-          'https://github.com/${_repository(kind)}/releases/download/$tag/$name',
+          'https://github.com/${_repository(kind)}/releases/download/$rawTag/$name',
         ),
         sha256Hex: digest.substring('sha256:'.length).toLowerCase(),
         size: size,
@@ -229,39 +243,45 @@ final class NativeCoreInstaller {
         if (digest.toString().toLowerCase() != release.sha256Hex) {
           throw const FormatException('Downloaded archive SHA-256 mismatch');
         }
-        final archiveBytes = await zip.readAsBytes();
-        final archive = release.downloadUrl.path.endsWith('.tar.gz')
-            ? TarDecoder().decodeBytes(
-                GZipDecoder().decodeBytes(archiveBytes, verify: true),
-                verify: true,
-              )
-            : ZipDecoder().decodeBytes(archiveBytes, verify: true);
-        var foundExecutable = false;
-        for (final entry in archive) {
-          if (!entry.isFile || entry.isSymbolicLink) continue;
-          // Ignore archive paths completely: only copy recognized filenames
-          // into our flat, fixed installation directory.
-          final name = p.posix.basename(entry.name.replaceAll('\\', '/'));
-          if (name != filename &&
-              !(release.kind == NativeCoreKind.xray &&
-                  (name == 'geoip.dat' || name == 'geosite.dat'))) {
-            continue;
+        if (release.kind == NativeCoreKind.hysteria2) {
+          // Hysteria's official releases are raw binaries, not zip/tar archives.
+          await zip.rename(p.join(stage.path, filename));
+        } else {
+          final archiveBytes = await zip.readAsBytes();
+          final archive = release.downloadUrl.path.endsWith('.tar.gz')
+              ? TarDecoder().decodeBytes(
+                  GZipDecoder().decodeBytes(archiveBytes, verify: true),
+                  verify: true,
+                )
+              : ZipDecoder().decodeBytes(archiveBytes, verify: true);
+          var foundExecutable = false;
+          for (final entry in archive) {
+            if (!entry.isFile || entry.isSymbolicLink) continue;
+            // Ignore archive paths completely: only copy recognized filenames
+            // into our flat, fixed installation directory.
+            final name = p.posix.basename(entry.name.replaceAll('\\', '/'));
+            if (name != filename &&
+                !(release.kind == NativeCoreKind.xray &&
+                    (name == 'geoip.dat' || name == 'geosite.dat'))) {
+              continue;
+            }
+            if (entry.size > _maxFileBytes) {
+              throw const FormatException('Upstream executable is too large');
+            }
+            if (name == filename && foundExecutable) {
+              throw const FormatException('Duplicate executable in archive');
+            }
+            final bytes = entry.readBytes();
+            if (bytes == null) {
+              throw const FormatException('Archive entry has no content');
+            }
+            await File(p.join(stage.path, name)).writeAsBytes(bytes, flush: true);
+            if (name == filename) foundExecutable = true;
           }
-          if (entry.size > _maxFileBytes) {
-            throw const FormatException('Upstream executable is too large');
+          if (!foundExecutable) {
+            throw const FormatException('Official core executable is missing');
           }
-          if (name == filename && foundExecutable) {
-            throw const FormatException('Duplicate executable in archive');
-          }
-          final bytes = entry.readBytes();
-          if (bytes == null) {
-            throw const FormatException('Archive entry has no content');
-          }
-          await File(p.join(stage.path, name)).writeAsBytes(bytes, flush: true);
-          if (name == filename) foundExecutable = true;
-        }
-        if (!foundExecutable) {
-          throw const FormatException('Official core executable is missing');
+          await zip.delete();
         }
         if (abi == Abi.linuxX64 ||
             abi == Abi.linuxArm64 ||
@@ -279,7 +299,6 @@ final class NativeCoreInstaller {
             );
           }
         }
-        await zip.delete();
         await stage.rename(targetDir.path);
       } finally {
         if (await stage.exists()) await stage.delete(recursive: true);
