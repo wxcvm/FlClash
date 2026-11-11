@@ -159,7 +159,6 @@ func TestShareLinksReadBackThroughTheConverter(t *testing.T) {
 				"xhttp-opts.download-settings.client-fingerprint": "chrome", "xhttp-opts.download-settings.path": "/down",
 				"xhttp-opts.download-settings.host": "cdn-down.example", "xhttp-opts.download-settings.headers.X-Down": "present",
 				"xhttp-opts.download-settings.reuse-settings.max-concurrency": "2",
-
 			},
 		},
 		{
