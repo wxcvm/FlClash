@@ -95,6 +95,23 @@ Future<NativeTunConfiguration?> detectNativeTunConfiguration(
   );
 }
 
+/// Check that the loopback port is free after Mihomo stops and before
+/// starting the external core. Otherwise another process could satisfy the
+/// readiness probe and receive system proxy traffic.
+Future<bool> isNativeHttpPortAvailable(NativeHttpEndpoint endpoint) async {
+  try {
+    final listener = await ServerSocket.bind(
+      InternetAddress.loopbackIPv4,
+      endpoint.port,
+      shared: false,
+    );
+    await listener.close();
+    return true;
+  } on SocketException {
+    return false;
+  }
+}
+
 /// Wait until the native process actually exposes its HTTP port. A successful
 /// Process.start only means spawn succeeded, not that listeners are ready.
 Future<bool> waitForNativeHttpEndpoint(
