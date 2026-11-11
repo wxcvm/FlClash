@@ -18,12 +18,13 @@ class SystemProxyQueue {
   Future<void> _tail = Future.value();
   bool _closed = false;
   bool _applied = false;
+  bool _nativeOwner = false;
 
   SystemProxyQueue(this._proxy);
 
   Future<void> apply(ProxyState state) {
     return _enqueue(() async {
-      if (_closed) {
+      if (_closed || _nativeOwner) {
         return;
       }
       if (state.isStart && state.systemProxy) {
@@ -37,9 +38,36 @@ class SystemProxyQueue {
     });
   }
 
+  /// Native cores own the system proxy until releaseNative() is called.
+  /// Mihomo state-watch updates are queued but cannot overwrite that owner.
+  Future<bool> activateNative(int port, List<String> bypassDomain) async {
+    var success = false;
+    await _enqueue(() async {
+      if (_closed) return;
+      _nativeOwner = true;
+      _applied = true;
+      success = await _proxy.startProxy(port, bypassDomain);
+      if (!success) {
+        _nativeOwner = false;
+        _logFailure();
+        await _stop();
+      }
+    });
+    return success;
+  }
+
+  Future<void> releaseNative() => _enqueue(() async {
+    if (!_nativeOwner) return;
+    _nativeOwner = false;
+    await _stop();
+  });
+
   Future<void> close() {
     _closed = true;
-    return _enqueue(_stop);
+    return _enqueue(() async {
+      _nativeOwner = false;
+      await _stop();
+    });
   }
 
   Future<void> _stop() async {

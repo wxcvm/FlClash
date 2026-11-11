@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_handoff.dart';
+import 'package:fl_clash/core/desktop/native_proxy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -129,6 +130,137 @@ void main() {
       expect(mihomoRunning, isTrue);
       expect(runtime.blocksMihomoStart, isFalse);
       expect(handoff.hasMihomoToRestore, isFalse);
+    },
+  );
+
+  test(
+    'HTTP system proxy is applied after native readiness and removed first',
+    () async {
+      final proxyHandoff = NativeCoreHandoff(
+        runtime: runtime,
+        isMihomoRunning: () => mihomoRunning,
+        setMihomoRunning: (value) async {
+          calls.add('mihomo:$value');
+          mihomoRunning = value;
+          return true;
+        },
+        releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
+        useNativeSystemProxy: () => true,
+        detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+        waitForHttpEndpoint: (endpoint) async {
+          calls.add('ready:${endpoint.port}');
+          return true;
+        },
+        activateNativeProxy: (port) async {
+          calls.add('native proxy:$port');
+          return true;
+        },
+        releaseNativeProxy: () async => calls.add('release native proxy'),
+      );
+
+      await proxyHandoff.activate(spec);
+      expect(calls, [
+        'mihomo:false',
+        'release mihomo proxy',
+        'ready:8090',
+        'native proxy:8090',
+      ]);
+      await proxyHandoff.deactivate();
+      expect(calls.sublist(4), ['release native proxy', 'mihomo:true']);
+      await proxyHandoff.close();
+    },
+  );
+
+  test(
+    'missing compatible HTTP inbound preserves the existing connection',
+    () async {
+      final proxyHandoff = NativeCoreHandoff(
+        runtime: runtime,
+        isMihomoRunning: () => mihomoRunning,
+        setMihomoRunning: (value) async {
+          calls.add('mihomo:$value');
+          mihomoRunning = value;
+          return true;
+        },
+        releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
+        useNativeSystemProxy: () => true,
+        detectHttpEndpoint: (_) async => null,
+      );
+
+      await expectLater(proxyHandoff.activate(spec), throwsStateError);
+      expect(calls, isEmpty);
+      expect(mihomoRunning, isTrue);
+      expect(runtime.isRunning, isFalse);
+      await proxyHandoff.close();
+    },
+  );
+
+  test(
+    'HTTP system proxy activation failure releases it and restores Mihomo',
+    () async {
+      final proxyHandoff = NativeCoreHandoff(
+        runtime: runtime,
+        isMihomoRunning: () => mihomoRunning,
+        setMihomoRunning: (value) async {
+          calls.add('mihomo:$value');
+          mihomoRunning = value;
+          return true;
+        },
+        releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
+        useNativeSystemProxy: () => true,
+        detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+        waitForHttpEndpoint: (_) async => true,
+        activateNativeProxy: (_) async {
+          calls.add('native start failed');
+          return false;
+        },
+        releaseNativeProxy: () async => calls.add('release native proxy'),
+      );
+
+      await expectLater(proxyHandoff.activate(spec), throwsStateError);
+      expect(calls, [
+        'mihomo:false',
+        'release mihomo proxy',
+        'native start failed',
+        'release native proxy',
+        'mihomo:true',
+      ]);
+      expect(runtime.isRunning, isFalse);
+      expect(mihomoRunning, isTrue);
+      await proxyHandoff.close();
+    },
+  );
+
+  test(
+    'native process crash releases system proxy before Mihomo restarts',
+    () async {
+      final proxyHandoff = NativeCoreHandoff(
+        runtime: runtime,
+        isMihomoRunning: () => mihomoRunning,
+        setMihomoRunning: (value) async {
+          calls.add('mihomo:$value');
+          mihomoRunning = value;
+          return true;
+        },
+        releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
+        useNativeSystemProxy: () => true,
+        detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+        waitForHttpEndpoint: (_) async => true,
+        activateNativeProxy: (_) async => true,
+        releaseNativeProxy: () async => calls.add('release native proxy'),
+      );
+
+      final recovered = proxyHandoff.messages.firstWhere(
+        (message) => message.contains('restored'),
+      );
+      await proxyHandoff.activate(spec);
+      child.finish(3);
+      await recovered;
+      expect(calls.sublist(calls.length - 2), [
+        'release native proxy',
+        'mihomo:true',
+      ]);
+      await proxyHandoff.close();
     },
   );
 

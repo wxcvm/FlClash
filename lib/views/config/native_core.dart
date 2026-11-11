@@ -106,7 +106,9 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   Future<String> _start() async {
     if (_configPath.trim().isEmpty) return '请先选择 JSON 配置文件';
     await nativeCoreHandoff.activate(_spec);
-    return '${_kind.label} 已启动；Mihomo 网络接管已暂时停止；独立内核尚未自动设置系统代理';
+    return nativeCoreHandoff.ownsNativeSystemProxy
+        ? '${_kind.label} 已启动，并已接管系统代理'
+        : '${_kind.label} 已启动，当前仅使用原生 JSON 网络配置';
   }
 
   Future<String> _stop() async {
@@ -173,6 +175,12 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 ),
               ),
               ListItem(
+                title: const Text('系统代理接管'),
+                subtitle: Text(
+                  nativeCoreHandoff.ownsNativeSystemProxy ? '外部内核已接管' : '未接管',
+                ),
+              ),
+              ListItem(
                 title: const Text('检查配置'),
                 onTap: _busy ? null : () => _perform(_validate),
               ),
@@ -190,7 +198,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                     : () => _perform(_stop),
               ),
             ],
-            footer: '启动前会先停用 Mihomo 的网络监听；停止独立内核后恢复原状态。不会自动接管系统代理或转换 JSON 配置。',
+            footer:
+                '启动时先停用 Mihomo；启用系统代理时，仅在原生 JSON 存在唯一可用的本机 HTTP/mixed 入口后接管。停止或异常退出后恢复 Mihomo；TUN 仍由原生配置管理。',
           ),
           if (_result.isNotEmpty)
             Padding(
