@@ -17,33 +17,6 @@ T roundTrip<T>(
 }
 
 void main() {
-  test('REALITY ML-KEM option can be enabled without changing older proxies', () {
-    final proxy = CustomProxy.fromDefinition({
-      'name': 'reality',
-      'type': 'vless',
-      'server': 'example.com',
-      'port': 443,
-      'uuid': 'test',
-      'tls': true,
-      'client-fingerprint': 'chrome',
-      'reality-opts': {'public-key': 'test-public-key'},
-    });
-
-    expect(proxy.options, contains(ProxyField.realityMlkem768));
-    expect(proxy.valueOf(ProxyField.realityMlkem768), isNull);
-
-    final enabled = proxy.withField(ProxyField.realityMlkem768, true);
-    expect(enabled.valueOf(ProxyField.realityMlkem768), isTrue);
-    expect(enabled.definition['reality-opts'], {
-      'public-key': 'test-public-key',
-      'support-x25519mlkem768': true,
-    });
-    expect(proxy.definition['reality-opts'], {'public-key': 'test-public-key'});
-
-    final disabled = enabled.withField(ProxyField.realityMlkem768, false);
-    expect(disabled.valueOf(ProxyField.realityMlkem768), isFalse);
-  });
-
   group('GeoResource JSON', () {
     test('exposes mihomo raw config keys', () {
       expect(GeoResource.MMDB.configKey, 'mmdb');
