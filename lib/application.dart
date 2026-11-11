@@ -68,7 +68,9 @@ bool shouldRefreshAfterConnectivityChange(
     // A reconnect can report the same transport type (e.g. Wi-Fi).
     return true;
   }
-  final before = previous.where((type) => type != ConnectivityResult.vpn).toSet();
+  final before = previous
+      .where((type) => type != ConnectivityResult.vpn)
+      .toSet();
   final after = current.where((type) => type != ConnectivityResult.vpn).toSet();
   return !setEquals(before, after);
 }

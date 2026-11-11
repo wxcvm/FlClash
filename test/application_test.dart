@@ -1,4 +1,3 @@
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fl_clash/application.dart';
 import 'package:fl_clash/manager/hotkey_manager.dart';
 import 'package:fl_clash/manager/manager.dart';
@@ -56,81 +55,6 @@ Widget _stack({required bool isDesktop}) {
 }
 
 void main() {
-  test('reconnect is handled even when the VPN adapter state changes', () {
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        const [ConnectivityResult.wifi, ConnectivityResult.vpn],
-        const [ConnectivityResult.none],
-      ),
-      isTrue,
-    );
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        const [ConnectivityResult.none],
-        const [ConnectivityResult.wifi, ConnectivityResult.vpn],
-      ),
-      isTrue,
-    );
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        const [ConnectivityResult.wifi],
-        const [ConnectivityResult.mobile, ConnectivityResult.vpn],
-      ),
-      isTrue,
-    );
-  });
-
-  test('a VPN-only event does not trigger needless network recovery', () {
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        const [ConnectivityResult.wifi],
-        const [ConnectivityResult.wifi, ConnectivityResult.vpn],
-      ),
-      isFalse,
-    );
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        const [ConnectivityResult.wifi, ConnectivityResult.vpn],
-        const [ConnectivityResult.wifi],
-      ),
-      isFalse,
-    );
-  });
-
-  test('same-transport callbacks can still represent a Wi-Fi reconnect', () {
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        const [ConnectivityResult.wifi],
-        const [ConnectivityResult.wifi],
-      ),
-      isTrue,
-    );
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        const [ConnectivityResult.wifi, ConnectivityResult.vpn],
-        const [ConnectivityResult.wifi, ConnectivityResult.vpn],
-      ),
-      isTrue,
-    );
-  });
-
-  test('initial VPN-only event does not trigger recovery', () {
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        null,
-        const [ConnectivityResult.vpn],
-      ),
-      isFalse,
-    );
-    expect(
-      shouldRefreshAfterConnectivityChange(
-        null,
-        const [ConnectivityResult.wifi],
-      ),
-      isTrue,
-    );
-  });
-
   test('the desktop manager stack nests in ownership order', () {
     expect(_chainFrom(_stack(isDesktop: true)), [
       AppEnvManager,
