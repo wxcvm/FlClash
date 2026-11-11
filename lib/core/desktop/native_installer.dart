@@ -219,9 +219,13 @@ final class NativeCoreInstaller {
           if (name == filename && foundExecutable) {
             throw const FormatException('Duplicate executable in archive');
           }
+          final bytes = entry.readBytes();
+          if (bytes == null) {
+            throw const FormatException('Archive entry has no content');
+          }
           await File(
             p.join(stage.path, name),
-          ).writeAsBytes(entry.readBytes(), flush: true);
+          ).writeAsBytes(bytes, flush: true);
           if (name == filename) foundExecutable = true;
         }
         if (!foundExecutable) {
