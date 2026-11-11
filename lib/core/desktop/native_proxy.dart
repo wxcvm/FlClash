@@ -41,9 +41,8 @@ Future<NativeHttpEndpoint?> detectNativeHttpEndpoint(
       case NativeCoreKind.xray:
         if (inbound['protocol'] != 'http') continue;
         final settings = inbound['settings'];
-        if (settings is Map &&
-            settings['accounts'] case final List accounts
-                when accounts.isNotEmpty) {
+        if (settings is Map && settings['accounts'] case final List accounts
+            when accounts.isNotEmpty) {
           continue;
         }
         port = inbound['port'];
