@@ -52,17 +52,19 @@ final class NativeCoreValidation {
   const NativeCoreValidation({required this.valid, required this.details});
 }
 
-typedef NativeCoreRun = Future<ProcessResult> Function(
-  String executable,
-  List<String> arguments, {
-  String? workingDirectory,
-});
+typedef NativeCoreRun =
+    Future<ProcessResult> Function(
+      String executable,
+      List<String> arguments, {
+      String? workingDirectory,
+    });
 
-typedef NativeCoreStart = Future<Process> Function(
-  String executable,
-  List<String> arguments, {
-  String? workingDirectory,
-});
+typedef NativeCoreStart =
+    Future<Process> Function(
+      String executable,
+      List<String> arguments, {
+      String? workingDirectory,
+    });
 
 /// Runs an optional desktop core with its native JSON configuration.
 /// The application must coordinate network ownership before calling start().
@@ -147,9 +149,7 @@ final class NativeCoreRuntime {
     }
   }
 
-  Future<void> stop({
-    Duration timeout = const Duration(seconds: 5),
-  }) async {
+  Future<void> stop({Duration timeout = const Duration(seconds: 5)}) async {
     if (_starting) {
       throw StateError('Native core is still starting');
     }
