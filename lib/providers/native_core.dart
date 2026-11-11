@@ -9,6 +9,16 @@ import 'package:fl_clash/state.dart';
 /// Created once for the whole desktop process, not for each settings page.
 final nativeCoreHandoff = NativeCoreHandoff(
   runtime: nativeCoreRuntime,
+  useNativeSystemProxy: () {
+    final config = globalState.container.read(networkSettingProvider);
+    return config.systemProxy && !config.authenticated;
+  },
+  activateNativeProxy: (port) {
+    final bypass = globalState.container.read(networkSettingProvider).bypassDomain;
+    return systemProxyQueue?.activateNative(port, bypass) ?? Future.value(false);
+  },
+  releaseNativeProxy: () =>
+      systemProxyQueue?.releaseNative() ?? Future.value(),
   isMihomoRunning: () => globalState.container.read(isStartProvider),
   setMihomoRunning: (running) => globalState.container
       .read(setupActionProvider.notifier)
