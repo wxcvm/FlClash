@@ -380,6 +380,9 @@ func xhttpShareExtra(opts proxyFields) map[string]any {
 	if reuse := xhttpReuseExtra(opts.sub("reuse-settings")); len(reuse) > 0 {
 		extra["xmux"] = reuse
 	}
+	if download := xhttpDownloadExtra(opts.sub("download-settings")); len(download) > 0 {
+		extra["downloadSettings"] = download
+	}
 	return extra
 }
 
@@ -404,6 +407,49 @@ func xhttpReuseExtra(reuse proxyFields) map[string]any {
 		xmux["hKeepAlivePeriod"] = value
 	}
 	return xmux
+}
+
+func xhttpDownloadExtra(opts proxyFields) map[string]any {
+	download := map[string]any{}
+	setIfExtra(download, "address", opts.str("server"))
+	if port, err := strconv.Atoi(opts.str("port")); err == nil {
+		download["port"] = port
+	}
+	if opts.flag("tls") {
+		download["security"] = "tls"
+		tlsSettings := map[string]any{}
+		setIfExtra(tlsSettings, "serverName", opts.str("servername"))
+		setIfExtra(tlsSettings, "fingerprint", opts.str("client-fingerprint"))
+		if alpn := opts.list("alpn"); len(alpn) > 0 {
+			tlsSettings["alpn"] = alpn
+		}
+		if opts.flag("skip-cert-verify") {
+			tlsSettings["allowInsecure"] = true
+		}
+		if len(tlsSettings) > 0 {
+			download["tlsSettings"] = tlsSettings
+		}
+		if reality := opts.sub("reality-opts"); reality.str("public-key") != "" {
+			download["security"] = "reality"
+			download["realitySettings"] = map[string]any{
+				"publicKey": reality.str("public-key"),
+				"shortId": reality.str("short-id"),
+			}
+		}
+	}
+	xhttp := map[string]any{}
+	setIfExtra(xhttp, "path", opts.str("path"))
+	setIfExtra(xhttp, "host", opts.str("host"))
+	if headers := opts.sub("headers"); len(headers) > 0 {
+		xhttp["headers"] = headers
+	}
+	if reuse := xhttpReuseExtra(opts.sub("reuse-settings")); len(reuse) > 0 {
+		xhttp["extra"] = map[string]any{"xmux": reuse}
+	}
+	if len(xhttp) > 0 {
+		download["xhttpSettings"] = xhttp
+	}
+	return download
 }
 
 func encodeTrojan(f proxyFields) string {
