@@ -81,10 +81,7 @@ void main() {
       releaseMihomoProxy: () async => calls.add('release proxy'),
     );
 
-    await expectLater(
-      otherHandoff.activate(spec),
-      throwsA(isA<StateError>()),
-    );
+    await expectLater(otherHandoff.activate(spec), throwsA(isA<StateError>()));
     expect(mihomoRunning, isTrue);
     expect(invalidRuntime.blocksMihomoStart, isFalse);
     expect(calls, isEmpty);
@@ -96,7 +93,7 @@ void main() {
     final failedRuntime = NativeCoreRuntime(
       run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
       start: (_, _, {workingDirectory}) =>
-          Future.error(ProcessException('sing-box', [], 'spawn failed')),
+          Future.error(const ProcessException('sing-box', [], 'spawn failed')),
     );
     final otherHandoff = NativeCoreHandoff(
       runtime: failedRuntime,
@@ -120,21 +117,22 @@ void main() {
     await failedRuntime.close();
   });
 
-  test('unexpected external process exit automatically recovers Mihomo',
-      () async {
-    final recovered = handoff.messages.firstWhere(
-      (line) => line.contains('restored'),
-    );
-    await handoff.activate(spec);
-    child.finish(2);
-    expect(await recovered, contains('Mihomo'));
-    expect(mihomoRunning, isTrue);
-    expect(runtime.blocksMihomoStart, isFalse);
-    expect(handoff.hasMihomoToRestore, isFalse);
-  });
+  test(
+    'unexpected external process exit automatically recovers Mihomo',
+    () async {
+      final recovered = handoff.messages.firstWhere(
+        (line) => line.contains('restored'),
+      );
+      await handoff.activate(spec);
+      child.finish(2);
+      expect(await recovered, contains('Mihomo'));
+      expect(mihomoRunning, isTrue);
+      expect(runtime.blocksMihomoStart, isFalse);
+      expect(handoff.hasMihomoToRestore, isFalse);
+    },
+  );
 
-  test('an originally stopped Mihomo is not started on native exit',
-      () async {
+  test('an originally stopped Mihomo is not started on native exit', () async {
     mihomoRunning = false;
     await handoff.activate(spec);
     expect(calls, ['release proxy']);
@@ -171,6 +169,5 @@ class _Child implements Process {
   }
 
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
