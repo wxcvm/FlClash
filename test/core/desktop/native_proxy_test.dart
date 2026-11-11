@@ -204,6 +204,17 @@ void main() {
     );
   });
 
+  test('preflight detects an occupied loopback HTTP port', () async {
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final endpoint = NativeHttpEndpoint(server.port);
+    try {
+      expect(await isNativeHttpPortAvailable(endpoint), isFalse);
+    } finally {
+      await server.close();
+    }
+    expect(await isNativeHttpPortAvailable(endpoint), isTrue);
+  });
+
   test('readiness check connects to an actual loopback listener', () async {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(server.close);
