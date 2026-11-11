@@ -170,11 +170,13 @@ final class NativeCoreRuntime {
             _activeKind = null;
             _activeSpec = null;
             if (!_exits.isClosed) {
-              _exits.add(NativeCoreExit(
-                kind: spec.kind,
-                code: code,
-                expected: _stopping,
-              ));
+              _exits.add(
+                NativeCoreExit(
+                  kind: spec.kind,
+                  code: code,
+                  expected: _stopping,
+                ),
+              );
             }
           }
           _emitLog('${spec.kind.label} exited with code $code');
