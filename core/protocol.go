@@ -37,6 +37,7 @@ const (
 	proxySelectMethod     CoreMethod = "proxy.select"
 	proxyDefinitionMethod CoreMethod = "proxy.definition"
 	proxyTestDelayMethod  CoreMethod = "proxy.testDelay"
+	proxyTestSpeedMethod  CoreMethod = "proxy.testSpeed"
 	proxyValidateMethod   CoreMethod = "proxy.validate"
 	proxyConvertMethod    CoreMethod = "proxy.convert"
 	shareLinkEncodeMethod CoreMethod = "shareLink.encode"

@@ -190,6 +190,15 @@ abstract class CoreHandlerInterface {
     );
   }
 
+  Future<Map<String, dynamic>> testSpeed(String proxyName) {
+    return _query(
+      CoreMethod.proxyTestSpeed,
+      _json,
+      arguments: {'proxy-name': proxyName},
+      timeout: const Duration(seconds: 30),
+    );
+  }
+
   Future<Map<int, String>> validateProxies(List<Map<String, dynamic>> proxies) {
     return _query(
       CoreMethod.proxyValidate,

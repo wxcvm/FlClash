@@ -30,6 +30,8 @@ class ProxiesAction extends _$ProxiesAction {
   CoreController get _core => ref.read(coreHandlerProvider);
 
   final TaskPool _delayTestPool = TaskPool(maxConcurrentDelayTests);
+  final TaskPool _speedTestPool = TaskPool(3);
+  final Set<String> _speedTestingGroups = {};
 
   final List<_DelayTestJob> _delayTestJobs = [];
   final Map<String, int> _latestDelayTestGeneration = {};
@@ -312,6 +314,93 @@ class ProxiesAction extends _$ProxiesAction {
       CustomProxy.fromDefinition(added).copyWith(order: order).toCompanion(),
     );
     dialogs.showBanner(appLocalizations.addedToLocalProxies(name));
+  }
+
+  /// Measure real download throughput, then recheck the fastest three.
+  Future<void> selectByDownloadSpeed(String groupName) async {
+    if (!_speedTestingGroups.add(groupName)) {
+      return;
+    }
+    try {
+      if (ref.read(coreStatusProvider) != CoreStatus.connected) {
+        return;
+      }
+      final group = ref.read(groupsProvider).getGroup(groupName);
+      if (group == null) {
+        return;
+      }
+      final initialProfileId = ref.read(currentProfileIdProvider);
+      final initialSelection =
+          ref.read(currentProfileProvider)?.selectedMap[groupName];
+      final candidates = _resolveDelayTestTargets([
+        (proxies: group.all, testUrl: group.testUrl),
+      ]).map((target) => target.proxyName).toSet();
+      if (candidates.isEmpty) {
+        return;
+      }
+
+      Future<int> measure(String name) async {
+        try {
+          final result = await _core.testSpeed(name);
+          final value = result['bytes-per-second'];
+          return value is num ? value.toInt() : 0;
+        } catch (error) {
+          commonPrint.log(
+            'Download speed test failed for $name: $error',
+            logLevel: coreFailureLogLevel(error),
+          );
+          return 0;
+        }
+      }
+
+      final first = <String, int>{};
+      await Future.wait([
+        for (final name in candidates)
+          _speedTestPool.run(() async {
+            final speed = await measure(name);
+            if (speed > 0) {
+              first[name] = speed;
+            }
+          }),
+      ]);
+
+      final ranked = first.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final stable = <String, int>{};
+      await Future.wait([
+        for (final candidate in ranked.take(3))
+          _speedTestPool.run(() async {
+            final second = await measure(candidate.key);
+            if (second > 0) {
+              stable[candidate.key] = second < candidate.value
+                  ? second
+                  : candidate.value;
+            }
+          }),
+      ]);
+
+      if (stable.isEmpty) {
+        dialogs.showBanner(
+          '下载测速失败：没有节点完成有效的数据下载',
+          level: BannerLevel.warning,
+        );
+        return;
+      }
+      if (!ref.mounted ||
+          ref.read(coreStatusProvider) != CoreStatus.connected ||
+          ref.read(currentProfileIdProvider) != initialProfileId ||
+          ref.read(currentProfileProvider)?.selectedMap[groupName] !=
+              initialSelection ||
+          ref.read(groupsProvider).getGroup(groupName) == null) {
+        return;
+      }
+      final winner = stable.entries.reduce(
+        (a, b) => a.value >= b.value ? a : b,
+      );
+      await changeProxy(groupName: groupName, proxyName: winner.key);
+    } finally {
+      _speedTestingGroups.remove(groupName);
+    }
   }
 
   Future<void> proxyDelayTest(Proxy proxy, [String? testUrl]) {
