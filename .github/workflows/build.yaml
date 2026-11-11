@@ -55,10 +55,7 @@ jobs:
         run: flutter pub get
 
       - name: Check format
-        run: |
-          dart format lib/core/desktop/native_core.dart lib/core/desktop/native_handoff.dart lib/providers/actions/setup.dart lib/providers/native_core.dart lib/views/config/native_core.dart test/core/desktop/native_handoff_test.dart
-          git diff -- lib/core/desktop/native_core.dart lib/core/desktop/native_handoff.dart lib/providers/actions/setup.dart lib/providers/native_core.dart lib/views/config/native_core.dart test/core/desktop/native_handoff_test.dart
-          dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
+        run: dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
