@@ -52,6 +52,19 @@ final class NativeCoreValidation {
   const NativeCoreValidation({required this.valid, required this.details});
 }
 
+/// Emitted once when the owned child exits. A requested stop is not a crash.
+final class NativeCoreExit {
+  final NativeCoreKind kind;
+  final int code;
+  final bool expected;
+
+  const NativeCoreExit({
+    required this.kind,
+    required this.code,
+    required this.expected,
+  });
+}
+
 typedef NativeCoreRun =
     Future<ProcessResult> Function(
       String executable,
@@ -73,11 +86,14 @@ final class NativeCoreRuntime {
   final NativeCoreRun _run;
   final NativeCoreStart _start;
   final StreamController<String> _logs = StreamController<String>.broadcast();
+  final StreamController<NativeCoreExit> _exits =
+      StreamController<NativeCoreExit>.broadcast();
   Process? _process;
   NativeCoreKind? _activeKind;
   NativeCoreSpec? _activeSpec;
   bool _starting = false;
   bool _stopping = false;
+  bool _nativeMode = false;
 
   NativeCoreRuntime({
     NativeCoreRun run = Process.run,
@@ -87,11 +103,18 @@ final class NativeCoreRuntime {
 
   Stream<String> get logs => _logs.stream;
 
+  Stream<NativeCoreExit> get exits => _exits.stream;
+
   NativeCoreKind? get activeKind => _activeKind;
 
   NativeCoreSpec? get activeSpec => _activeSpec;
 
   bool get isRunning => _process != null;
+
+  bool get blocksMihomoStart => _nativeMode || isRunning;
+
+  /// Held by the handoff while a native process owns or is acquiring routes.
+  void setNativeMode(bool active) => _nativeMode = active;
 
   Future<NativeCoreValidation> validate(NativeCoreSpec spec) async {
     if (!await File(spec.absoluteConfigPath).exists()) {
@@ -146,6 +169,15 @@ final class NativeCoreRuntime {
             _process = null;
             _activeKind = null;
             _activeSpec = null;
+            if (!_exits.isClosed) {
+              _exits.add(
+                NativeCoreExit(
+                  kind: spec.kind,
+                  code: code,
+                  expected: _stopping,
+                ),
+              );
+            }
           }
           _emitLog('${spec.kind.label} exited with code $code');
         }),
@@ -185,6 +217,7 @@ final class NativeCoreRuntime {
   Future<void> close() async {
     await stop();
     if (!_logs.isClosed) await _logs.close();
+    if (!_exits.isClosed) await _exits.close();
   }
 }
 

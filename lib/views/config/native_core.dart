@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
+import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 
@@ -23,23 +24,28 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   String _result = '';
   final List<String> _logs = [];
   StreamSubscription<String>? _logSubscription;
+  StreamSubscription<String>? _handoffSubscription;
   bool _busy = false;
 
   @override
   void initState() {
     super.initState();
-    _logSubscription = nativeCoreRuntime.logs.listen((line) {
+    void addLog(String line) {
       if (!mounted) return;
       setState(() {
         _logs.add(line.trimRight());
         if (_logs.length > 100) _logs.removeAt(0);
       });
-    });
+    }
+
+    _logSubscription = nativeCoreRuntime.logs.listen(addLog);
+    _handoffSubscription = nativeCoreHandoff.messages.listen(addLog);
   }
 
   @override
   void dispose() {
     unawaited(_logSubscription?.cancel());
+    unawaited(_handoffSubscription?.cancel());
     super.dispose();
   }
 
@@ -99,13 +105,13 @@ class _NativeCoreViewState extends State<NativeCoreView> {
 
   Future<String> _start() async {
     if (_configPath.trim().isEmpty) return '请先选择 JSON 配置文件';
-    await nativeCoreRuntime.start(_spec);
-    return '${_kind.label} 已启动；不会自动改变系统代理或 TUN';
+    await nativeCoreHandoff.activate(_spec);
+    return '${_kind.label} 已启动；Mihomo 网络接管已暂时停止；独立内核尚未自动设置系统代理';
   }
 
   Future<String> _stop() async {
-    await nativeCoreRuntime.stop();
-    return '独立内核已停止';
+    await nativeCoreHandoff.deactivate();
+    return '独立内核已停止；已按先前状态恢复 Mihomo';
   }
 
   @override
@@ -114,7 +120,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
     return BaseScaffold(
       title: '独立内核',
       body: ListView(
-        padding: EdgeInsets.symmetric(horizontal: 16).copyWith(
+        padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(
           top: context.sectionsTopPadding,
           bottom: 16 + context.bottomInset,
         ),
@@ -176,10 +182,15 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
               ListItem(
                 title: const Text('停止独立内核'),
-                onTap: _busy || active == null ? null : () => _perform(_stop),
+                onTap:
+                    _busy ||
+                        (active == null &&
+                            !nativeCoreHandoff.hasMihomoToRestore)
+                    ? null
+                    : () => _perform(_stop),
               ),
             ],
-            footer: '独立内核使用原生 JSON 配置运行。目前不会自动接管系统代理、TUN 或现有 Mihomo 配置。',
+            footer: '启动前会先停用 Mihomo 的网络监听；停止独立内核后恢复原状态。不会自动接管系统代理或转换 JSON 配置。',
           ),
           if (_result.isNotEmpty)
             Padding(
