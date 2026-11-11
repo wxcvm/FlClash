@@ -19,11 +19,7 @@ typedef NativeArchiveFetch = Future<void> Function(Uri url, File destination);
 
 /// Only official Windows releases are installed here. Other desktops can
 /// continue using the manual native executable picker.
-String? nativeWindowsAssetName(
-  NativeCoreKind kind,
-  String tag,
-  Abi abi,
-) {
+String? nativeWindowsAssetName(NativeCoreKind kind, String tag, Abi abi) {
   if (!_safeTag.hasMatch(tag)) return null;
   final architecture = switch (abi) {
     Abi.windowsX64 => 'amd64',
@@ -71,7 +67,9 @@ final class NativeCoreRelease {
     }
     final name = nativeWindowsAssetName(kind, tag, abi);
     if (name == null) {
-      throw UnsupportedError('Automatic installation is not available on this platform');
+      throw UnsupportedError(
+        'Automatic installation is not available on this platform',
+      );
     }
     final assets = metadata['assets'];
     if (assets is! List) {
@@ -134,11 +132,8 @@ final class NativeCoreInstaller {
        fetchArchive = fetchArchive ?? _downloadArchive,
        abi = abi ?? Abi.current();
 
-  bool get supported => nativeWindowsAssetName(
-    NativeCoreKind.singBox,
-    'v1.0.0',
-    abi,
-  ) != null;
+  bool get supported =>
+      nativeWindowsAssetName(NativeCoreKind.singBox, 'v1.0.0', abi) != null;
 
   Future<String> get _root async =>
       supportRoot ?? p.join(await appPath.homeDirPath, 'native-cores');
@@ -149,16 +144,21 @@ final class NativeCoreInstaller {
     if (!await marker.exists()) return null;
     final tag = (await marker.readAsString()).trim();
     if (!_safeTag.hasMatch(tag)) return null;
-    final executable = File(p.join(directory, tag, '${kind.executableName}.exe'));
+    final executable = File(
+      p.join(directory, tag, '${kind.executableName}.exe'),
+    );
     return await executable.exists() ? executable.path : null;
   }
 
   Future<NativeCoreInstallation> installLatest(NativeCoreKind kind) async {
-    if (_installing) throw StateError('A native core installation is in progress');
+    if (_installing)
+      throw StateError('A native core installation is in progress');
     _installing = true;
     try {
       final metadata = await fetchRelease(
-        Uri.parse('https://api.github.com/repos/${_repository(kind)}/releases/latest'),
+        Uri.parse(
+          'https://api.github.com/repos/${_repository(kind)}/releases/latest',
+        ),
       );
       final release = NativeCoreRelease.fromMetadata(kind, metadata, abi);
       return await install(release);
@@ -215,10 +215,9 @@ final class NativeCoreInstaller {
           if (name == filename && foundExecutable) {
             throw const FormatException('Duplicate executable in archive');
           }
-          await File(p.join(stage.path, name)).writeAsBytes(
-            entry.readBytes(),
-            flush: true,
-          );
+          await File(
+            p.join(stage.path, name),
+          ).writeAsBytes(entry.readBytes(), flush: true);
           if (name == filename) foundExecutable = true;
         }
         if (!foundExecutable) {
@@ -232,10 +231,9 @@ final class NativeCoreInstaller {
     }
     // Remember the selected version across app restarts without putting any
     // generated file in the application installation directory.
-    await File(p.join(kindDir.path, 'current-version.txt')).writeAsString(
-      release.tag,
-      flush: true,
-    );
+    await File(
+      p.join(kindDir.path, 'current-version.txt'),
+    ).writeAsString(release.tag, flush: true);
     return NativeCoreInstallation(
       tag: release.tag,
       executable: executable.path,
@@ -248,11 +246,19 @@ Future<Map<String, dynamic>> _fetchOfficialRelease(Uri url) async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
   try {
     final request = await client.getUrl(url);
-    request.headers.set(HttpHeaders.userAgentHeader, 'FlClash-native-core-manager');
-    request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+    request.headers.set(
+      HttpHeaders.userAgentHeader,
+      'FlClash-native-core-manager',
+    );
+    request.headers.set(
+      HttpHeaders.acceptHeader,
+      'application/vnd.github+json',
+    );
     final response = await request.close();
     if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('GitHub release lookup failed: ${response.statusCode}');
+      throw HttpException(
+        'GitHub release lookup failed: ${response.statusCode}',
+      );
     }
     final json = jsonDecode(await utf8.decoder.bind(response).join());
     if (json is! Map<String, dynamic>) {
@@ -268,10 +274,15 @@ Future<void> _downloadArchive(Uri url, File destination) async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
   try {
     final request = await client.getUrl(url);
-    request.headers.set(HttpHeaders.userAgentHeader, 'FlClash-native-core-manager');
+    request.headers.set(
+      HttpHeaders.userAgentHeader,
+      'FlClash-native-core-manager',
+    );
     final response = await request.close();
     if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('Upstream binary download failed: ${response.statusCode}');
+      throw HttpException(
+        'Upstream binary download failed: ${response.statusCode}',
+      );
     }
     if (response.contentLength > _maxArchiveBytes) {
       throw const FormatException('Upstream archive exceeds size limit');
