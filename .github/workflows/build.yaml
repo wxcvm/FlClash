@@ -56,8 +56,8 @@ jobs:
 
       - name: Check format
         run: |
-          dart format lib/core/desktop/native_installer.dart test/core/desktop/native_unix_installer_test.dart
-          git diff -- lib/core/desktop/native_installer.dart test/core/desktop/native_unix_installer_test.dart
+          dart format test/core/desktop/native_handoff_test.dart test/core/desktop/native_proxy_test.dart
+          git diff -- test/core/desktop/native_handoff_test.dart test/core/desktop/native_proxy_test.dart
           dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
 
       - name: Analyze
