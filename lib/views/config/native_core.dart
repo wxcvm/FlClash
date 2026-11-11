@@ -5,18 +5,17 @@ import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Desktop-only control for native external cores.
 /// This does not claim the system proxy or the Mihomo-managed VPN/TUN.
-class NativeCoreView extends ConsumerStatefulWidget {
+class NativeCoreView extends StatefulWidget {
   const NativeCoreView({super.key});
 
   @override
-  ConsumerState<NativeCoreView> createState() => _NativeCoreViewState();
+  State<NativeCoreView> createState() => _NativeCoreViewState();
 }
 
-class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
+class _NativeCoreViewState extends State<NativeCoreView> {
   NativeCoreKind _kind = nativeCoreRuntime.activeKind ?? NativeCoreKind.singBox;
   String _executable =
       nativeCoreRuntime.activeSpec?.executable ??
