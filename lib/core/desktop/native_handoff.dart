@@ -27,7 +27,7 @@ final class NativeCoreHandoff {
     required this.releaseMihomoProxy,
   }) {
     _exitSubscription = runtime.exits.listen((event) {
-      if (event.expected || !_restoreMihomo) return;
+      if (event.expected) return;
       _unexpectedExit = true;
       if (!_busy) unawaited(_recoverAfterCrash());
     });
@@ -52,6 +52,7 @@ final class NativeCoreHandoff {
       if (!validation.valid) {
         throw StateError('${spec.kind.label}: ${validation.details}');
       }
+      runtime.setNativeMode(true);
       if (isMihomoRunning()) {
         if (!await setMihomoRunning(false)) {
           throw StateError('Could not stop Mihomo network listeners');
@@ -64,11 +65,15 @@ final class NativeCoreHandoff {
         _emit('${spec.kind.label} started; Mihomo network listeners released');
       } catch (error, stackTrace) {
         // The external core failed: put the previous route back.
+        if (runtime.isRunning) await runtime.stop();
         await _restore();
         Error.throwWithStackTrace(error, stackTrace);
       }
     } finally {
       _busy = false;
+      if (!runtime.isRunning && !_restoreMihomo) {
+        runtime.setNativeMode(false);
+      }
       if (_unexpectedExit) unawaited(_recoverAfterCrash());
     }
   }
@@ -79,6 +84,7 @@ final class NativeCoreHandoff {
     try {
       // Never re-enable Mihomo while the external process might still own TUN.
       await runtime.stop();
+      runtime.setNativeMode(false);
       await _restore();
       _unexpectedExit = false;
     } finally {
@@ -88,6 +94,7 @@ final class NativeCoreHandoff {
 
   Future<void> _restore() async {
     if (!_restoreMihomo) return;
+    runtime.setNativeMode(false);
     if (!await setMihomoRunning(true)) {
       throw StateError('Mihomo could not be restarted after native core exit');
     }
@@ -99,6 +106,7 @@ final class NativeCoreHandoff {
     if (_busy || !_unexpectedExit || runtime.isRunning) return;
     _busy = true;
     try {
+      runtime.setNativeMode(false);
       await _restore();
       _unexpectedExit = false;
     } catch (error) {
