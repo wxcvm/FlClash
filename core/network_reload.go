@@ -1,7 +1,6 @@
 package core
 
 import (
-	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/tunnel"
@@ -18,7 +17,7 @@ func manualSelectionsOnNetworkChange() map[string]string {
 		if proxy == nil || proxy.Type() != constant.Selector {
 			continue
 		}
-		if group, ok := adapterAs[outboundgroup.SelectAble](proxy); ok {
+		if group, ok := adapterAs[pickableGroup](proxy); ok {
 			selected[name] = group.Now()
 		}
 	}
