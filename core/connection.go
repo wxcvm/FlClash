@@ -63,6 +63,7 @@ func handleNetworkChanged() {
 func handleResetNetwork() {
 	handleCloseConnections()
 	handleNetworkChanged()
+	reloadOutboundsOnNetworkChange()
 }
 
 // A connection that is already gone is closed as far as the host is concerned.
