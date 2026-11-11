@@ -55,7 +55,14 @@ func handleClearDnsCache() {
 // handleNetworkChanged is how the desktop host reports a new network, which
 // Android's NetworkObserver reports through handleResetNetwork.
 func handleNetworkChanged() {
-	handleClearDnsCache()
+	configMu.Lock()
+	dns.ClearAll()
+	// Cached upstream sockets may still point at the previous interface.
+	resolver.ResetConnection()
+	configMu.Unlock()
+
+	// Probes completed over the old network must not remain fresh.
+	bumpRouteEpoch()
 }
 
 // A connection that went out over a network the device has left hangs until

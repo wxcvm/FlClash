@@ -55,3 +55,19 @@ func TestProxyOnlyTrafficLeavesOutADirectProxyOfAnyName(t *testing.T) {
 	}
 	statistic.DefaultManager.ResetStatistic()
 }
+
+// A network switch changes the underlying exit even when proxy names and
+// rules remain identical. Any previous probe answer belongs to the old path.
+func TestNetworkChangeInvalidatesProbeRoute(t *testing.T) {
+	beforeEpoch, beforeVersion := routeStamp()
+
+	handleNetworkChanged()
+
+	afterEpoch, afterVersion := routeStamp()
+	if afterEpoch != beforeEpoch+1 {
+		t.Errorf("epoch after network change = %d, want %d", afterEpoch, beforeEpoch+1)
+	}
+	if afterVersion != beforeVersion+1 {
+		t.Errorf("version after network change = %d, want %d", afterVersion, beforeVersion+1)
+	}
+}
