@@ -111,46 +111,52 @@ void main() {
     }
   });
 
-  test('sing-box auto-route TUN is detected independently of HTTP inbounds',
-      () async {
-    await file.writeAsString(jsonEncode({
-      'inbounds': [
-        {
-          'type': 'tun',
-          'interface_name': 'sing-tun',
-          'address': ['172.18.0.1/30'],
-          'auto_route': true,
-          'dns_mode': 'native',
-        },
-      ],
-    }));
-    final spec = NativeCoreSpec(
-      kind: NativeCoreKind.singBox,
-      executable: 'sing-box',
-      configPath: file.path,
-    );
-    final tun = await detectNativeTunConfiguration(spec);
-    expect(tun?.interfaceName, 'sing-tun');
-    expect(tun?.dnsMode, 'native');
-    expect(await detectNativeHttpEndpoint(spec), isNull);
-    expect(
-      await detectNativeTunConfiguration(
-        NativeCoreSpec(
-          kind: NativeCoreKind.xray,
-          executable: 'xray',
-          configPath: file.path,
+  test(
+    'sing-box auto-route TUN is detected independently of HTTP inbounds',
+    () async {
+      await file.writeAsString(
+        jsonEncode({
+          'inbounds': [
+            {
+              'type': 'tun',
+              'interface_name': 'sing-tun',
+              'address': ['172.18.0.1/30'],
+              'auto_route': true,
+              'dns_mode': 'native',
+            },
+          ],
+        }),
+      );
+      final spec = NativeCoreSpec(
+        kind: NativeCoreKind.singBox,
+        executable: 'sing-box',
+        configPath: file.path,
+      );
+      final tun = await detectNativeTunConfiguration(spec);
+      expect(tun?.interfaceName, 'sing-tun');
+      expect(tun?.dnsMode, 'native');
+      expect(await detectNativeHttpEndpoint(spec), isNull);
+      expect(
+        await detectNativeTunConfiguration(
+          NativeCoreSpec(
+            kind: NativeCoreKind.xray,
+            executable: 'xray',
+            configPath: file.path,
+          ),
         ),
-      ),
-      isNull,
-    );
-  });
+        isNull,
+      );
+    },
+  );
 
   test('TUN without auto_route does not claim system routing', () async {
-    await file.writeAsString(jsonEncode({
-      'inbounds': [
-        {'type': 'tun', 'auto_route': false},
-      ],
-    }));
+    await file.writeAsString(
+      jsonEncode({
+        'inbounds': [
+          {'type': 'tun', 'auto_route': false},
+        ],
+      }),
+    );
     expect(
       await detectNativeTunConfiguration(
         NativeCoreSpec(
@@ -164,12 +170,14 @@ void main() {
   });
 
   test('multiple auto-route TUN inbounds are not silently selected', () async {
-    await file.writeAsString(jsonEncode({
-      'inbounds': [
-        {'type': 'tun', 'auto_route': true},
-        {'type': 'tun', 'auto_route': true},
-      ],
-    }));
+    await file.writeAsString(
+      jsonEncode({
+        'inbounds': [
+          {'type': 'tun', 'auto_route': true},
+          {'type': 'tun', 'auto_route': true},
+        ],
+      }),
+    );
     expect(
       await detectNativeTunConfiguration(
         NativeCoreSpec(
