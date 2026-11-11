@@ -3,29 +3,35 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
 
 /// A native core uses its own configuration and CLI, not FlClash's Mihomo IPC.
-enum NativeCoreKind { singBox, xray }
+enum NativeCoreKind { singBox, xray, hysteria2 }
 
 extension NativeCoreCommands on NativeCoreKind {
   String get label => switch (this) {
     NativeCoreKind.singBox => 'sing-box',
     NativeCoreKind.xray => 'Xray-core',
+    NativeCoreKind.hysteria2 => 'Hysteria 2',
   };
 
   String get executableName => switch (this) {
     NativeCoreKind.singBox => 'sing-box',
     NativeCoreKind.xray => 'xray',
+    NativeCoreKind.hysteria2 => 'hysteria',
   };
 
   List<String> checkArguments(String configPath) => switch (this) {
     NativeCoreKind.singBox => ['check', '-c', configPath],
     NativeCoreKind.xray => ['run', '-test', '-config', configPath],
+    // Hysteria has no offline config-check command; version only verifies the binary.
+    NativeCoreKind.hysteria2 => ['version'],
   };
 
   List<String> runArguments(String configPath) => switch (this) {
     NativeCoreKind.singBox => ['run', '-c', configPath],
     NativeCoreKind.xray => ['run', '-config', configPath],
+    NativeCoreKind.hysteria2 => ['client', '-c', configPath],
   };
 }
 
@@ -123,6 +129,26 @@ final class NativeCoreRuntime {
         details: 'Config file not found: ${spec.absoluteConfigPath}',
       );
     }
+    // Hysteria uses YAML rather than Mihomo/sing-box/Xray JSON. Its CLI
+    // has no offline config-check subcommand, so verify basic YAML here and
+    // use the harmless version command to verify the executable.
+    if (spec.kind == NativeCoreKind.hysteria2) {
+      try {
+        final yaml = loadYaml(
+          await File(spec.absoluteConfigPath).readAsString(),
+        );
+        if (yaml is! YamlMap ||
+            yaml['server'] is! String ||
+            (yaml['server'] as String).trim().isEmpty) {
+          return const NativeCoreValidation(
+            valid: false,
+            details: 'Hysteria client YAML needs a server address',
+          );
+        }
+      } on Exception catch (error) {
+        return NativeCoreValidation(valid: false, details: error.toString());
+      }
+    }
     try {
       final result = await _run(
         spec.executable,
@@ -135,7 +161,9 @@ final class NativeCoreRuntime {
       ].where((line) => line.isNotEmpty).join('\n');
       return NativeCoreValidation(
         valid: result.exitCode == 0,
-        details: details,
+        details: spec.kind == NativeCoreKind.hysteria2
+            ? 'YAML syntax checked; Hysteria validates client settings at startup\n$details'
+            : details,
       );
     } on ProcessException catch (error) {
       return NativeCoreValidation(valid: false, details: error.toString());
