@@ -128,7 +128,7 @@ func TestShareLinksReadBackThroughTheConverter(t *testing.T) {
 				"uuid": "u-x", "tls": true, "network": "xhttp",
 				"xhttp-opts": map[string]any{
 					"path": "/up", "host": "cdn.example", "mode": "stream-up",
-					"headers": map[string]any{"X-Client": "FlClash"},
+					"headers":         map[string]any{"X-Client": "FlClash"},
 					"x-padding-bytes": "100-300", "x-padding-obfs-mode": false,
 					"no-grpc-header": true, "uplink-http-method": "POST",
 					"session-placement": "header", "session-key": "X-Session",
@@ -140,7 +140,7 @@ func TestShareLinksReadBackThroughTheConverter(t *testing.T) {
 						"server": "down.example", "port": 8443, "tls": true,
 						"servername": "down.example", "client-fingerprint": "chrome",
 						"path": "/down", "host": "cdn-down.example",
-						"headers": map[string]any{"X-Down": "present"},
+						"headers":        map[string]any{"X-Down": "present"},
 						"reuse-settings": map[string]any{"max-concurrency": "2"},
 					},
 				},
