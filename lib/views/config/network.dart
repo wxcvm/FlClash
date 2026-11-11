@@ -133,6 +133,8 @@ class Ipv6Item extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    // Keep the core config subscribed while this toggle updates both settings.
+    ref.watch(patchClashConfigProvider.select((state) => state.ipv6));
     return ConfigToggleItem(
       title: (l) => 'IPv6',
       selector: vpnSettingProvider.select((state) => state.ipv6),
