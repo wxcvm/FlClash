@@ -720,6 +720,10 @@ enum ProxyField {
   clientFingerprint(['client-fingerprint'], ProxyFieldKind.choice),
   realityPublicKey(['reality-opts', 'public-key']),
   realityShortId(['reality-opts', 'short-id']),
+  realityMlkem768([
+    'reality-opts',
+    'support-x25519mlkem768',
+  ], ProxyFieldKind.toggle),
   plugin(['plugin'], ProxyFieldKind.choice),
   pluginMode(['plugin-opts', 'mode']),
   pluginHost(['plugin-opts', 'host']),
