@@ -15,10 +15,12 @@ class _DelayTestTarget {
 typedef _DelayTestBatch = ({List<Proxy> proxies, String? testUrl});
 
 class _DelayTestJob {
-  _DelayTestJob(Iterable<String> keys, this.timeout) : held = keys.toSet();
+  _DelayTestJob(Iterable<String> keys, this.timeout, this.generation)
+    : held = keys.toSet();
 
   final Set<String> held;
   final Duration timeout;
+  final int generation;
   final Set<String> startedOnDispatch = {};
   bool cancelled = false;
 }
@@ -30,6 +32,8 @@ class ProxiesAction extends _$ProxiesAction {
   final TaskPool _delayTestPool = TaskPool(maxConcurrentDelayTests);
 
   final List<_DelayTestJob> _delayTestJobs = [];
+  final Map<String, int> _latestDelayTestGeneration = {};
+  int _delayTestGeneration = 0;
 
   final List<Delay> _bufferedDelays = [];
 
@@ -61,6 +65,7 @@ class ProxiesAction extends _$ProxiesAction {
     _bufferedDelays.clear();
     _bufferedStarts.clear();
     _bufferedFinishes.clear();
+    _latestDelayTestGeneration.clear();
     ref.read(pendingDelayTestsProvider.notifier).clear();
   }
 
@@ -395,9 +400,14 @@ class ProxiesAction extends _$ProxiesAction {
       return;
     }
     final pending = ref.read(pendingDelayTestsProvider.notifier);
+    final generation = ++_delayTestGeneration;
+    for (final target in targets) {
+      _latestDelayTestGeneration[target.key] = generation;
+    }
     final job = _DelayTestJob(
       targets.map((target) => target.key),
       Duration(milliseconds: ref.read(appSettingProvider).delayTestTimeout),
+      generation,
     );
     _delayTestJobs.add(job);
     // TaskPool.run starts a task synchronously while it has an idle slot.
@@ -413,6 +423,11 @@ class ProxiesAction extends _$ProxiesAction {
       );
     } finally {
       _delayTestJobs.remove(job);
+      for (final target in targets) {
+        if (_latestDelayTestGeneration[target.key] == generation) {
+          _latestDelayTestGeneration.remove(target.key);
+        }
+      }
       _flushDelayResults();
       final abandoned = job.held.toList();
       job.held.clear();
@@ -426,7 +441,8 @@ class ProxiesAction extends _$ProxiesAction {
   }
 
   Future<void> _runDelayTest(_DelayTestJob job, _DelayTestTarget target) async {
-    if (job.cancelled) {
+    if (job.cancelled ||
+        _latestDelayTestGeneration[target.key] != job.generation) {
       return;
     }
     if (!job.startedOnDispatch.contains(target.key)) {
@@ -441,7 +457,9 @@ class ProxiesAction extends _$ProxiesAction {
           timeout: job.timeout.inMilliseconds,
         ),
       );
-      if (!job.cancelled) {
+      // An older request must not replace a fresher measurement.
+      if (!job.cancelled &&
+          _latestDelayTestGeneration[target.key] == job.generation) {
         setDelay(delay);
       }
     } catch (error) {
