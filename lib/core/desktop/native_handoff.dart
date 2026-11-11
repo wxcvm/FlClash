@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'native_core.dart';
+import 'native_proxy.dart';
 
 typedef MihomoRunSetter = Future<bool> Function(bool running);
 
@@ -12,6 +13,11 @@ final class NativeCoreHandoff {
   final bool Function() isMihomoRunning;
   final MihomoRunSetter setMihomoRunning;
   final Future<void> Function() releaseMihomoProxy;
+  final bool Function() useNativeSystemProxy;
+  final Future<NativeHttpEndpoint?> Function(NativeCoreSpec) detectHttpEndpoint;
+  final Future<bool> Function(NativeHttpEndpoint) waitForHttpEndpoint;
+  final Future<bool> Function(int) activateNativeProxy;
+  final Future<void> Function() releaseNativeProxy;
   final StreamController<String> _messages =
       StreamController<String>.broadcast();
 
@@ -19,12 +25,18 @@ final class NativeCoreHandoff {
   bool _busy = false;
   bool _restoreMihomo = false;
   bool _unexpectedExit = false;
+  bool _nativeProxyOwned = false;
 
   NativeCoreHandoff({
     required this.runtime,
     required this.isMihomoRunning,
     required this.setMihomoRunning,
     required this.releaseMihomoProxy,
+    this.useNativeSystemProxy = _noNativeProxy,
+    this.detectHttpEndpoint = detectNativeHttpEndpoint,
+    this.waitForHttpEndpoint = waitForNativeHttpEndpoint,
+    this.activateNativeProxy = _noNativeProxyActivation,
+    this.releaseNativeProxy = _releaseNothing,
   }) {
     _exitSubscription = runtime.exits.listen((event) {
       if (event.expected) return;
@@ -52,6 +64,16 @@ final class NativeCoreHandoff {
       if (!validation.valid) {
         throw StateError('${spec.kind.label}: ${validation.details}');
       }
+      final wantsSystemProxy = useNativeSystemProxy();
+      final endpoint = wantsSystemProxy
+          ? await detectHttpEndpoint(spec)
+          : null;
+      if (wantsSystemProxy && endpoint == null) {
+        throw StateError(
+          'Native config needs one unauthenticated 127.0.0.1 HTTP/mixed '
+          'inbound for system proxy takeover',
+        );
+      }
       runtime.setNativeMode(true);
       if (isMihomoRunning()) {
         if (!await setMihomoRunning(false)) {
@@ -62,9 +84,25 @@ final class NativeCoreHandoff {
       try {
         await releaseMihomoProxy();
         await runtime.start(spec);
-        _emit('${spec.kind.label} started; Mihomo network listeners released');
+        if (endpoint != null) {
+          if (!await waitForHttpEndpoint(endpoint) || !runtime.isRunning) {
+            throw StateError(
+              '${spec.kind.label} HTTP port ${endpoint.port} did not start',
+            );
+          }
+          // Mark ownership before writing OS settings so any partial platform
+          // failure is cleaned up during rollback.
+          _nativeProxyOwned = true;
+          if (!await activateNativeProxy(endpoint.port)) {
+            throw StateError('Could not activate native system proxy');
+          }
+          _emit('${spec.kind.label} system proxy active on 127.0.0.1:${endpoint.port}');
+        } else {
+          _emit('${spec.kind.label} running without system proxy takeover');
+        }
       } catch (error, stackTrace) {
         // The external core failed: put the previous route back.
+        await _releaseProxy();
         if (runtime.isRunning) await runtime.stop();
         await _restore();
         Error.throwWithStackTrace(error, stackTrace);
@@ -84,12 +122,19 @@ final class NativeCoreHandoff {
     try {
       // Never re-enable Mihomo while the external process might still own TUN.
       await runtime.stop();
+      await _releaseProxy();
       runtime.setNativeMode(false);
       await _restore();
       _unexpectedExit = false;
     } finally {
       _busy = false;
     }
+  }
+
+  Future<void> _releaseProxy() async {
+    if (!_nativeProxyOwned) return;
+    await releaseNativeProxy();
+    _nativeProxyOwned = false;
   }
 
   Future<void> _restore() async {
@@ -106,6 +151,7 @@ final class NativeCoreHandoff {
     if (_busy || !_unexpectedExit || runtime.isRunning) return;
     _busy = true;
     try {
+      await _releaseProxy();
       runtime.setNativeMode(false);
       await _restore();
       _unexpectedExit = false;
@@ -125,3 +171,9 @@ final class NativeCoreHandoff {
     await _messages.close();
   }
 }
+
+bool _noNativeProxy() => false;
+
+Future<bool> _noNativeProxyActivation(int _) async => false;
+
+Future<void> _releaseNothing() async {}
