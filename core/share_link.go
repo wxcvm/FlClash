@@ -433,7 +433,7 @@ func xhttpDownloadExtra(opts proxyFields) map[string]any {
 			download["security"] = "reality"
 			download["realitySettings"] = map[string]any{
 				"publicKey": reality.str("public-key"),
-				"shortId": reality.str("short-id"),
+				"shortId":   reality.str("short-id"),
 			}
 		}
 	}
