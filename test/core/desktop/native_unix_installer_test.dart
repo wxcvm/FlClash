@@ -43,7 +43,11 @@ void main() {
       'Xray-macos-arm64-v8a.zip',
     );
     expect(
-      nativeReleaseAssetName(NativeCoreKind.singBox, 'v1.14.4', Abi.androidArm64),
+      nativeReleaseAssetName(
+        NativeCoreKind.singBox,
+        'v1.14.4',
+        Abi.androidArm64,
+      ),
       isNull,
     );
   });
@@ -69,41 +73,46 @@ void main() {
     fetchArchive: (_, file) async => file.writeAsBytes(compressed),
   );
 
-  test('installs verified sing-box tar.gz and preserves executable mode', () async {
-    final tar = Archive();
-    tar.addFile(ArchiveFile('sing-box-1.14.4-linux-amd64/sing-box', 4, [
-      127,
-      69,
-      76,
-      70,
-    ]));
-    final archive = GZipEncoder().encode(TarEncoder().encode(tar));
-    final metadata = {
-      'tag_name': 'v1.14.4',
-      'assets': [
-        {
-          'name': 'sing-box-1.14.4-linux-amd64.tar.gz',
-          'size': archive.length,
-          'digest': 'sha256:${sha256.convert(archive)}',
-        },
-      ],
-    };
-    final manager = installer(Abi.linuxX64, metadata, archive);
-    final result = await manager.installLatest(NativeCoreKind.singBox);
+  test(
+    'installs verified sing-box tar.gz and preserves executable mode',
+    () async {
+      final tar = Archive();
+      tar.addFile(
+        ArchiveFile('sing-box-1.14.4-linux-amd64/sing-box', 4, [
+          127,
+          69,
+          76,
+          70,
+        ]),
+      );
+      final archive = GZipEncoder().encode(TarEncoder().encode(tar));
+      final metadata = {
+        'tag_name': 'v1.14.4',
+        'assets': [
+          {
+            'name': 'sing-box-1.14.4-linux-amd64.tar.gz',
+            'size': archive.length,
+            'digest': 'sha256:${sha256.convert(archive)}',
+          },
+        ],
+      };
+      final manager = installer(Abi.linuxX64, metadata, archive);
+      final result = await manager.installLatest(NativeCoreKind.singBox);
 
-    expect(result.alreadyInstalled, isFalse);
-    expect(p.basename(result.executable), 'sing-box');
-    expect(await File(result.executable).readAsBytes(), [127, 69, 76, 70]);
-    final stat = await File(result.executable).stat();
-    expect(stat.mode & 0x40, isNot(0)); // User executable bit.
-    expect(
-      await NativeCoreInstaller(
-        supportRoot: root.path,
-        abi: Abi.linuxX64,
-      ).installedExecutable(NativeCoreKind.singBox),
-      result.executable,
-    );
-  });
+      expect(result.alreadyInstalled, isFalse);
+      expect(p.basename(result.executable), 'sing-box');
+      expect(await File(result.executable).readAsBytes(), [127, 69, 76, 70]);
+      final stat = await File(result.executable).stat();
+      expect(stat.mode & 0x40, isNot(0)); // User executable bit.
+      expect(
+        await NativeCoreInstaller(
+          supportRoot: root.path,
+          abi: Abi.linuxX64,
+        ).installedExecutable(NativeCoreKind.singBox),
+        result.executable,
+      );
+    },
+  );
 
   test('installs Linux Xray zip without losing geo resources', () async {
     final zip = Archive()
@@ -125,16 +134,20 @@ void main() {
     final installed = await manager.installLatest(NativeCoreKind.xray);
     final directory = File(installed.executable).parent;
     expect(p.basename(installed.executable), 'xray');
-    expect(await File(p.join(directory.path, 'geoip.dat')).readAsBytes(), [1, 2]);
-    expect(await File(p.join(directory.path, 'geosite.dat')).readAsBytes(), [3, 4]);
+    expect(await File(p.join(directory.path, 'geoip.dat')).readAsBytes(), [
+      1,
+      2,
+    ]);
+    expect(await File(p.join(directory.path, 'geosite.dat')).readAsBytes(), [
+      3,
+      4,
+    ]);
     expect((await File(installed.executable).stat()).mode & 0x40, isNot(0));
   });
 
   test('bad gzip digest does not create a selected Unix core', () async {
     final archive = GZipEncoder().encode(
-      TarEncoder().encode(
-        Archive()..addFile(ArchiveFile('sing-box', 1, [1])),
-      ),
+      TarEncoder().encode(Archive()..addFile(ArchiveFile('sing-box', 1, [1]))),
     );
     final metadata = {
       'tag_name': 'v1.14.4',

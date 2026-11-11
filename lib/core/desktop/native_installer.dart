@@ -274,7 +274,9 @@ final class NativeCoreInstaller {
             p.join(stage.path, filename),
           ]);
           if (result.exitCode != 0) {
-            throw StateError('Could not enable native core execution: ${result.stderr}');
+            throw StateError(
+              'Could not enable native core execution: ${result.stderr}',
+            );
           }
         }
         await zip.delete();
