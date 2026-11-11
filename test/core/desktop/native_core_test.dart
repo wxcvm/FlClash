@@ -28,6 +28,14 @@ void main() {
       '-config',
       'config.json',
     ]);
+    expect(NativeCoreKind.hysteria2.checkArguments('config.yaml'), [
+      'version',
+    ]);
+    expect(NativeCoreKind.hysteria2.runArguments('config.yaml'), [
+      'client',
+      '-c',
+      'config.yaml',
+    ]);
   });
 
   late Directory tempDir;
@@ -68,6 +76,35 @@ void main() {
     expect(program, 'sing-box');
     expect(args, ['check', '-c', spec.absoluteConfigPath]);
     expect(cwd, tempDir.path);
+    await runtime.close();
+  });
+
+  test('Hysteria YAML check uses version without starting a client', () async {
+    final config = File(p.join(tempDir.path, 'hysteria.yaml'));
+    await config.writeAsString(
+      'server: example.org:443\nhttp:\n  listen: 127.0.0.1:8080\n',
+    );
+    final hySpec = NativeCoreSpec(
+      kind: NativeCoreKind.hysteria2,
+      executable: 'hysteria',
+      configPath: config.path,
+    );
+    List<String>? checkArgs;
+    final runtime = NativeCoreRuntime(
+      run: (_, args, {workingDirectory}) async {
+        checkArgs = args;
+        return ProcessResult(17, 0, 'hysteria version 2.13', '');
+      },
+    );
+    final result = await runtime.validate(hySpec);
+    expect(result.valid, isTrue);
+    expect(result.details, contains('YAML syntax checked'));
+    expect(checkArgs, ['version']);
+
+    await config.writeAsString('server: [');
+    checkArgs = null;
+    expect((await runtime.validate(hySpec)).valid, isFalse);
+    expect(checkArgs, isNull);
     await runtime.close();
   });
 
