@@ -15,6 +15,7 @@ final class NativeCoreHandoff {
   final Future<void> Function() releaseMihomoProxy;
   final bool Function() useNativeSystemProxy;
   final Future<NativeHttpEndpoint?> Function(NativeCoreSpec) detectHttpEndpoint;
+  final Future<NativeTunConfiguration?> Function(NativeCoreSpec) detectTun;
   final Future<bool> Function(NativeHttpEndpoint) waitForHttpEndpoint;
   final Future<bool> Function(int) activateNativeProxy;
   final Future<void> Function() releaseNativeProxy;
@@ -26,6 +27,7 @@ final class NativeCoreHandoff {
   bool _restoreMihomo = false;
   bool _unexpectedExit = false;
   bool _nativeProxyOwned = false;
+  bool _nativeTunConfigured = false;
 
   NativeCoreHandoff({
     required this.runtime,
@@ -34,6 +36,7 @@ final class NativeCoreHandoff {
     required this.releaseMihomoProxy,
     this.useNativeSystemProxy = _noNativeProxy,
     this.detectHttpEndpoint = detectNativeHttpEndpoint,
+    this.detectTun = detectNativeTunConfiguration,
     this.waitForHttpEndpoint = waitForNativeHttpEndpoint,
     this.activateNativeProxy = _noNativeProxyActivation,
     this.releaseNativeProxy = _releaseNothing,
@@ -53,6 +56,10 @@ final class NativeCoreHandoff {
 
   bool get ownsNativeSystemProxy => _nativeProxyOwned;
 
+  /// True while a running sing-box was launched with auto_route TUN.
+  /// This is not an independent assertion of OS route or DNS health.
+  bool get nativeTunConfigured => _nativeTunConfigured;
+
   bool get blocksMihomoStart => _busy || runtime.isRunning;
 
   Future<void> activate(NativeCoreSpec spec) async {
@@ -67,11 +74,16 @@ final class NativeCoreHandoff {
         throw StateError('${spec.kind.label}: ${validation.details}');
       }
       final wantsSystemProxy = useNativeSystemProxy();
-      final endpoint = wantsSystemProxy ? await detectHttpEndpoint(spec) : null;
-      if (wantsSystemProxy && endpoint == null) {
+      final tun = await detectTun(spec);
+      // A native auto-route TUN owns system routing itself. Do not also claim
+      // the OS HTTP proxy even if the original Mihomo setting was enabled.
+      final endpoint = wantsSystemProxy && tun == null
+          ? await detectHttpEndpoint(spec)
+          : null;
+      if (wantsSystemProxy && endpoint == null && tun == null) {
         throw StateError(
-          'Native config needs one unauthenticated 127.0.0.1 HTTP/mixed '
-          'inbound for system proxy takeover',
+          'Native config needs a loopback HTTP/mixed inbound or a sing-box '
+          'auto_route TUN for system traffic',
         );
       }
       runtime.setNativeMode(true);
@@ -84,7 +96,19 @@ final class NativeCoreHandoff {
       try {
         await releaseMihomoProxy();
         await runtime.start(spec);
-        if (endpoint != null) {
+        if (tun != null) {
+          // A core that exits immediately cannot be trusted to have set up
+          // its TUN. The core itself still owns route creation and cleanup.
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+          if (!runtime.isRunning) {
+            throw StateError('sing-box exited while starting native TUN');
+          }
+          _nativeTunConfigured = true;
+          _emit(
+            'sing-box TUN auto_route configured; actual system routing '
+            'is managed by sing-box and is not independently verified',
+          );
+        } else if (endpoint != null) {
           if (!await waitForHttpEndpoint(endpoint) || !runtime.isRunning) {
             throw StateError(
               '${spec.kind.label} HTTP port ${endpoint.port} did not start',
@@ -106,6 +130,7 @@ final class NativeCoreHandoff {
         // The external core failed: put the previous route back.
         await _releaseProxy();
         if (runtime.isRunning) await runtime.stop();
+        _nativeTunConfigured = false;
         await _restore();
         Error.throwWithStackTrace(error, stackTrace);
       }
@@ -125,6 +150,7 @@ final class NativeCoreHandoff {
       // Never re-enable Mihomo while the external process might still own TUN.
       await runtime.stop();
       await _releaseProxy();
+      _nativeTunConfigured = false;
       runtime.setNativeMode(false);
       await _restore();
       _unexpectedExit = false;
@@ -154,6 +180,7 @@ final class NativeCoreHandoff {
     _busy = true;
     try {
       await _releaseProxy();
+      _nativeTunConfigured = false;
       runtime.setNativeMode(false);
       await _restore();
       _unexpectedExit = false;
