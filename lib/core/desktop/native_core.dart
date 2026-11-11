@@ -24,7 +24,7 @@ extension NativeCoreCommands on NativeCoreKind {
   List<String> checkArguments(String configPath) => switch (this) {
     NativeCoreKind.singBox => ['check', '-c', configPath],
     NativeCoreKind.xray => ['run', '-test', '-config', configPath],
-    // Hysteria has no offline config-check command; version only verifies the binary.
+    // Hysteria has no offline config check; version verifies the binary.
     NativeCoreKind.hysteria2 => ['version'],
   };
 
@@ -85,7 +85,7 @@ typedef NativeCoreStart =
       String? workingDirectory,
     });
 
-/// Runs an optional desktop core with its native JSON configuration.
+/// Runs an optional desktop core with its native JSON or YAML configuration.
 /// The application must coordinate network ownership before calling start().
 /// It never changes system proxy, DNS or TUN settings on its own.
 final class NativeCoreRuntime {
@@ -162,7 +162,7 @@ final class NativeCoreRuntime {
       return NativeCoreValidation(
         valid: result.exitCode == 0,
         details: spec.kind == NativeCoreKind.hysteria2
-            ? 'YAML syntax checked; Hysteria validates client settings at startup\n$details'
+            ? 'YAML syntax checked; native settings checked at startup\n$details'
             : details,
       );
     } on ProcessException catch (error) {
