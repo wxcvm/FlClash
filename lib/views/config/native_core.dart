@@ -130,7 +130,9 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   Future<String> _start() async {
     if (_configPath.trim().isEmpty) return '请先选择 JSON 配置文件';
     await nativeCoreHandoff.activate(_spec);
-    return nativeCoreHandoff.ownsNativeSystemProxy
+    return nativeCoreHandoff.nativeTunConfigured
+        ? '${_kind.label} 已启动；原生 JSON 已配置自动路由 TUN，实际路由状态未独立验证'
+        : nativeCoreHandoff.ownsNativeSystemProxy
         ? '${_kind.label} 已启动，并已接管系统代理'
         : '${_kind.label} 已启动，当前仅使用原生 JSON 网络配置';
   }
@@ -217,6 +219,14 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 ),
               ),
               ListItem(
+                title: const Text('原生 TUN'),
+                subtitle: Text(
+                  nativeCoreHandoff.nativeTunConfigured
+                      ? 'sing-box 已配置 TUN 自动路由，未独立验证实际网络接管'
+                      : '未启动原生 TUN 自动路由',
+                ),
+              ),
+              ListItem(
                 title: const Text('检查配置'),
                 onTap: _busy ? null : () => _perform(_validate),
               ),
@@ -235,7 +245,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
             ],
             footer:
-                '启动时先停用 Mihomo；启用系统代理时，仅在原生 JSON 存在唯一可用的本机 HTTP/mixed 入口后接管。停止或异常退出后恢复 Mihomo；TUN 仍由原生配置管理。',
+                '启动时先停止 Mihomo 网络监听。若 sing-box 原生 JSON 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP/mixed 入口接管系统代理。异常退出后恢复原 Mihomo 状态，TUN 需要系统权限，页面不独立验证路由。',
           ),
           if (_result.isNotEmpty)
             Padding(
