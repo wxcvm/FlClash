@@ -2,6 +2,7 @@ package core
 
 import (
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/metacubex/mihomo/adapter"
@@ -32,9 +33,10 @@ func TestVerifiedSpeedSelector(t *testing.T) {
 
 func TestVerifiedSpeedURLTestHealth(t *testing.T) {
 	recordRoutes(t)
-	status := http.StatusForbidden
+	var status atomic.Int32
+	status.Store(http.StatusForbidden)
 	server := probeServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(status)
+		w.WriteHeader(int(status.Load()))
 	})
 	a, b := namedProxy("node-a"), namedProxy("node-b")
 	members := []constant.Proxy{a, b}
@@ -64,7 +66,7 @@ func TestVerifiedSpeedURLTestHealth(t *testing.T) {
 	if state, err := speedSelectionState(wrapped); err != nil || state.Fixed != "node-a" {
 		t.Fatalf("rejected candidate changed fixed selection: %+v, %v", state, err)
 	}
-	status = http.StatusNoContent
+	status.Store(http.StatusNoContent)
 	if result := handleSelectSpeedProxy(params); result.Message != "" {
 		t.Fatalf("healthy candidate rejected: %+v", result)
 	}

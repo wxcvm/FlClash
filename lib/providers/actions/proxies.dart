@@ -673,7 +673,7 @@ class ProxiesAction extends _$ProxiesAction {
       };
       while (remaining.isNotEmpty && isCurrent()) {
         final winner = chooseDownloadSpeedWinner(remaining, current);
-        if (winner == null) {
+        if (winner == null || (automatic && winner == current)) {
           return;
         }
         if (await _selectVerifiedSpeed(
