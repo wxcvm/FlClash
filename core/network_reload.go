@@ -99,5 +99,8 @@ func reloadOutboundsOnNetworkChange() bool {
 	bumpRouteEpoch()
 	updateListeners(cfg)
 	reconcileGeoUpdater()
+	// Rebuilding the applied profile allocates the same temporary decode
+	// buffers as a normal config load, even without a provider-loaded hook.
+	scheduleLoadMemoryRelease()
 	return true
 }

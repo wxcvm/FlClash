@@ -943,12 +943,10 @@ func TestLoadMemoryReleaseWaitsForTheLoadsToGoQuiet(t *testing.T) {
 	loadReleaseDelay = 400 * time.Millisecond
 	releaseLoadMemory = func() { released <- struct{}{} }
 	t.Cleanup(func() {
+		cancelLoadMemoryRelease()
 		loadReleaseMu.Lock()
-		if loadReleaseTimer != nil {
-			loadReleaseTimer.Stop()
-		}
-		loadReleaseMu.Unlock()
 		loadReleaseDelay, releaseLoadMemory = delay, release
+		loadReleaseMu.Unlock()
 	})
 
 	scheduleLoadMemoryRelease()
@@ -970,6 +968,37 @@ func TestLoadMemoryReleaseWaitsForTheLoadsToGoQuiet(t *testing.T) {
 	case <-released:
 		t.Error("one quiet spell released twice")
 	case <-time.After(600 * time.Millisecond):
+	}
+}
+
+func TestCancelLoadMemoryReleaseDiscardsPendingCollection(t *testing.T) {
+	cancelLoadMemoryRelease()
+	released := make(chan struct{}, 1)
+	loadReleaseMu.Lock()
+	delay, release := loadReleaseDelay, releaseLoadMemory
+	loadReleaseDelay = 50 * time.Millisecond
+	releaseLoadMemory = func() { released <- struct{}{} }
+	loadReleaseMu.Unlock()
+	t.Cleanup(func() {
+		cancelLoadMemoryRelease()
+		loadReleaseMu.Lock()
+		loadReleaseDelay, releaseLoadMemory = delay, release
+		loadReleaseMu.Unlock()
+	})
+
+	scheduleLoadMemoryRelease()
+	cancelLoadMemoryRelease()
+	select {
+	case <-released:
+		t.Fatal("cancelled timer collected memory")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	scheduleLoadMemoryRelease()
+	select {
+	case <-released:
+	case <-time.After(time.Second):
+		t.Fatal("new load did not schedule a release after cancellation")
 	}
 }
 

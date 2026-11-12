@@ -105,6 +105,7 @@ func handleShutdown() {
 	executor.Shutdown()
 	currentConfig = nil
 	isInit.Store(false)
+	cancelLoadMemoryRelease()
 	configMu.Unlock()
 
 	handleForceGC()
@@ -120,18 +121,60 @@ var (
 	loadReleaseDelay  = 2 * time.Second
 	releaseLoadMemory = debug.FreeOSMemory
 
-	loadReleaseMu    sync.Mutex
-	loadReleaseTimer *time.Timer
+	loadReleaseMu      sync.Mutex
+	loadReleaseTimer   *time.Timer
+	loadReleaseVersion uint64
+	loadReleaseRunning bool
 )
 
 func scheduleLoadMemoryRelease() {
 	loadReleaseMu.Lock()
 	defer loadReleaseMu.Unlock()
-	if loadReleaseTimer == nil {
-		loadReleaseTimer = time.AfterFunc(loadReleaseDelay, func() { releaseLoadMemory() })
-		return
+	scheduleLoadMemoryReleaseLocked()
+}
+
+// AfterFunc.Reset may start a second callback while a previous one is still
+// running. Replace pending timers and reject callbacks from older generations.
+func scheduleLoadMemoryReleaseLocked() {
+	loadReleaseVersion++
+	version := loadReleaseVersion
+	if loadReleaseTimer != nil {
+		loadReleaseTimer.Stop()
 	}
-	loadReleaseTimer.Reset(loadReleaseDelay)
+	loadReleaseTimer = time.AfterFunc(loadReleaseDelay, func() {
+		loadReleaseMu.Lock()
+		if version != loadReleaseVersion {
+			loadReleaseMu.Unlock()
+			return
+		}
+		if loadReleaseRunning {
+			// A load finished during collection. Keep one pending release,
+			// rather than start another full GC at the same time.
+			scheduleLoadMemoryReleaseLocked()
+			loadReleaseMu.Unlock()
+			return
+		}
+		loadReleaseTimer = nil
+		loadReleaseRunning = true
+		release := releaseLoadMemory
+		loadReleaseMu.Unlock()
+		defer func() {
+			loadReleaseMu.Lock()
+			loadReleaseRunning = false
+			loadReleaseMu.Unlock()
+		}()
+		release()
+	})
+}
+
+func cancelLoadMemoryRelease() {
+	loadReleaseMu.Lock()
+	defer loadReleaseMu.Unlock()
+	loadReleaseVersion++
+	if loadReleaseTimer != nil {
+		loadReleaseTimer.Stop()
+		loadReleaseTimer = nil
+	}
 }
 
 // HeapIdle still counts spans the runtime has already handed back to the OS,
