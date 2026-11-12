@@ -67,7 +67,8 @@ class FixedList<T> {
   T operator [](int index) => _buffer.items[_buffer.slot(index)];
 
   FixedList<T> copyWith() {
-    return FixedList(maxLength, list: List.of(list));
+    final items = List<T>.generate(length, (index) => this[index]);
+    return FixedList(maxLength, list: items);
   }
 
   @override
