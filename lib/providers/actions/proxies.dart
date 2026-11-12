@@ -390,7 +390,8 @@ class ProxiesAction extends _$ProxiesAction {
         return;
       }
 
-      Future<int> measure(String name) => _measureDownloadSpeed(name, isCurrent);
+      Future<int> measure(String name) =>
+          _measureDownloadSpeed(name, isCurrent);
 
       final first = <String, int>{};
       await Future.wait([
