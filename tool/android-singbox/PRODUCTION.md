@@ -28,3 +28,17 @@ build does not include either runtime file.
 The isolated adapter compiles against Android 35 (minimum runtime API 29),
 independently of the production app compile SDK. Install platform android-35
 alongside the normal app SDK before an optional build.
+
+## Production service boundary
+
+An optional manifest-enabled SingBoxVpnService now runs in :singbox, with a
+private same-UID Binder protocol (SingBoxVpnControl). Configuration crosses as
+a read-only file descriptor. Preflight, start, stop, reset and real running
+state are serialized. The service never starts from system always-on intent;
+existing Mihomo remains the default. The caller must bind, validate the profile,
+stop the previous VPN, start the foreground service, and invoke start on a
+background dispatcher. The notification can stop the remote owner. This is the
+service endpoint, not yet a Flutter selector or integrated ServiceController
+handoff; the UI must not advertise a working sing-box option until that wiring
+and traffic validation are done. The Android process is eligible for OS reclaim
+after stop/unbind; native Go heap unload is not asserted.

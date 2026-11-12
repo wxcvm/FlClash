@@ -12,6 +12,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
+        manifestPlaceholders["flclashSingBoxEnabled"] = providers.gradleProperty("flclashSingBoxAar").isPresent.toString()
     }
 
     compileOptions {
