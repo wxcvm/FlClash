@@ -74,12 +74,17 @@ class CoreAction extends _$CoreAction {
     await _core.closeConnections();
   }
 
-  Future<void> reportNetworkChange() async {
+  Future<void> reportNetworkChange({bool recover = false}) async {
     if (ref.read(coreStatusProvider) != CoreStatus.connected) {
       return;
     }
     try {
-      await _core.reportNetworkChange();
+      if (recover) {
+        await _core.reportNetworkChange();
+      } else {
+        await _core.clearDnsCache();
+        await _core.resetConnections();
+      }
     } catch (error) {
       commonPrint.log(
         'reportNetworkChange error: $error',

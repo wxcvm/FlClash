@@ -55,8 +55,8 @@ func handleClearDnsCache() {
 // resetNetworkResolver is replaceable for the network-change regression test.
 var resetNetworkResolver = resolver.ResetConnection
 
-// handleNetworkChanged is how the desktop host reports a new network, which
-// Android's NetworkObserver reports through handleResetNetwork.
+// handleNetworkChanged refreshes DNS and pooled resolver connections. A real
+// physical handover on either desktop or Android uses handleResetNetwork.
 func handleNetworkChanged() {
 	configMu.Lock()
 	defer configMu.Unlock()

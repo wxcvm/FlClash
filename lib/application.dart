@@ -75,6 +75,24 @@ bool shouldRefreshAfterConnectivityChange(
   return !setEquals(before, after);
 }
 
+// Only a changed physical transport (or recovery from offline) warrants
+// rebuilding long-lived outbounds. Identical callbacks still refresh DNS.
+bool shouldRecoverDesktopNetwork(
+  List<ConnectivityResult>? previous,
+  List<ConnectivityResult> current,
+) {
+  if (previous == null || !hasPhysicalConnectivity(current)) return false;
+  final before = previous.where(_physicalConnectivity).toSet();
+  final after = current.where(_physicalConnectivity).toSet();
+  return !setEquals(before, after);
+}
+
+bool _physicalConnectivity(ConnectivityResult result) =>
+    result != ConnectivityResult.none && result != ConnectivityResult.vpn;
+
+bool hasPhysicalConnectivity(List<ConnectivityResult> results) =>
+    results.any(_physicalConnectivity);
+
 class Application extends ConsumerStatefulWidget {
   const Application({super.key});
 
@@ -85,6 +103,8 @@ class Application extends ConsumerStatefulWidget {
 class ApplicationState extends ConsumerState<Application> {
   Timer? _autoUpdateProfilesTaskTimer;
   List<ConnectivityResult>? _previousConnectivityResults;
+  Timer? _networkRecoveryTimer;
+  bool _pendingNetworkRecovery = false;
   // Windows can only watch SIGINT and SIGHUP.
   final _terminateSignals = system.isDesktop && !system.isWindows
       ? ProcessSignal.sigterm.watch()
@@ -155,22 +175,38 @@ class ApplicationState extends ConsumerState<Application> {
     commonPrint.log('connectivityChanged ${results.toString()}');
     unawaited(systemDnsCoordinator?.resync() ?? Future.value());
     unawaited(ref.read(systemActionProvider.notifier).updateLocalIp());
-    final changed = shouldRefreshAfterConnectivityChange(
-      _previousConnectivityResults,
-      results,
-    );
+    final previous = _previousConnectivityResults;
+    final changed = shouldRefreshAfterConnectivityChange(previous, results);
     _previousConnectivityResults = List.of(results);
     if (changed) {
       ref.read(routeTrackerProvider.notifier).bumpHostEpoch();
       // Android's NetworkObserver tells the Core about a new network itself.
       if (system.isDesktop) {
-        debouncer.call(
-          FunctionTag.networkChange,
-          ref.read(coreActionProvider.notifier).reportNetworkChange,
-          duration: const Duration(milliseconds: 200),
-        );
+        _scheduleDesktopRecovery(previous, results);
       }
     }
+  }
+
+  void _scheduleDesktopRecovery(
+    List<ConnectivityResult>? previous,
+    List<ConnectivityResult> current,
+  ) {
+    _networkRecoveryTimer?.cancel();
+    if (!hasPhysicalConnectivity(current)) {
+      _pendingNetworkRecovery = false;
+      return;
+    }
+    _pendingNetworkRecovery |= shouldRecoverDesktopNetwork(previous, current);
+    _networkRecoveryTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      final recover = _pendingNetworkRecovery;
+      _pendingNetworkRecovery = false;
+      unawaited(
+        ref.read(coreActionProvider.notifier).reportNetworkChange(
+          recover: recover,
+        ),
+      );
+    });
   }
 
   @override
@@ -232,6 +268,7 @@ class ApplicationState extends ConsumerState<Application> {
   void dispose() {
     linkManager.destroy();
     _autoUpdateProfilesTaskTimer?.cancel();
+    _networkRecoveryTimer?.cancel();
     super.dispose();
   }
 }

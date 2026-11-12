@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/tunnel"
@@ -41,9 +42,20 @@ func reloadOutboundsOnNetworkChange() {
 	}
 
 	selected := manualSelectionsOnNetworkChange()
+	preserveNetworkRuntimeConfig(cfg, currentConfig)
 	currentConfig = cfg
-	hub.ApplyConfig(cfg)
+	hub.ApplyConfig(prepareEgress(cfg))
 	patchSelectGroup(selected)
 	bumpRouteEpoch()
 	updateListeners(cfg)
+}
+
+// The YAML on disk is the last full profile, not the live config. Rebuilding
+// outbounds must not undo a later port, TUN, mode or authentication update.
+func preserveNetworkRuntimeConfig(next, live *config.Config) {
+	general := *live.General
+	controller := *live.Controller
+	next.General = &general
+	next.Controller = &controller
+	next.Users = live.Users
 }
