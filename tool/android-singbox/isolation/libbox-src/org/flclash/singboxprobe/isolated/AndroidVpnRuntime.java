@@ -10,13 +10,14 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
     private final VpnService service;
     private final AndroidPlatform platform;
     private final LibboxVpnSession session;
-    private final NativeQuality quality = new NativeQuality();
+    private final NativeQuality quality;
 
     public AndroidVpnRuntime(VpnService service) {
         this.service = service;
         AndroidTunBridge bridge = new AndroidTunBridge(service);
         platform = new AndroidPlatform(service, bridge);
         session = new LibboxVpnSession(bridge, platform, this);
+        quality = new NativeQuality(platform::networkGeneration);
     }
 
     public void start(String config) throws Exception {
@@ -27,7 +28,10 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
     public String qualitySnapshot() throws Exception { return quality.snapshot(); }
     public void cancelQuality() throws Exception { quality.cancel(); }
 
-    public String snapshot() throws Exception { return NativeTelemetry.snapshot(); }
+    public String snapshot() throws Exception {
+        org.json.JSONObject data = new org.json.JSONObject(NativeTelemetry.snapshot());
+        return data.put("networkGeneration", platform.networkGeneration()).toString();
+    }
     public void selectOutbound(String group, String tag) throws Exception { NativeTelemetry.select(group, tag); }
     public void testOutbound(String tag) throws Exception { NativeTelemetry.test(tag); }
 

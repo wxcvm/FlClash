@@ -14,32 +14,37 @@ final class NetworkEpoch<T> {
     }
 
     private T candidate;
+    private Object owner;
     private Snapshot<T> current = new Snapshot<>(null, null, 0);
 
+    synchronized void begin(Object token) { clear(); owner = token; }
+
     /** Select a new candidate; return whether a previously published path was lost. */
-    synchronized boolean select(T next) {
-        if (next.equals(candidate)) return false;
+    synchronized boolean select(Object token, T next) {
+        if (owner != token || next.equals(candidate)) return false;
         candidate = next;
         boolean lost = current.network != null;
         current = new Snapshot<>(null, null, current.generation + 1);
         return lost;
     }
 
-    synchronized boolean publish(T network, String fingerprint) {
-        if (!network.equals(candidate)) return false;
+    synchronized boolean publish(Object token, T network, String fingerprint) {
+        if (owner != token || !network.equals(candidate)) return false;
         if (network.equals(current.network) && fingerprint.equals(current.fingerprint)) return false;
         current = new Snapshot<>(network, fingerprint, current.generation + 1);
         return true;
     }
 
-    synchronized boolean lose(T network) {
-        if (!network.equals(candidate)) return false;
+    synchronized boolean lose(Object token, T network) {
+        if (owner != token || !network.equals(candidate)) return false;
         boolean lost = current.network != null;
-        clear();
+        candidate = null;
+        current = new Snapshot<>(null, null, current.generation + 1);
         return lost;
     }
 
     synchronized void clear() {
+        owner = null;
         candidate = null;
         current = new Snapshot<>(null, null, current.generation + 1);
     }

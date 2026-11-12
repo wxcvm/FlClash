@@ -33,7 +33,15 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
     private final AndroidTunBridge tun;
     private final ConnectivityManager connectivity;
     private final NetworkEpoch<Network> networks = new NetworkEpoch<>();
-    private final ConcurrentHashMap<CancellationSignal, NetworkEpoch.Snapshot<Network>> dnsQueries = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<CancellationSignal, DnsQuery> dnsQueries = new ConcurrentHashMap<>();
+
+    private static final class DnsQuery {
+        final NetworkEpoch.Snapshot<Network> path;
+        final CountDownLatch done = new CountDownLatch(1);
+        DnsQuery(NetworkEpoch.Snapshot<Network> path) { this.path = path; }
+    }
+
+    long networkGeneration() { return networks.snapshot().generation; }
     private volatile ConnectivityManager.NetworkCallback callback;
     private HandlerThread monitorThread;
 
@@ -80,6 +88,7 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
             private LinkProperties link;
             private NetworkCapabilities caps;
             private int retries;
+            private boolean lastMetered;
             private final Runnable retry = () -> refresh();
 
             @Override public void onAvailable(Network network) {
@@ -92,9 +101,9 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                 handler.removeCallbacks(retry);
                 // A new Android Network handle can reuse the same interface/index.
                 // Invalidate the old path before publishing the replacement.
-                if (networks.select(network)) {
+                if (networks.select(this, network)) {
                     cancelStaleDns();
-                    listener.updateDefaultInterface("", -1, false, false);
+                    if (callback == this) listener.updateDefaultInterface("", -1, false, false);
                 }
             }
 
@@ -116,7 +125,7 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                 link = null;
                 caps = null;
                 handler.removeCallbacks(retry);
-                if (networks.lose(network)) {
+                if (networks.lose(this, network)) {
                     cancelStaleDns();
                     listener.updateDefaultInterface("", -1, false, false);
                 }
@@ -133,23 +142,27 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                         java.net.NetworkInterface nic = java.net.NetworkInterface.getByName(name);
                         if (nic != null && nic.getIndex() > 0) {
                             boolean metered = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
-                            String fingerprint = name + "/" + nic.getIndex() + "/" + metered
+                            String fingerprint = name + "/" + nic.getIndex()
                                 + "/" + link.getDnsServers() + "/" + link.getLinkAddresses()
                                 + "/" + link.getRoutes();
                             NetworkEpoch.Snapshot<Network> previous = networks.snapshot();
-                            if (networks.publish(candidate, fingerprint)) {
+                            if (networks.publish(this, candidate, fingerprint)) {
                                 cancelStaleDns();
                                 // Same handle, new address/route: libbox deduplicates name/index/DNS.
                                 // Force a loss/wake pair so cached transports are actually reset.
                                 if (previous.network != null && previous.network.equals(candidate)
                                     && previous.fingerprint != null
                                     && !previous.fingerprint.equals(fingerprint)) {
-                                    listener.updateDefaultInterface("", -1, false, false);
+                                    if (callback == this) listener.updateDefaultInterface("", -1, false, false);
                                 }
                                 if (callback == this) {
                                     listener.updateDefaultInterface(name, nic.getIndex(), metered, false);
                                 }
+                            } else if (callback == this && lastMetered != metered) {
+                                // Metered-only changes update metadata, not the connection epoch.
+                                listener.updateDefaultInterface(name, nic.getIndex(), metered, false);
                             }
+                            lastMetered = metered;
                             retries = 0;
                             return;
                         }
@@ -161,6 +174,7 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                 if (++retries <= 10 && callback == this) handler.postDelayed(retry, 100);
             }
         };
+        networks.begin(next);
         callback = next;
         monitorThread = thread;
         try {
@@ -180,8 +194,11 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
     }
 
     private void cancelStaleDns() {
-        for (java.util.Map.Entry<CancellationSignal, NetworkEpoch.Snapshot<Network>> entry : dnsQueries.entrySet()) {
-            if (!networks.isCurrent(entry.getValue())) entry.getKey().cancel();
+        for (java.util.Map.Entry<CancellationSignal, DnsQuery> entry : dnsQueries.entrySet()) {
+            if (!networks.isCurrent(entry.getValue().path)) {
+                entry.getKey().cancel();
+                entry.getValue().done.countDown();
+            }
         }
     }
 
@@ -276,14 +293,14 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                 Network network = path.network;
                 if (network == null) throw new IOException("No underlying network for local DNS");
                 CancellationSignal signal = new CancellationSignal();
-                CountDownLatch done = new CountDownLatch(1);
+                DnsQuery query = new DnsQuery(path);
+                CountDownLatch done = query.done;
                 byte[][] answer = new byte[1][];
                 Exception[] failure = new Exception[1];
-                signal.setOnCancelListener(done::countDown);
-                ctx.onCancel(signal::cancel);
-                dnsQueries.put(signal, path);
+                ctx.onCancel(() -> { signal.cancel(); done.countDown(); });
+                dnsQueries.put(signal, query);
                 try {
-                    if (!networks.isCurrent(path)) throw new IOException("Underlying network changed before DNS query");
+                    if (signal.isCanceled() || !networks.isCurrent(path)) throw new IOException("Underlying network changed before DNS query");
                     DnsResolver.getInstance().rawQuery(network, message, 0, Runnable::run, signal,
                     new DnsResolver.Callback<byte[]>() {
                         public void onAnswer(byte[] response, int rcode) {

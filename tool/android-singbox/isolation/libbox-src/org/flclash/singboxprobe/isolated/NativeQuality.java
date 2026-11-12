@@ -5,6 +5,8 @@ import org.json.JSONObject;
 
 /** One explicit, cancellable measurement per VPN session. No selector changes. */
 final class NativeQuality {
+    private final java.util.function.LongSupplier networkGeneration;
+    NativeQuality(java.util.function.LongSupplier networkGeneration) { this.networkGeneration = networkGeneration; }
     private CommandClient client;
     private NetworkQualityTestSession session;
     private volatile Sample current;
@@ -15,7 +17,7 @@ final class NativeQuality {
         if (tag == null || tag.trim().isEmpty() || tag.length() > 256) {
             throw new IllegalArgumentException("Select a specific outbound");
         }
-        Sample sample = new Sample(tag);
+        Sample sample = new Sample(tag, networkGeneration);
         current = sample;
         client = Libbox.newStandaloneCommandClient();
         try {
@@ -28,8 +30,9 @@ final class NativeQuality {
         }
     }
 
-    String snapshot() throws Exception {
+    synchronized String snapshot() throws Exception {
         Sample sample = current;
+        if (sample != null && sample.networkChanged() && session != null) cancel();
         return sample == null ? new JSONObject().put("state", "idle").toString() : sample.json();
     }
 
@@ -49,17 +52,29 @@ final class NativeQuality {
 
     private static final class Sample implements NetworkQualityTestHandler {
         private final String tag;
+        private final java.util.function.LongSupplier networkGeneration;
+        private final long generation;
         private String state = "running", error = "";
         private long download, upload, elapsed;
         private int latency, downloadRpm, uploadRpm, accuracy;
         private final long started = System.currentTimeMillis();
 
-        Sample(String tag) { this.tag = tag; }
+        Sample(String tag, java.util.function.LongSupplier networkGeneration) {
+            this.tag = tag;
+            this.networkGeneration = networkGeneration;
+            generation = networkGeneration.getAsLong();
+        }
+        synchronized boolean networkChanged() {
+            if (networkGeneration.getAsLong() == generation) return false;
+            state = "canceled";
+            error = "Underlying network changed; retest on the new path";
+            return true;
+        }
         synchronized boolean running() { return "running".equals(state); }
         synchronized void cancel() { if (running()) state = "canceled"; }
 
         @Override public synchronized void onProgress(NetworkQualityProgress p) {
-            if (!running() || p == null) return;
+            if (networkChanged() || !running() || p == null) return;
             download = p.getDownloadCapacity();
             upload = p.getUploadCapacity();
             latency = p.getIdleLatencyMs();
@@ -70,7 +85,7 @@ final class NativeQuality {
         }
 
         @Override public synchronized void onResult(NetworkQualityResult r) {
-            if (!running()) return;
+            if (networkChanged() || !running()) return;
             if (r == null) { onError("No measurement result"); return; }
             download = r.getDownloadCapacity();
             upload = r.getUploadCapacity();
@@ -93,7 +108,7 @@ final class NativeQuality {
                 .put("downloadBps", download).put("uploadBps", upload)
                 .put("latencyMs", latency).put("downloadRpm", downloadRpm)
                 .put("uploadRpm", uploadRpm).put("accuracy", accuracy)
-                .put("elapsedMs", elapsed).put("startedAt", started)
+                .put("elapsedMs", elapsed).put("startedAt", started).put("networkGeneration", generation)
                 .put("error", error).toString();
         }
     }
