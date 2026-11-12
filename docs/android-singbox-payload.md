@@ -43,3 +43,12 @@ entry; the new service is explicit-bind only. This API is not yet called by
 Flutter or the production VPN controller. Callers must stop the previous VPN
 before start, keep the binding alive, and handle unexpected-stop callbacks.
 A failed native cleanup retains ownership rather than allowing another session.
+
+ServiceController.startSingBox now uses the app's existing service lock, validates
+before stopping the old bound service, refuses handoff if that stop fails,
+and starts the isolated VPN only after teardown. If native startup fails and
+cleanup succeeds, it restores the previous Mihomo service options. If cleanup
+fails, the native lease remains held and new startup is blocked until stop.
+The app controller API is not yet wired to Flutter selection/shared state.
+The existing Mihomo Go runtime may remain loaded in the UI process even after
+its tunnel/listener stops; this is not proof of full native memory reclamation.

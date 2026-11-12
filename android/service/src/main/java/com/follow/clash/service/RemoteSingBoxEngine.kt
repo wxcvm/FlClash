@@ -20,9 +20,9 @@ internal class RemoteSingBoxEngine private constructor(
     private val connection: ServiceConnection,
     private val remote: ISingBoxVpn,
     private val owner: IBinder,
-    val version: String,
+    override val version: String,
     private val disconnected: AtomicBoolean,
-) : CallbackTunnelEngine {
+) : CallbackTunnelEngine, NativeVpnSession {
     private val released = AtomicBoolean()
 
     override fun validate() {

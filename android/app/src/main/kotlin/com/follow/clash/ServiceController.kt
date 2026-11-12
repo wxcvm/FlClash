@@ -12,6 +12,8 @@ import com.follow.clash.common.intent
 import com.follow.clash.core.Core
 import com.follow.clash.service.ManagedService
 import com.follow.clash.service.NetworkObserver
+import com.follow.clash.service.NativeVpnSession
+import com.follow.clash.service.NativeVpnSessions
 import com.follow.clash.service.ProxyService
 import com.follow.clash.service.ServiceConfig
 import com.follow.clash.service.VpnService
@@ -27,10 +29,16 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
+import java.io.File
+import android.net.VpnService as SystemVpnService
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 
 object ServiceController {
     private val lock = Mutex()
     private var binding: ManagedServiceBinding? = null
+    private var nativeBinding: NativeVpnSession? = null
+    private var nativeToken: Any? = null
 
     @Volatile
     internal var runtime: ServiceRuntime? = null
@@ -71,6 +79,11 @@ object ServiceController {
     }
 
     suspend fun start(options: VpnOptions): Boolean = lock.withLock {
+        stopNativeLocked()
+        startMihomoLocked(options)
+    }
+
+    private suspend fun startMihomoLocked(options: VpnOptions): Boolean {
         ServiceConfig.updateVpnOptions(options)
         val nextIntent = if (options.enable) {
             VpnService::class.intent
@@ -90,11 +103,11 @@ object ServiceController {
             nextBinding.bind().onFailure { error ->
                 GlobalState.log("Unable to bind background service: $error")
                 release()
-                return@withLock false
+                return false
             }
         }
 
-        val currentBinding = binding ?: return@withLock false
+        val currentBinding = binding ?: return false
         val result = currentBinding.useService { service -> service.start() }
         if (result.isFailure) {
             GlobalState.log("Unable to start background service: ${result.exceptionOrNull()}")
@@ -103,7 +116,7 @@ object ServiceController {
                     GlobalState.log("Unable to clean up failed background service start: $error")
                 }
             release()
-            return@withLock false
+            return false
         }
 
         Core.startListener()
@@ -111,10 +124,107 @@ object ServiceController {
             vpn = options.enable,
             startedAtMillis = runtime?.startedAtMillis ?: System.currentTimeMillis(),
         )
-        true
+        return true
+    }
+
+    /** User-initiated native handoff; Flutter selection is a separate caller. */
+    internal suspend fun startSingBox(config: File): NativeStartResult = lock.withLock {
+        if (nativeBinding != null) {
+            return@withLock NativeStartResult(false, false, "Stop the current native session first")
+        }
+        val app = GlobalState.application
+        if (SystemVpnService.prepare(app) != null) {
+            return@withLock NativeStartResult(false, false, "Android VPN permission required")
+        }
+        val previous = runtime
+        val previousOptions = ServiceConfig.vpnOptions
+        val token = Any()
+        val prepared = try {
+            NativeVpnSessions.prepare(app, config) { reason ->
+                handleNativeLost(token, reason)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            return@withLock NativeStartResult(false, false, error.message.orEmpty())
+        }
+
+        // Once the old tunnel is stopped, finish handoff or rollback even if the
+        // requesting Flutter coroutine disappears. Never leave an unowned VPN.
+        withContext(NonCancellable) {
+            var oldStopped = false
+            try {
+                withContext(Dispatchers.IO) { prepared.validate() }
+                // Unlike the ordinary stop path, handoff must not ignore stop errors.
+                val current = binding
+                if (current != null) {
+                    current.useService { it.stop() }.getOrThrow()
+                } else {
+                    check(previous == null) { "Existing VPN owner unavailable" }
+                }
+                oldStopped = true
+                clearBinding()
+                runtime = null
+                stopServices()
+                if (previous != null) Core.stopListener()
+
+                nativeBinding = prepared
+                nativeToken = token
+                withContext(Dispatchers.IO) { prepared.start() }
+                runtime = ServiceRuntime(true, System.currentTimeMillis(), "sing-box")
+                NativeStartResult(true, false, "")
+            } catch (error: Exception) {
+                val cleanup = runCatching {
+                    withContext(Dispatchers.IO) { prepared.stop() }
+                }
+                if (cleanup.isFailure) {
+                    // Keep the lease for a later explicit stop. No fallback may
+                    // establish routes until this owner is known to be stopped.
+                    if (oldStopped) {
+                        nativeBinding = prepared
+                        nativeToken = token
+                    }
+                    return@withContext NativeStartResult(
+                        false, false, "${error.message}; native cleanup failed: ${cleanup.exceptionOrNull()?.message}",
+                    )
+                }
+                nativeBinding = null
+                nativeToken = null
+                val restored = if (oldStopped && previous != null && previousOptions != null) {
+                    runCatching { startMihomoLocked(previousOptions) }.getOrDefault(false)
+                } else false
+                NativeStartResult(false, restored, error.message.orEmpty())
+            }
+        }
+    }
+
+    private suspend fun stopNativeLocked() {
+        val active = nativeBinding ?: return
+        withContext(Dispatchers.IO) { active.stop() }
+        nativeBinding = null
+        nativeToken = null
+        runtime = null
+    }
+
+    private fun handleNativeLost(token: Any, message: String) {
+        val request = ServiceState.captureRequestToken()
+        GlobalState.launch {
+            val stopped = lock.withLock {
+                if (nativeToken !== token) return@withLock false
+                GlobalState.log("Native VPN stopped: $message")
+                runCatching { stopNativeLocked() }.onFailure {
+                    GlobalState.log("Native VPN cleanup pending: $it")
+                }.isSuccess
+            }
+            if (stopped) ServiceState.handleServiceLost(request)
+        }
     }
 
     suspend fun stop() = lock.withLock {
+        if (nativeBinding != null) {
+            stopNativeLocked()
+            return@withLock
+        }
         tearDownServices()
         release()
     }
@@ -160,6 +270,12 @@ object ServiceController {
         }
     }
 }
+
+internal data class NativeStartResult(
+    val started: Boolean,
+    val restoredMihomo: Boolean,
+    val error: String,
+)
 
 private class ManagedServiceBinding(
     private val intent: Intent,
