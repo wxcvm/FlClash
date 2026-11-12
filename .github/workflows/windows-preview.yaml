@@ -2,6 +2,11 @@ name: Windows and Android preview
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish only after both Windows and Android packages pass
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -57,11 +62,11 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Build Windows preview packages
         run: dart setup.dart windows --env pre --targets exe,zip -v
-      - name: Verify and hash packages
+      - name: Collect Windows packages
         shell: pwsh
         run: |
           $files = @(Get-ChildItem dist -Recurse -File | Where-Object { $_.Extension -in '.exe','.zip' })
-          if (-not ($files | Where-Object Extension -eq '.exe') -or -not ($files | Where-Object Extension -eq '.zip')) {
+          if (@($files | Where-Object Extension -eq '.exe').Count -ne 1 -or @($files | Where-Object Extension -eq '.zip').Count -ne 1) {
             throw 'Expected both Windows installer and portable ZIP'
           }
           New-Item -ItemType Directory -Force preview-assets | Out-Null
@@ -71,37 +76,74 @@ jobs:
             $name = "FlClash-$version-$suffix"
             Copy-Item $file.FullName (Join-Path preview-assets $name)
           }
-          Get-ChildItem preview-assets -File | ForEach-Object {
-            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
-          } | Set-Content preview-assets/SHA256SUMS -Encoding ascii
       - name: Upload preview artifact
         uses: actions/upload-artifact@v4
         with:
           name: FlClash-Windows-x64-preview
           path: preview-assets/*
           if-no-files-found: error
-      - name: Publish GitHub prerelease
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tag="$FLCLASH_PREVIEW_TAG"
-          cat > preview-notes.md <<'NOTES'
-          Windows x64 and Android ARM64 preview of wxcvm/FlClash.
-
-          Includes merged network reconnect, DNS socket recovery, Windows TUN bootstrap, REALITY X25519-MLKEM768 support and native core management changes, including occupied HTTP port rollback.
-
-          Install using the EXE or extract the portable ZIP. SHA256SUMS contains file integrity hashes.
-
-          Includes real download-speed selection. Live connectivity, sleep/resume and throughput still require real-device validation.
-          NOTES
-          printf '\nSource: %s\n' "$GITHUB_SHA" >> preview-notes.md
-          gh release create "$tag" preview-assets/* --target "$GITHUB_SHA" --prerelease --title "FlClash $tag" --notes-file preview-notes.md
-
   android:
     needs: preview
     uses: ./.github/workflows/android-preview.yaml
     with:
       release_tag: ${{ needs.preview.outputs.release_tag }}
+      source_sha: ${{ github.sha }}
     secrets: inherit
+
+  publish:
+    if: inputs.publish
+    needs: [preview, android]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.preview.outputs.release_tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: FlClash-Windows-x64-preview
+          path: windows-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: FlClash-Android-arm64-preview
+          path: android-assets
+      - name: Verify complete release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          mkdir -p preview-assets
+          for name in "FlClash-$version-windows-amd64-setup.exe" "FlClash-$version-windows-amd64.zip"; do
+            test -s "windows-assets/$name"
+            cp "windows-assets/$name" preview-assets/
+          done
+          name="FlClash-$version-android-arm64-v8a.apk"
+          test -s "android-assets/$name"
+          cp "android-assets/$name" preview-assets/
+          test -s android-assets/signing.txt
+          (
+            cd preview-assets
+            sha256sum *.exe *.zip *.apk > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+      - name: Publish complete dual-platform prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > preview-notes.md <<'NOTES'
+          Windows x64 and Android ARM64 preview of wxcvm/FlClash.
+
+          Includes network reconnect and DNS recovery, protocol and native-core enhancements, real download-speed selection, and independent preview updates.
+
+          Install the Windows EXE or extract the portable ZIP. On Android install the ARM64 APK. SHA256SUMS contains all three package hashes.
+
+          Real-device connectivity, sleep/resume and throughput require validation.
+          NOTES
+          printf '\nSource: %s\n\nAndroid signing: ' "$GITHUB_SHA" >> preview-notes.md
+          cat android-assets/signing.txt >> preview-notes.md
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' > draft-state; then
+            test "$(cat draft-state)" = true
+          else
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --title "FlClash $RELEASE_TAG" --notes-file preview-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" preview-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --notes-file preview-notes.md

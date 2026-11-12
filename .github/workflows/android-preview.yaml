@@ -6,6 +6,10 @@ on:
       release_tag:
         required: true
         type: string
+      source_sha:
+        description: Exact source commit for artifact-only builds
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       release_tag:
@@ -25,6 +29,7 @@ env:
   GO_VERSION: '1.27.1'
   NDK_VERSION: r28c
   RELEASE_TAG: ${{ inputs.release_tag }}
+  SOURCE_SHA: ${{ inputs.source_sha }}
   FLCLASH_PREVIEW_PACKAGE: 'true'
 
 jobs:
@@ -32,16 +37,21 @@ jobs:
     if: github.repository == 'wxcvm/FlClash' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Validate target release
+      - name: Validate build target
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+\.[0-9]+$ ]]
-          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft --jq '.isPrerelease and (.isDraft | not)')" = true
+          if [[ -n "$SOURCE_SHA" ]]; then
+            [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$SOURCE_SHA" = "$GITHUB_SHA"
+          else
+            test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft --jq '.isPrerelease and (.isDraft | not)')" = true
+          fi
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ inputs.source_sha || inputs.release_tag }}
           submodules: recursive
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -108,7 +118,7 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: flutter build apk --release --target-platform android-arm64 --split-per-abi --build-number="$ANDROID_PREVIEW_CODE" --build-name="${RELEASE_TAG#v}" --dart-define=APP_ENV=pre --dart-define=FLCLASH_PREVIEW_TAG="$RELEASE_TAG"
-      - name: Verify APK and publish
+      - name: Verify APK and collect artifact
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -122,6 +132,25 @@ jobs:
           mkdir -p preview-assets
           name="FlClash-${RELEASE_TAG#v}-android-arm64-v8a.apk"
           cp "$apk" "preview-assets/$name"
+          if [[ "$APK_SIGNING" == debug ]]; then
+            printf 'Separate com.follow.clash.dev package; temporary CI debug signing. Back up profiles before a reinstall.\n' > preview-assets/signing.txt
+          else
+            printf 'Separate com.follow.clash.dev package; dedicated long-lived preview signing key.\n' > preview-assets/signing.txt
+          fi
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlClash-Android-arm64-preview
+          path: preview-assets/*
+          if-no-files-found: error
+      - name: Backfill existing release
+        if: inputs.source_sha == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="FlClash-${RELEASE_TAG#v}-android-arm64-v8a.apk"
           gh release download "$RELEASE_TAG" --pattern SHA256SUMS --dir preview-assets
           (
             cd preview-assets
@@ -137,9 +166,3 @@ jobs:
             printf 'Android APK uses the dedicated preview signing key and the separate com.follow.clash.dev package. Existing previews signed with another key need a one-time reinstall.\n' >> preview-notes.md
           fi
           gh release edit "$RELEASE_TAG" --notes-file preview-notes.md
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: FlClash-Android-arm64-preview
-          path: preview-assets/*.apk
-          if-no-files-found: error
