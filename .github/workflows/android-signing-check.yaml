@@ -29,8 +29,14 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [[ -z "$KEYSTORE" || -z "$KEY_ALIAS" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
-            echo '::error::Configure KEYSTORE, KEY_ALIAS, STORE_PASSWORD and KEY_PASSWORD in repository Actions secrets.'
+          missing=()
+          for name in KEYSTORE KEY_ALIAS STORE_PASSWORD KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing Android release signing secrets: %s\n' "${missing[*]}"
             exit 1
           fi
           umask 077
