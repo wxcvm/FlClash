@@ -10,12 +10,15 @@ import android.util.Log;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.lang.reflect.InvocationTargetException;
 
 /** Explicitly consented, app-only VPN in the same isolated process as libbox. */
 public final class ProbeVpnService extends VpnService {
     private static final String TAG = "FlClashVpnProbe";
     static final String STATUS = "org.flclash.singboxprobe.VPN_STATUS";
     static final String STATUS_PERMISSION = "org.flclash.singboxprobe.permission.VPN_STATUS";
+    static final String RETEST = "org.flclash.singboxprobe.RETEST_VPN";
     static final String STOP = "org.flclash.singboxprobe.STOP_VPN";
     // Serialize even across rapid stop/start and let the worker expire while idle.
     private static final ThreadPoolExecutor WORKER = new ThreadPoolExecutor(
@@ -30,6 +33,7 @@ public final class ProbeVpnService extends VpnService {
         + "\"route\":{\"auto_detect_interface\":true,\"final\":\"direct\"}}";
 
     private boolean started;
+    private final AtomicBoolean retestQueued = new AtomicBoolean();
     private volatile String status = "Starting diagnostic VPN";
 
     private void report(String message) {
@@ -45,6 +49,15 @@ public final class ProbeVpnService extends VpnService {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && STOP.equals(intent.getAction())) {
             stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (intent != null && RETEST.equals(intent.getAction())) {
+            if (!started) {
+                report("VPN is not running. Authorize and start first.");
+                stopSelf();
+            } else {
+                enqueueRetest();
+            }
             return START_NOT_STICKY;
         }
         if (started) {
@@ -86,12 +99,36 @@ public final class ProbeVpnService extends VpnService {
                 if (!destroyed) report(result);
             } catch (Exception | LinkageError error) {
                 Log.e(TAG, "VPN runtime or traffic test failed", error);
-                if (!destroyed) report("FAIL: " + error.getMessage());
+                if (!destroyed) report("FAIL: " + failureMessage(error));
                 closeRuntime();
                 stopSelf();
             }
         });
         return START_NOT_STICKY;
+    }
+
+    private static String failureMessage(Throwable error) {
+        if (error instanceof InvocationTargetException && error.getCause() != null) {
+            error = error.getCause();
+        }
+        return error.getMessage() == null ? error.toString() : error.getMessage();
+    }
+
+    private void enqueueRetest() {
+        if (!retestQueued.compareAndSet(false, true)) return;
+        WORKER.execute(() -> {
+            try {
+                if (destroyed || runtime == null) return;
+                report("Rechecking VPN HTTPS without restarting the core...");
+                String result = ProbeVpnTraffic.verify(this, () -> destroyed);
+                if (!destroyed) report(result);
+            } catch (Exception | LinkageError error) {
+                // Leave the VPN running so a network handover can recover.
+                if (!destroyed) report("RETEST FAIL: " + failureMessage(error));
+            } finally {
+                retestQueued.set(false);
+            }
+        });
     }
 
     private void closeRuntime() {
@@ -104,7 +141,7 @@ public final class ProbeVpnService extends VpnService {
             report(status + "\nSTOP PASS: diagnostic VPN removed");
         } catch (Exception | LinkageError error) {
             Log.e(TAG, "VPN runtime cleanup failed", error);
-            report(status + "\nSTOP FAIL: " + error.getMessage());
+            report(status + "\nSTOP FAIL: " + failureMessage(error));
         }
     }
 

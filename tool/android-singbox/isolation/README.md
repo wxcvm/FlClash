@@ -72,3 +72,10 @@ it; failure stops the diagnostic. On stop, check that the diagnostic VPN
 network disappears. These are bounded one-shot checks, not periodic polling.
 A successful HTTPS result is evidence of direct forwarding, not DNS, node
 protocols, handover or production integration.
+
+For handover validation, leave the diagnostic running, switch Wi-Fi/mobile data,
+then press Retest traffic after network change. Retest uses the same VPN and
+native session, not a restart or a physical-network fallback. A failed retest
+leaves the VPN running so recovery can be tested. Repeated taps are coalesced;
+pressing Retest when stopped never starts the VPN. The endpoint may be blocked
+on some networks: an HTTPS failure alone is not a diagnosis of a core bug.

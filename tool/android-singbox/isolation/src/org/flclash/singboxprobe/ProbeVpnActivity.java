@@ -61,6 +61,11 @@ public final class ProbeVpnActivity extends Activity {
             else startProbe();
         });
         layout.addView(start);
+        Button retest = new Button(this);
+        retest.setText("Retest traffic after network change");
+        retest.setOnClickListener(view -> startService(
+            new Intent(this, ProbeVpnService.class).setAction(ProbeVpnService.RETEST)));
+        layout.addView(retest);
         Button stop = new Button(this);
         stop.setText("Stop diagnostic VPN");
         stop.setOnClickListener(view -> stopService(new Intent(this, ProbeVpnService.class)));
