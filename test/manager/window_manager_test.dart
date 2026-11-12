@@ -182,7 +182,7 @@ void main() {
     tester,
   ) async {
     final listener = await pumpWindowManager(tester);
-    container.read(isStartProvider.notifier).value = true;
+    container.read(runTimeProvider.notifier).value = 1000;
     listener.onSystemResume();
     await tester.pump(const Duration(seconds: 1));
     listener.onSystemResume();
