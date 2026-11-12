@@ -30,4 +30,18 @@ not just integer serialization. This verifies runtime coexistence and
 classloader isolation, not VPN traffic, actual TUN descriptor ownership, VpnService.protect, DNS,
 engine switching or memory release.
 The diagnostic has its own package ID and does not modify production FlClash.
-Next: libbox platform callbacks, single VPN owner, rollback and device memory tests.
+The isolated DEX now includes AndroidTunBridge, compiled against the actual
+pinned libbox API. It maps TUN addresses, computed routes, MTU, DNS and package
+filters to VpnService.Builder, retains the original descriptor (libbox duplicates
+it), and rejects a failed socket protect call. Its descriptor duplication smoke
+check runs through the isolated loader. OpenTun/protect are not yet invoked by a
+real VPN: the full PlatformInterface, consent and command-server lifecycle must
+be connected before testing traffic. Close the bridge only after native service
+stop; HTTP proxy options are explicitly rejected until supported.
+LibboxVpnSession adds the typed command server setup/start/reset/stop path,
+using a private Unix socket and app-private directories. It validates the
+native config before starting and closes the command server before releasing
+Java's TUN descriptor. It is compiled and classloader-checked by this probe,
+not started by the current instrumentation. A complete PlatformInterface
+implementation and VPN consent are still required.
+Next: full platform callbacks, single VPN owner, rollback and device memory tests.
