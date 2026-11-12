@@ -3,6 +3,8 @@ import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/manager/app_manager.dart';
 import 'package:fl_clash/models/common.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/plugins/service.dart';
+import 'package:fl_clash/views/config/android_native_dashboard.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/foundation.dart';
@@ -23,7 +25,8 @@ class HomePage extends ConsumerWidget {
     if (!hasViewSize) {
       return ColoredBox(color: SurfaceLevel.page.colorOf(context.colorScheme));
     }
-    return HomeBackScopeContainer(
+    final android = service;
+    final normal = HomeBackScopeContainer(
       child: AppSidebarContainer(
         child: _HomeShell(
           child: Consumer(
@@ -48,6 +51,14 @@ class HomePage extends ConsumerWidget {
           ),
         ),
       ),
+    );
+    if (android == null) return normal;
+    return ValueListenableBuilder<AndroidNativeStatus?>(
+      valueListenable: android.nativeStatus,
+      builder: (context, status, child) => status?.ownsRuntime == true
+          ? const AndroidNativeDashboard(home: true)
+          : child!,
+      child: normal,
     );
   }
 }

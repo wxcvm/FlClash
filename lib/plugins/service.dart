@@ -47,6 +47,9 @@ class Service {
   final nativeStatus = ValueNotifier<AndroidNativeStatus?>(null);
 
   int _commandRevision = 0;
+  int _nativeStatusRevision = 0;
+
+  bool get nativeOwnsRuntime => nativeStatus.value?.ownsRuntime == true;
   bool _startRequested = false;
 
   factory Service() {
@@ -72,6 +75,7 @@ class Service {
           }
           break;
         case 'nativeCoreStatusChanged':
+          _nativeStatusRevision++;
           nativeStatus.value = AndroidNativeStatus.fromMap(
             Map<Object?, Object?>.from(call.arguments as Map),
           );
@@ -91,6 +95,12 @@ class Service {
   }
 
   Future<CoreMethodResponse> invokeMethod(CoreMethodCall call) async {
+    if (nativeOwnsRuntime) {
+      throw const CoreMethodException(
+        code: 'core_unavailable',
+        message: 'Mihomo is unavailable while sing-box owns the runtime',
+      );
+    }
     final data = await _coreChannel.invokeMethod<Uint8List>(
       'invokeMethod',
       json.encode(call),
@@ -121,10 +131,15 @@ class Service {
   }
 
   Future<AndroidNativeStatus> getNativeStatus() async {
+    final revision = _nativeStatusRevision;
     final data = await methodChannel.invokeMapMethod<Object?, Object?>(
       'nativeCoreStatus',
     );
     final status = AndroidNativeStatus.fromMap(data ?? const {});
+    if (revision != _nativeStatusRevision && nativeStatus.value != null) {
+      return nativeStatus.value!;
+    }
+    _nativeStatusRevision++;
     nativeStatus.value = status;
     return status;
   }
@@ -241,7 +256,9 @@ class Service {
   }
 
   Future<String> init() async {
-    return await methodChannel.invokeMethod<String>('init') ?? '';
+    final error = await methodChannel.invokeMethod<String>('init') ?? '';
+    if (error.isEmpty) await getNativeStatus();
+    return error;
   }
 
   Future<String> syncState(SharedState state) async {
@@ -303,6 +320,8 @@ class AndroidNativeStatus {
   final String state;
   final int startedAt;
   final bool mihomoSuspended;
+
+  bool get ownsRuntime => engine == 'sing-box' || nativeOwner || mihomoSuspended;
 }
 
 class AndroidNativeStartResult {

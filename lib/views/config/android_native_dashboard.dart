@@ -8,7 +8,9 @@ import 'package:flutter/widgets.dart';
 
 /// On-demand native snapshots: no background polling or Mihomo counters.
 class AndroidNativeDashboard extends StatefulWidget {
-  const AndroidNativeDashboard({super.key});
+  const AndroidNativeDashboard({super.key, this.home = false});
+
+  final bool home;
 
   @override
   State<AndroidNativeDashboard> createState() => _AndroidNativeDashboardState();
@@ -35,7 +37,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
     super.initState();
     _service.nativeStatus.addListener(_onNativeStatus);
     _onNativeStatus();
-    unawaited(_refresh());
+    if (_service.nativeStatus.value?.engine == 'sing-box') unawaited(_refresh());
   }
 
   void _onNativeStatus() {
@@ -196,8 +198,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
   }
 
   Future<void> _readSnapshot() async {
+    final session = _sessionStartedAt;
     final snapshot = await _service.getNativeSnapshot();
-    if (mounted) {
+    if (mounted && session == _sessionStartedAt) {
       _acceptGeneration(snapshot['networkGeneration']);
       setState(() => _snapshot = snapshot);
     }
@@ -264,12 +267,13 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
     final traffic = status['trafficAvailable'] == true;
     final rates = traffic && snapshot?['rateAvailable'] == true;
     return BaseScaffold(
-      title: 'sing-box 运行管理',
+      title: widget.home ? 'FlClash · sing-box' : 'sing-box 运行管理',
       body: ValueListenableBuilder<AndroidNativeStatus?>(
         valueListenable: _service.nativeStatus,
         builder: (context, native, _) {
           final running = native?.engine == 'sing-box';
-          final enabled = running && !_busy;
+          final transitioning = native?.state == 'STARTING' || native?.state == 'STOPPING';
+          final enabled = running && !_busy && !transitioning;
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(
               top: context.sectionsTopPadding,
@@ -280,9 +284,28 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
                 title: '运行概览',
                 items: [
                   ListItem(
-                    title: Text(running ? 'sing-box 正在运行' : '内核已停止'),
+                    title: Text(running ? 'sing-box 正在运行' : native?.ownsRuntime == true ? '内核切换 / 清理中' : '内核已停止'),
                     subtitle: Text(_busy ? '读取或执行命令中…' : '按需刷新 · 无后台轮询'),
                   ),
+                  if (widget.home) ...[
+                    ListItem(
+                      title: const Text('切回 Mihomo'),
+                      subtitle: const Text('恢复原订阅与策略组；切换可能中断连接'),
+                      onTap: enabled ? () => unawaited(_perform(() async {
+                        final ok = await _service.startMihomoCore();
+                        return ok ? '已切回 Mihomo' : '切换失败，请检查配置';
+                      })) : null,
+                    ),
+                    ListItem(
+                      title: const Text('停止 sing-box'),
+                      subtitle: const Text('退出原生内核并返回普通首页'),
+                      onTap: !_busy && !transitioning && native?.ownsRuntime == true
+                          ? () => unawaited(_perform(() async {
+                              final ok = await _service.stopNativeCore();
+                              return ok ? '已停止' : '停止未完成，请重试';
+                            })) : null,
+                    ),
+                  ],
                   ListItem(
                     title: const Text('刷新节点、流量和日志'),
                     onTap: enabled ? () => unawaited(_refresh()) : null,

@@ -46,7 +46,52 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
       }
     });
     service?.addListener(this);
+    service?.nativeStatus.addListener(_nativeStatusChanged);
+    unawaited(_refreshNativeStatus());
     app?.onPackagesChanged = _reloadPackages;
+  }
+
+  bool _wasNative = false;
+  int _nativeRevision = 0;
+
+  Future<void> _refreshNativeStatus() async {
+    try {
+      await service?.getNativeStatus();
+    } catch (error) {
+      commonPrint.log('Android native status: $error', logLevel: LogLevel.debug);
+    }
+  }
+
+  void _nativeStatusChanged() {
+    if (!mounted) return;
+    final status = service?.nativeStatus.value;
+    if (status == null) return;
+    final wasNative = _wasNative;
+    _wasNative = status.ownsRuntime;
+    if (!wasNative && !_wasNative) return;
+    final revision = ++_nativeRevision;
+    if (_wasNative) {
+      ref.read(setupActionProvider.notifier).adoptAndroidNativeStatus(status);
+      return;
+    }
+    if (status.state == 'STARTING' || status.state == 'STOPPING') {
+      _wasNative = true;
+      return;
+    }
+    ref.read(setupActionProvider.notifier).adoptAndroidNativeStatus(status);
+    unawaited(_restoreMihomoView(revision));
+  }
+
+  Future<void> _restoreMihomoView(int revision) async {
+    try {
+      await ref.read(coreActionProvider.notifier).initCore();
+      if (!mounted || revision != _nativeRevision || service?.nativeOwnsRuntime == true) return;
+      if (ref.read(appSettingProvider).openLogs) {
+        await ref.read(coreHandlerProvider).startLog();
+      }
+    } catch (error) {
+      commonPrint.log('Restore Mihomo view: $error', logLevel: coreFailureLogLevel(error));
+    }
   }
 
   /// A reload reads every installed app's label, and a round of store updates
@@ -68,18 +113,24 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
     if (app?.onPackagesChanged == _reloadPackages) {
       app?.onPackagesChanged = null;
     }
+    service?.nativeStatus.removeListener(_nativeStatusChanged);
     service?.removeListener(this);
     super.dispose();
   }
 
   @override
   void onServiceEvent(CoreEvent event) {
+    if (service?.nativeOwnsRuntime == true) return;
     coreEventManager.sendEvent(event);
     super.onServiceEvent(event);
   }
 
   @override
   void onServiceStopped() {
+    if (service?.nativeOwnsRuntime == true || _wasNative) {
+      unawaited(_refreshNativeStatus());
+      return;
+    }
     unawaited(ref.read(setupActionProvider.notifier).setRunning(false));
     super.onServiceStopped();
   }
