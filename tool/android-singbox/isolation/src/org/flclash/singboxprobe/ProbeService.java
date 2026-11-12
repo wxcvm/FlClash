@@ -8,13 +8,10 @@ import android.os.IBinder;
 import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
-import dalvik.system.InMemoryDexClassLoader;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
+import com.follow.clash.service.IsolatedLibbox;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.lang.reflect.InvocationTargetException;
-import java.nio.ByteBuffer;
 
 public final class ProbeService extends Service {
     static final int PROBE = IBinder.FIRST_CALL_TRANSACTION;
@@ -23,43 +20,8 @@ public final class ProbeService extends Service {
     static final int FD_RESPONSE = 0x53494e47;
     static final String DESCRIPTOR = "org.flclash.singboxprobe.Probe";
 
-    // Keep the JNI-owning loader alive across service instances in this process.
-    private static ClassLoader isolatedLoader;
-
     static Class<?> loadApi(Context context) throws Exception {
-        synchronized (ProbeService.class) {
-            if (isolatedLoader == null) {
-                isolatedLoader = createIsolatedLoader(context);
-            }
-            Class<?> api = Class.forName("io.nekohasekai.libbox.Libbox", true, isolatedLoader);
-            if (api.getClassLoader() != isolatedLoader) {
-                throw new IllegalStateException("libbox API escaped its classloader");
-            }
-            return api;
-        }
-    }
-
-    private static ClassLoader createIsolatedLoader(Context context) throws Exception {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (InputStream in = context.getAssets().open("libbox.dex")) {
-            byte[] buffer = new byte[16384];
-            for (int n; (n = in.read(buffer)) != -1;) {
-                bytes.write(buffer, 0, n);
-            }
-        }
-        // Do not delegate to the APK classloader, which owns the host Mihomo go.Seq.
-        // The platform parent still exposes android.* and java.*.
-        ClassLoader host = context.getClassLoader();
-        ClassLoader isolated = new InMemoryDexClassLoader(
-            new ByteBuffer[] { ByteBuffer.wrap(bytes.toByteArray()) },
-            context.getApplicationInfo().nativeLibraryDir,
-            host.getParent()
-        );
-        Class<?> bridge = Class.forName("go.Seq", false, isolated);
-        if (bridge == go.Seq.class || bridge.getClassLoader() != isolated) {
-            throw new IllegalStateException("libbox resolved the host Mihomo Go bridge");
-        }
-        return isolated;
+        return IsolatedLibbox.loadApi(context);
     }
 
     private String probe() throws Exception {

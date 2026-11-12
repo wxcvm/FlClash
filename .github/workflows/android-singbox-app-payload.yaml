@@ -1,0 +1,102 @@
+name: Android optional sing-box app payload
+on:
+  workflow_dispatch:
+    inputs:
+      libbox_run:
+        description: Successful official libbox ARM64 build run ID
+        required: true
+        default: '43219145718'
+  push:
+    branches:
+      - feat/android-singbox-app-payload
+    paths:
+      - 'android/**'
+      - 'tool/android-singbox/isolation/**'
+      - '.github/workflows/android-singbox-app-payload.yaml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: android-singbox-app-payload-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LIBBOX_RUN: ${{ inputs.libbox_run || '43219145718' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: core/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Obtain verified official libbox AAR
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LIBBOX_RUN" --jq .conclusion)" = success
+          gh run download "$LIBBOX_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name sing-box-v1.14.4-arm64-probe --dir libbox-input
+          aar=$(find libbox-input -name libbox.aar -print -quit)
+          hash_file=$(find libbox-input -name sha256.txt -print -quit)
+          test -n "$aar" && test -n "$hash_file"
+          hash=$(cut -d' ' -f1 "$hash_file")
+          test "$(sha256sum "$aar" | cut -d' ' -f1)" = "$hash"
+          echo "LIBBOX_AAR=$(realpath "$aar")" >> "$GITHUB_ENV"
+          echo "LIBBOX_SHA256=$hash" >> "$GITHUB_ENV"
+      - name: Build optional ARM64 development app
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          sdkmanager_path="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          test -x "$sdkmanager_path"
+          "$sdkmanager_path" 'platforms;android-35' 'build-tools;35.0.0'
+          flutter pub get
+          cd android
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_ROOT" "$ANDROID_HOME" > local.properties
+          wrapper="$FLUTTER_ROOT/bin/cache/artifacts/gradle_wrapper"
+          test -d "$wrapper" || flutter precache
+          cp -R "$wrapper/." .
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug -Ptarget-platform=android-arm64 \
+            "-PflclashSingBoxAar=$LIBBOX_AAR" "-PflclashSingBoxSha256=$LIBBOX_SHA256"
+      - name: Verify optional APK payload
+        run: |
+          apk=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
+          test -n "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              files = set(apk.namelist())
+              for name in ('assets/libbox.dex', 'lib/arm64-v8a/libbox.so', 'lib/arm64-v8a/libclash.so'):
+                  assert name in files, f'missing {name}'
+              assert not any(n.endswith('/libbox.so') and n != 'lib/arm64-v8a/libbox.so' for n in files)
+              assert apk.read('assets/libbox.dex').startswith(b'dex\n')
+          PY
+          mkdir -p optional-apk
+          cp "$apk" optional-apk/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flclash-arm64-singbox-development
+          path: optional-apk/*.apk
+          retention-days: 7
