@@ -16,6 +16,7 @@ final class NativeCoreHandoff {
   final bool Function() useNativeSystemProxy;
   final Future<NativeHttpEndpoint?> Function(NativeCoreSpec) detectHttpEndpoint;
   final Future<NativeTunConfiguration?> Function(NativeCoreSpec) detectTun;
+  final Future<bool> Function(NativeHttpEndpoint) isHttpPortAvailable;
   final Future<bool> Function(NativeHttpEndpoint) waitForHttpEndpoint;
   final Future<bool> Function(int) activateNativeProxy;
   final Future<void> Function() releaseNativeProxy;
@@ -37,6 +38,7 @@ final class NativeCoreHandoff {
     this.useNativeSystemProxy = _noNativeProxy,
     this.detectHttpEndpoint = detectNativeHttpEndpoint,
     this.detectTun = detectNativeTunConfiguration,
+    this.isHttpPortAvailable = isNativeHttpPortAvailable,
     this.waitForHttpEndpoint = waitForNativeHttpEndpoint,
     this.activateNativeProxy = _noNativeProxyActivation,
     this.releaseNativeProxy = _releaseNothing,
@@ -95,6 +97,12 @@ final class NativeCoreHandoff {
       }
       try {
         await releaseMihomoProxy();
+        if (endpoint != null && !await isHttpPortAvailable(endpoint)) {
+          throw StateError(
+            '${spec.kind.label} HTTP port ${endpoint.port} remains occupied '
+            'after Mihomo stopped; refusing system proxy takeover',
+          );
+        }
         await runtime.start(spec);
         if (tun != null) {
           // A core that exits immediately cannot be trusted to have set up

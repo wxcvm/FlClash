@@ -147,6 +147,7 @@ void main() {
         releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
         useNativeSystemProxy: () => true,
         detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+        isHttpPortAvailable: (_) async => true,
         waitForHttpEndpoint: (endpoint) async {
           calls.add('ready:${endpoint.port}');
           return true;
@@ -167,6 +168,53 @@ void main() {
       ]);
       await proxyHandoff.deactivate();
       expect(calls.sublist(4), ['release native proxy', 'mihomo:true']);
+      await proxyHandoff.close();
+    },
+  );
+
+  test(
+    'occupied HTTP port restores Mihomo without launching native core',
+    () async {
+      final proxyHandoff = NativeCoreHandoff(
+        runtime: runtime,
+        isMihomoRunning: () => mihomoRunning,
+        setMihomoRunning: (value) async {
+          calls.add('mihomo:$value');
+          mihomoRunning = value;
+          return true;
+        },
+        releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
+        useNativeSystemProxy: () => true,
+        detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+        isHttpPortAvailable: (endpoint) async {
+          calls.add('occupied:${endpoint.port}');
+          return false;
+        },
+        waitForHttpEndpoint: (_) async =>
+            throw StateError('native readiness must not be probed'),
+        activateNativeProxy: (_) async =>
+            throw StateError('system proxy must not change'),
+      );
+
+      await expectLater(
+        proxyHandoff.activate(spec),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('remains occupied'),
+          ),
+        ),
+      );
+      expect(calls, [
+        'mihomo:false',
+        'release mihomo proxy',
+        'occupied:8090',
+        'mihomo:true',
+      ]);
+      expect(runtime.isRunning, isFalse);
+      expect(mihomoRunning, isTrue);
+      expect(runtime.blocksMihomoStart, isFalse);
       await proxyHandoff.close();
     },
   );
@@ -209,6 +257,7 @@ void main() {
         releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
         useNativeSystemProxy: () => true,
         detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+        isHttpPortAvailable: (_) async => true,
         waitForHttpEndpoint: (_) async => true,
         activateNativeProxy: (_) async {
           calls.add('native start failed');
@@ -245,6 +294,7 @@ void main() {
         releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
         useNativeSystemProxy: () => true,
         detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+        isHttpPortAvailable: (_) async => true,
         waitForHttpEndpoint: (_) async => true,
         activateNativeProxy: (_) async => true,
         releaseNativeProxy: () async => calls.add('release native proxy'),
