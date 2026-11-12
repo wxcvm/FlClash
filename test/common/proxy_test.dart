@@ -41,6 +41,27 @@ ProxyState _state({required bool isStart}) {
 }
 
 void main() {
+  test('PowerShell proxy command sets HTTP, HTTPS and ALL proxy variables', () {
+    expect(
+      proxyEnvCommand(7890, isWindows: true),
+      "\$env:HTTP_PROXY = 'http://127.0.0.1:7890'; "
+      "\$env:HTTPS_PROXY = 'http://127.0.0.1:7890'; "
+      "\$env:ALL_PROXY = 'http://127.0.0.1:7890'",
+    );
+  });
+
+  test('POSIX proxy command replaces both uppercase and lowercase values', () {
+    expect(
+      proxyEnvCommand(7890, isWindows: false),
+      "export http_proxy='http://127.0.0.1:7890' "
+      "https_proxy='http://127.0.0.1:7890' "
+      "all_proxy='http://127.0.0.1:7890' "
+      "HTTP_PROXY='http://127.0.0.1:7890' "
+      "HTTPS_PROXY='http://127.0.0.1:7890' "
+      "ALL_PROXY='http://127.0.0.1:7890'",
+    );
+  });
+
   test('applies changes in the order they come', () async {
     final proxy = _FakeProxy();
     final queue = SystemProxyQueue(proxy);

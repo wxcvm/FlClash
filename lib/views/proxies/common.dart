@@ -18,7 +18,9 @@ class ProxyPickerScope extends InheritedWidget {
   final bool delayOnly;
 
   static bool delayOnlyOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<ProxyPickerScope>()?.delayOnly ??
+      context
+          .dependOnInheritedWidgetOfExactType<ProxyPickerScope>()
+          ?.delayOnly ??
       false;
 
   @override
