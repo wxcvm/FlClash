@@ -10,15 +10,8 @@ on:
         description: Exact source commit for artifact-only builds
         required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Existing fork preview release tag
-        required: true
-        default: v0.9.3-preview.1.1
-
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: android-preview
@@ -43,15 +36,11 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+\.[0-9]+$ ]]
-          if [[ -n "$SOURCE_SHA" ]]; then
-            [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
-            test "$SOURCE_SHA" = "$GITHUB_SHA"
-          else
-            test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft --jq '.isPrerelease and (.isDraft | not)')" = true
-          fi
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$SOURCE_SHA" = "$GITHUB_SHA"
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_sha || inputs.release_tag }}
+          ref: ${{ inputs.source_sha }}
           submodules: recursive
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -97,7 +86,14 @@ jobs:
             echo '::error::Historical preview packages cannot be replaced with a different app identity; build a new release instead.'
             exit 1
           fi
+          umask 077
           printf '%s' "$KEYSTORE" | base64 --decode > android/app/keystore.jks
+          fingerprint=$(keytool -exportcert -keystore android/app/keystore.jks -alias "$KEY_ALIAS" -storepass:env STORE_PASSWORD | sha256sum | cut -d' ' -f1)
+          if [[ "$fingerprint" != 'f4761e8a924713db32d2da01ed3f9864b651e8fa9c9ed1d8f6d0667b3da4acef' ]]; then
+            echo '::error::Configured key is not the pinned FlClash release signing identity.'
+            exit 1
+          fi
+          echo "ANDROID_EXPECTED_CERT=$fingerprint" >> "$GITHUB_ENV"
           {
             printf 'keyAlias=%s\n' "$KEY_ALIAS"
             printf 'storePassword=%s\n' "$STORE_PASSWORD"
@@ -136,6 +132,7 @@ jobs:
           printf '%s\n' "$certs"
           fingerprint=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
           [[ "$fingerprint" =~ ^[0-9a-fA-F]{64}$ ]]
+          test "${fingerprint,,}" = "$ANDROID_EXPECTED_CERT"
           aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
           test -n "$aapt"
           badging=$("$aapt" dump badging "$apk")
@@ -144,29 +141,11 @@ jobs:
           mkdir -p preview-assets
           name="FlClash-${RELEASE_TAG#v}-android-arm64-v8a.apk"
           cp "$apk" "preview-assets/$name"
-          printf 'Application ID: com.follow.clash; shared release signing key; certificate SHA-256: %s.\n' "$fingerprint" > preview-assets/signing.txt
+          printf 'Application ID: com.follow.clash; versionCode: %s; shared release signing key; certificate SHA-256: %s.\n' "$ANDROID_PREVIEW_CODE" "$fingerprint" > preview-assets/signing.txt
+          jq -n --arg app com.follow.clash --arg cert "${fingerprint,,}" --arg tag "$RELEASE_TAG" --arg sha "$SOURCE_SHA" --argjson code "$ANDROID_PREVIEW_CODE" '{applicationId:$app,certificateSha256:$cert,tag:$tag,sourceSha:$sha,versionCode:$code}' > preview-assets/android-build.json
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: FlClash-Android-arm64-preview
           path: preview-assets/*
           if-no-files-found: error
-      - name: Backfill existing release
-        if: inputs.source_sha == ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          name="FlClash-${RELEASE_TAG#v}-android-arm64-v8a.apk"
-          gh release download "$RELEASE_TAG" --pattern SHA256SUMS --dir preview-assets
-          (
-            cd preview-assets
-            sed -i "/  $name\$/d" SHA256SUMS
-            sha256sum "$name" >> SHA256SUMS
-          )
-          gh release upload "$RELEASE_TAG" "preview-assets/$name" preview-assets/SHA256SUMS --clobber
-          gh release view "$RELEASE_TAG" --json body --jq '.body' > preview-notes.md
-          printf '\n\nAndroid ARM64 APK: %s\n' "$name" >> preview-notes.md
-          cat preview-assets/signing.txt >> preview-notes.md
-          gh release edit "$RELEASE_TAG" --notes-file preview-notes.md

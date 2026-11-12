@@ -20,7 +20,38 @@ env:
   GO_VERSION: '1.27.1'
 
 jobs:
+  release-checks:
+    if: github.repository == 'wxcvm/FlClash' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require successful main CI for this exact commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/build.yaml/runs" -f branch=main -f head_sha="$GITHUB_SHA" -f event=push -f per_page=100)
+          run=$(jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | max_by(.run_number) // {} | select(.status == "completed" and .conclusion == "success") | .id // empty' <<< "$runs")
+          if [[ -z "$run" ]]; then
+            echo '::error::The exact main commit must pass its full build workflow before packaging.'
+            exit 1
+          fi
+          jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=latest&per_page=100")
+          jq -e '
+            .jobs as $jobs |
+            ["Dart","Plugins","Desktop linux","Desktop windows","Desktop macos","Go core","Android unit tests","Windows helper test","Rust"] |
+            all(.[]; . as $name | any($jobs[]; .name == $name and .status == "completed" and .conclusion == "success"))
+          ' <<< "$jobs" >/dev/null || {
+            echo '::error::Required main CI jobs did not all succeed.'
+            exit 1
+          }
+          echo "Verified main CI run $run for $GITHUB_SHA."
+
   signing:
+    needs: release-checks
     uses: ./.github/workflows/android-signing-check.yaml
     secrets: inherit
 
@@ -125,11 +156,44 @@ jobs:
           test -s "android-assets/$name"
           cp "android-assets/$name" preview-assets/
           test -s android-assets/signing.txt
+          test -s android-assets/android-build.json
+          cp android-assets/android-build.json preview-assets/
           (
             cd preview-assets
-            sha256sum *.exe *.zip *.apk > SHA256SUMS
+            sha256sum *.exe *.zip *.apk android-build.json > SHA256SUMS
             sha256sum -c SHA256SUMS
           )
+      - name: Verify Android upgrade identity against published releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          meta=preview-assets/android-build.json
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$GITHUB_SHA" '
+            .applicationId == "com.follow.clash" and .tag == $tag and .sourceSha == $sha and
+            (.certificateSha256 | test("^[0-9a-f]{64}$")) and
+            (.versionCode | type == "number" and . > 0 and . <= 2100000000 and . == floor)
+          ' "$meta" >/dev/null
+          cert=$(jq -r .certificateSha256 "$meta")
+          code=$(jq -r .versionCode "$meta")
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and any(.assets[]; .name | endswith(".apk"))) | .tag_name' > published-tags
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          while IFS= read -r tag; do
+            # These two historical releases were explicitly published as
+            # com.follow.clash.dev with debug signing, not the shared identity.
+            case "$tag" in
+              v0.9.3-preview.1.1|v0.9.3-preview.2.1) continue ;;
+            esac
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern android-build.json --dir "$tmp" --clobber
+            jq -e --arg tag "$tag" --arg cert "$cert" --argjson code "$code" '
+              .applicationId == "com.follow.clash" and .tag == $tag and
+              .certificateSha256 == $cert and
+              (.versionCode | type == "number" and . > 0 and . == floor and . < $code)
+            ' "$tmp/android-build.json" >/dev/null || {
+              echo "::error::Android signing identity or versionCode conflicts with $tag"
+              exit 1
+            }
+          done < published-tags
       - name: Publish complete dual-platform prerelease
         shell: bash
         run: |
@@ -137,7 +201,7 @@ jobs:
           cat > preview-notes.md <<'NOTES'
           Windows x64 and Android ARM64 preview of wxcvm/FlClash.
 
-          Includes network reconnect and DNS recovery, protocol and native-core enhancements, real download-speed selection, and independent preview updates.
+          Includes network reconnect and DNS recovery, protocol enhancements, real download-speed selection, background polling and download cancellation, bounded history storage, core memory reclamation, VPN stop cleanup, and streamed subscription processing. Android uses the unified application ID and pinned release certificate.
 
           Install the Windows EXE or extract the portable ZIP. On Android install the ARM64 APK. SHA256SUMS contains all three package hashes.
 
