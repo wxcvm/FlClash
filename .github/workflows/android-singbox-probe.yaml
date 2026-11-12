@@ -1,0 +1,72 @@
+name: Android sing-box library probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/android-singbox-libbox-probe
+    paths:
+      - '.github/workflows/android-singbox-probe.yaml'
+      - 'tool/android-singbox/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: singbox-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  libbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout official sing-box source
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: c005f35300ce76427dc285481ec5695f5b179cd2
+          path: upstream-sing-box
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: upstream-sing-box/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28
+      - name: Build official ARM64 libbox
+        working-directory: upstream-sing-box
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          git tag -f v1.14.4
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/arm64
+      - name: Verify archive and compile API probe
+        run: |
+          mkdir -p probe-output
+          unzip -t upstream-sing-box/libbox.aar
+          unzip -p upstream-sing-box/libbox.aar classes.jar > probe-output/libbox-classes.jar
+          unzip -l upstream-sing-box/libbox.aar | tee probe-output/aar-entries.txt
+          grep -q 'jni/arm64-v8a/libbox.so' probe-output/aar-entries.txt
+          jar tf probe-output/libbox-classes.jar > probe-output/classes.txt
+          grep -Fxq 'io/nekohasekai/libbox/Libbox.class' probe-output/classes.txt
+          grep -Fxq 'go/Seq.class' probe-output/classes.txt
+          javac -cp probe-output/libbox-classes.jar -d probe-output tool/android-singbox/LibboxApiProbe.java
+          javap -classpath probe-output/libbox-classes.jar io.nekohasekai.libbox.PlatformInterface > probe-output/platform-api.txt
+          sha256sum upstream-sing-box/libbox.aar > probe-output/sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sing-box-v1.14.4-arm64-probe
+          path: |
+            upstream-sing-box/libbox.aar
+            probe-output/
+          retention-days: 7
