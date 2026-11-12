@@ -53,6 +53,73 @@ Future<YamlMap> _dnsOf({
 }
 
 void main() {
+  test('encrypted upstream hostnames are real-IP exceptions in generated config', () async {
+    const upstream = 'https://private.example/account-token/dns-query?key=secret';
+    final dns = await _dnsOf(
+      rawConfig: {
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'nameserver': [upstream, 'tls://1.1.1.1:853'],
+          'fallback': ['h3://fallback.example/dns-query'],
+          'proxy-server-nameserver': ['tls://bootstrap.example:853'],
+          'nameserver-policy': {
+            '+.example.org': ['quic://policy.example:853', '223.5.5.5'],
+          },
+          'direct-nameserver': ['https://private.example/other'],
+          'fake-ip-filter': ['*.lan'],
+        },
+      },
+      keys: {},
+    );
+    expect(dns['fake-ip-filter'], [
+      '*.lan',
+      'private.example',
+      'fallback.example',
+      'bootstrap.example',
+      'policy.example',
+    ]);
+    expect(dns['nameserver'], [upstream, 'tls://1.1.1.1:853']);
+    expect(dns['nameserver-policy'], {
+      '+.example.org': ['quic://policy.example:853', '223.5.5.5'],
+    });
+  });
+
+  test('explicit whitelist and rule modes are not modified', () async {
+    for (final mode in ['whitelist', 'rule']) {
+      final entries = mode == 'rule'
+          ? ['DOMAIN,private.example,real-ip']
+          : ['*.example.org'];
+      final dns = await _dnsOf(
+        rawConfig: {
+          'dns': {
+            'enable': true,
+            'enhanced-mode': 'fake-ip',
+            'fake-ip-filter-mode': mode,
+            'fake-ip-filter': entries,
+            'nameserver': ['https://private.example/dns-query'],
+          },
+        },
+        keys: {},
+      );
+      expect(dns['fake-ip-filter'], entries);
+    }
+  });
+
+  test('resolver IP literals do not create a fake-IP filter', () async {
+    final dns = await _dnsOf(
+      rawConfig: {
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'nameserver': ['https://1.1.1.1/dns-query', 'tls://[2606:4700:4700::1111]:853'],
+        },
+      },
+      keys: {},
+    );
+    expect(dns.containsKey('fake-ip-filter'), isFalse);
+  });
+
   test('fake-ip blacklist normalizes encrypted resolver URL only', () async {
     final dns = await _dnsOf(
       rawConfig: {

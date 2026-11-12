@@ -2,14 +2,14 @@ name: Android optional sing-box package
 on:
   workflow_dispatch:
   push:
-    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe]
+    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/windows-fakeip-doh-compatibility]
     paths:
       - 'android/**'
       - 'lib/**'
       - 'tool/android-singbox/isolation/libbox-src/**'
       - '.github/workflows/android-singbox-package.yaml'
   pull_request:
-    branches: [main, feat/android-singbox-core-ui]
+    branches: [main, feat/android-singbox-core-ui, feat/android-mihomo-process-probe]
     paths:
       - 'android/**'
       - 'lib/**'
@@ -24,7 +24,7 @@ permissions:
   actions: read
 jobs:
   package:
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || github.head_ref == 'feat/android-mihomo-process-probe'))
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || (github.head_ref == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/windows-fakeip-doh-compatibility')))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -110,8 +110,15 @@ jobs:
           if grep -E '^(go/Seq|io/nekohasekai/libbox/)' service-classes.txt; then
             echo 'libbox classes leaked into the host classpath' >&2; exit 1
           fi
+      - name: Test Mihomo network recovery
+        if: github.ref_name == 'feat/windows-fakeip-doh-compatibility' || github.head_ref == 'feat/windows-fakeip-doh-compatibility'
+        working-directory: core
+        env:
+          CGO_ENABLED: 0
+        run: go test -run 'TestNetworkChange|TestRecoveryHealth' .
+
       - name: Test native quality ranking
-        run: flutter test test/native_quality_ranking_test.dart test/native_auto_recovery_test.dart test/plugins/service_test.dart
+        run: flutter test test/native_quality_ranking_test.dart test/native_auto_recovery_test.dart test/plugins/service_test.dart test/common/task_dns_override_test.dart
       - name: Compile and test actual Android app with native runtime
         run: |
           cd android

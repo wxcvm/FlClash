@@ -1,0 +1,50 @@
+# Windows AdGuard / FlClash DNS coexistence
+
+This addresses one narrow bootstrap case, not every possible third-party DNS
+interception conflict. In generated Mihomo Fake-IP blacklist configurations,
+encrypted DNS resolver hostnames explicitly present in the active DNS section
+are added as exact real-IP exclusions. Existing rules, upstream URLs, private
+paths, nameserver ordering and policy are retained. IP literals are ignored;
+whitelist and rule modes are not changed. No subscription file is rewritten.
+If AdGuard uses a private DoH endpoint which does not appear in FlClash, its
+hostname is not discovered automatically.
+
+## Diagnose without changing system settings
+
+Run `tool/windows/check-dns-path.ps1` from PowerShell while the issue is
+reproducible. Supply only the DoH **hostname**, never the full private URL.
+Example (replace the example hostname with your actual DNS host):
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File tool/windows/check-dns-path.ps1 -ResolverHost private.example -MixedPort 7890
+
+The script shows Windows system DNS answers for that hostname, classifies the
+configured Fake-IP IPv4 range (default 198.18.0.0/15), and compares a direct
+curl HTTPS request (no application proxy) with an explicit FlClash HTTP-proxy
+request to the same public test destination. "Direct" still traverses TUN or
+AdGuard if enabled; it does not bypass them. The report does not expose the
+private DoH URL or credentials. It is read-only except for normal DNS/HTTPS
+traffic. It does not change DNS, routes, certificates, AdGuard or proxy settings.
+
+A synthetic DNS answer alone is not proof of failure: Fake-IP is expected for
+ordinary routed domains. If the resolver hostname itself is synthetic and
+only the explicitly proxied request succeeds, investigate resolver bootstrap
+and DNS ownership. If the hostname is real but both requests fail, inspect
+the configured route, DNS transport and proxy endpoint. Use the same test
+before/after switching only AdGuard DNS, with FlClash VPN retained, to isolate
+the conflict. Do not disable AdGuard overall protection as a permanent fix.
+
+For an external resolver not in the profile, add its exact hostname to the
+existing Fake-IP blacklist if diagnosis confirms the need. Do not paste the
+secret path/query, add broad wildcard exclusions, or route it DIRECT without
+checking the intended privacy policy. FlClash cannot control AdGuard's own
+DNS cache or guarantee that its DNS interception will coexist with TUN.
+
+## Mihomo reconnect fix
+
+The pinned core's ClearAll already synchronously resets resolver clients, including
+policy-only and bootstrap DNS transports. FlClash no longer follows that operation
+with a second asynchronous resolver reset on a network-change notification. This
+prevents the delayed reset from closing newly opened resolver connections after
+handover. Any previous network-health result is invalidated on passive desktop
+network changes as well as explicit recovery. Fake-IP mappings remain untouched.
+This does not change the current route or restart the VPN on a passive event.
