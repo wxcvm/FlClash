@@ -46,6 +46,10 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	fail := func(err error) *ChangeProxyResult {
 		return &ChangeProxyResult{Message: err.Error()}
 	}
+	// Capture the recovery revision before probing. A reset that cannot
+	// rebuild the config still invalidates health observations.
+	networkResetMu.Lock()
+	revision := networkResetRevision
 	configMu.Lock()
 	selectMu.Lock()
 	groupProxy := lookupProxy(params.GroupName)
@@ -53,11 +57,13 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	if err != nil {
 		selectMu.Unlock()
 		configMu.Unlock()
+		networkResetMu.Unlock()
 		return fail(err)
 	}
 	if groupProxy.Type() != constant.Selector && groupProxy.Type() != constant.URLTest {
 		selectMu.Unlock()
 		configMu.Unlock()
+		networkResetMu.Unlock()
 		return fail(errGroupNotSelect)
 	}
 	member := speedGroupMember(group, params.ProxyName)
@@ -65,6 +71,7 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	epoch, _ := routeStamp()
 	selectMu.Unlock()
 	configMu.Unlock()
+	networkResetMu.Unlock()
 	if err != nil {
 		return fail(err)
 	}
@@ -87,6 +94,11 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 
 	// Do not hold a selection lock across a network request. A manual pick,
 	// config reload, or provider refresh during the health check wins.
+	networkResetMu.Lock()
+	defer networkResetMu.Unlock()
+	if networkResetRevision != revision {
+		return fail(errors.New("network recovered during speed health check"))
+	}
 	configMu.Lock()
 	defer configMu.Unlock()
 	selectMu.Lock()
