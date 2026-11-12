@@ -12,7 +12,15 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
+        manifestPlaceholders["flclashMihomoProbeEnabled"] = "false"
         manifestPlaceholders["flclashSingBoxEnabled"] = providers.gradleProperty("flclashSingBoxAar").isPresent.toString()
+    }
+
+    buildTypes {
+        debug {
+            manifestPlaceholders["flclashMihomoProbeEnabled"] =
+                (providers.gradleProperty("flclashMihomoProcessProbe").orNull == "true").toString()
+        }
     }
 
     compileOptions {

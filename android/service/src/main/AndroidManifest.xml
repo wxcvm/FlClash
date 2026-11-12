@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application>
+        <!-- Opt-in debug-only IPC probe; not the production VPN owner. -->
+        <service
+            android:name=".MihomoProcessProbeService"
+            android:enabled="${flclashMihomoProbeEnabled}"
+            android:exported="false"
+            android:process=":mihomo_probe" />
         <service
             android:name=".VpnService"
             android:exported="false"

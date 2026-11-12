@@ -43,6 +43,7 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        testInstrumentationRunner = "com.follow.clash.MihomoProcessProbeInstrumentation"
     }
 
     signingConfigs {
