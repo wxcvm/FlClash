@@ -189,7 +189,9 @@ class ProxiesAction extends _$ProxiesAction {
         _speedTestGeneration == generation &&
         _currentSelectedName(group.name) == selection;
     try {
-      if (incumbent.isEmpty || reservedCustomProxyNames.contains(incumbent)) {
+      if (incumbent.isEmpty ||
+          reservedCustomProxyNames.contains(incumbent) ||
+          isSubscriptionInfoProxyName(incumbent)) {
         return;
       }
       if (!await _networkAllowsAutoSelection(isCurrent)) return;
@@ -277,7 +279,11 @@ class ProxiesAction extends _$ProxiesAction {
   ) async {
     final names = group.all
         .map((proxy) => proxy.name)
-        .where((name) => !reservedCustomProxyNames.contains(name))
+        .where(
+          (name) =>
+              !reservedCustomProxyNames.contains(name) &&
+              !isSubscriptionInfoProxyName(name),
+        )
         .toSet()
         .toList();
     final candidates = automaticSpeedCandidates(
@@ -629,7 +635,11 @@ class ProxiesAction extends _$ProxiesAction {
       final names = group.all
           .whereMatches(query, (proxy) => proxy.searchFields)
           .map((proxy) => proxy.name)
-          .where((name) => !reservedCustomProxyNames.contains(name))
+          .where(
+          (name) =>
+              !reservedCustomProxyNames.contains(name) &&
+              !isSubscriptionInfoProxyName(name),
+        )
           .toSet()
           .toList();
       final candidates = automatic
@@ -825,7 +835,18 @@ class ProxiesAction extends _$ProxiesAction {
     return speed;
   }
 
-  Future<void> testProxyMetrics(Proxy proxy, [String? testUrl]) async {
+  Future<void> testProxyMetrics(Proxy proxy, [String? testUrl]) =>
+      _testProxyMetrics(proxy, testUrl: testUrl);
+
+  Future<void> testProxyDownloadSpeed(Proxy proxy) =>
+      _testProxyMetrics(proxy, testDelay: false);
+
+  Future<void> _testProxyMetrics(
+    Proxy proxy, {
+    String? testUrl,
+    bool testDelay = true,
+  }) async {
+    if (isSubscriptionInfoProxyName(proxy.name)) return;
     final epoch = ref.read(routeTrackerProvider).hostEpoch;
     final profile = ref.read(currentProfileIdProvider);
     final generation = _speedTestGeneration;
@@ -835,7 +856,7 @@ class ProxiesAction extends _$ProxiesAction {
         _speedTestGeneration == generation &&
         ref.read(routeTrackerProvider).hostEpoch == epoch &&
         ref.read(currentProfileIdProvider) == profile;
-    await proxyDelayTest(proxy, testUrl);
+    if (testDelay) await proxyDelayTest(proxy, testUrl);
     if (!isCurrent() || reservedCustomProxyNames.contains(proxy.name)) {
       return;
     }
@@ -925,7 +946,8 @@ class ProxiesAction extends _$ProxiesAction {
           groups: groups,
           selectedMap: selectedMap,
         );
-        if (state.proxyName.isEmpty) {
+        if (state.proxyName.isEmpty ||
+            isSubscriptionInfoProxyName(state.proxyName)) {
           continue;
         }
         final currentTestUrl = state.testUrl.takeFirstValid([fallbackTestUrl]);

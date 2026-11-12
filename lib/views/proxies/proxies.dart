@@ -150,7 +150,7 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       onPressed: () {
         _proxiesTabKey.currentState?.delayTestCurrentGroup();
       },
-      tooltip: context.appLocalizations.delayTest,
+      tooltip: '测试延迟及下载速度（先延迟，后逐个下载测速）',
       isLoading: isDelayTesting,
     );
   }
@@ -189,6 +189,19 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       primaryAction: primaryAction,
       searchActions: [?primaryAction],
       iconActions: [
+        if (_isTab && !picker)
+          IconButtonData(
+            glyph: AppGlyphs.speed,
+            onPressed: () {
+              final group = _proxiesTabKey.currentState?.currentGroup;
+              if (group == null) return;
+              ref
+                  .read(proxiesActionProvider.notifier)
+                  .selectByDownloadSpeed(group.name);
+            },
+            tooltip: '按真实下载速度选最快节点（消耗测试流量）',
+            isLoading: ref.watch(currentGroupDelayTestingProvider),
+          ),
         if (_isTab && !picker)
           IconButtonData(
             glyph: AppGlyphs.locate,

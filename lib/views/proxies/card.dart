@@ -154,9 +154,20 @@ class ProxyCard extends ConsumerWidget {
         const SizedBox(height: 6),
         Row(
           children: [
-            delayText,
-            const SizedBox(width: 6),
-            Expanded(child: _DownloadSpeedText(proxyName: proxy.name)),
+            if (isSubscriptionInfoProxyName(proxy.name))
+              Expanded(
+                child: Text(
+                  '订阅信息 · 不参与测速',
+                  style: AppTextStyle.caption2.of(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )
+            else ...[
+              delayText,
+              const SizedBox(width: 6),
+              Expanded(child: _DownloadSpeedText(proxy: proxy)),
+            ],
           ],
         ),
       ],
@@ -398,28 +409,39 @@ class _DelayTextState extends ConsumerState<_DelayText> {
 }
 
 class _DownloadSpeedText extends ConsumerWidget {
-  const _DownloadSpeedText({required this.proxyName});
+  const _DownloadSpeedText({required this.proxy});
 
-  final String proxyName;
+  final Proxy proxy;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sample = ref.watch(
-      downloadSpeedResultsProvider.select((results) => results[proxyName]),
+      downloadSpeedResultsProvider.select((results) => results[proxy.name]),
     );
     final label = switch (sample) {
-      null => '↓ —',
+      null => '↓ 待测速',
       (running: true, bytesPerSecond: _) => '↓ 测速中',
       (running: false, bytesPerSecond: 0) => '↓ 失败',
       (running: false, :final bytesPerSecond) =>
         '↓ ${formatDownloadSpeed(bytesPerSecond)}',
     };
-    return Text(
-      label,
-      textAlign: TextAlign.end,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: AppTextStyle.caption2.of(context, emphasized: true),
+    return HoverTooltip(
+      message: '点击测试真实下载速度（消耗测试流量）',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: sample?.running == true
+            ? null
+            : () => ref
+                  .read(proxiesActionProvider.notifier)
+                  .testProxyDownloadSpeed(proxy),
+        child: Text(
+          label,
+          textAlign: TextAlign.end,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyle.caption2.of(context, emphasized: true),
+        ),
+      ),
     );
   }
 }

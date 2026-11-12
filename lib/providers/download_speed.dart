@@ -22,6 +22,14 @@ class DownloadSpeedTestingGroups extends Notifier<Set<String>> {
   }
 }
 
+/// Providers may represent account metadata as reachable proxy definitions.
+final _subscriptionInfoName = RegExp(
+  r'^\s*(剩余流量|流量剩余|套餐到期|订阅到期|到期时间|剩余时间)\s*[:：]',
+);
+
+bool isSubscriptionInfoProxyName(String name) =>
+    _subscriptionInfoName.hasMatch(name);
+
 /// An explicit, session-scoped opt-in for one URL-test group.
 final downloadSpeedAutoGroupProvider =
     NotifierProvider<DownloadSpeedAutoGroup, String?>(
