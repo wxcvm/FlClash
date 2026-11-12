@@ -2,18 +2,22 @@ name: Android optional sing-box package
 on:
   workflow_dispatch:
   push:
-    branches: [feat/android-singbox-package-runtime]
+    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui]
     paths:
-      - 'android/service/**'
+      - 'android/**'
+      - 'lib/**'
       - 'tool/android-singbox/isolation/libbox-src/**'
       - '.github/workflows/android-singbox-package.yaml'
+concurrency:
+  group: singbox-package-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
   actions: read
 jobs:
   package:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -75,6 +79,28 @@ jobs:
           if grep -E '^(go/Seq|io/nekohasekai/libbox/)' service-classes.txt; then
             echo 'libbox classes leaked into the host classpath' >&2; exit 1
           fi
+      - name: Compile and test actual Android app with native runtime
+        run: |
+          cd android
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest :service:testDebugUnitTest -Ptarget-platform=android-arm64 -PflclashSingBoxAar="$LIBBOX_AAR"
+      - name: Verify and upload optional app APK
+        run: |
+          apk=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
+          test -n "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              files = set(apk.namelist())
+              for name in ('assets/singbox/libbox.dex', 'lib/arm64-v8a/libbox.so', 'lib/arm64-v8a/libclash.so'):
+                  assert name in files, f'missing {name}'
+          PY
+          mkdir -p native-app-apk
+          cp "$apk" native-app-apk/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flclash-android-singbox-dev
+          path: native-app-apk/*.apk
+          retention-days: 7
       - name: Verify default build omits runtime
         run: |
           cd android
