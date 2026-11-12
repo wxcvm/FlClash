@@ -2,8 +2,8 @@ package core
 
 import (
 	"io"
-	"strconv"
 	"net"
+	"strconv"
 	"testing"
 
 	"github.com/metacubex/mihomo/adapter/outbound"
