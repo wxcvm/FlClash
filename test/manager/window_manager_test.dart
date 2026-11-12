@@ -178,9 +178,7 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('system wake coalesces notifications and recovers a running VPN', (
-    tester,
-  ) async {
+  testWidgets('system wake coalesces notifications', (tester) async {
     final listener = await pumpWindowManager(tester);
     container.read(runTimeProvider.notifier).value = 1000;
     listener.onSystemResume();

@@ -116,7 +116,9 @@ class _WindowContainerState extends ConsumerState<WindowManager>
       if (!mounted || !ref.read(isStartProvider)) return;
       ref.read(routeTrackerProvider.notifier).bumpHostEpoch();
       unawaited(
-        ref.read(coreActionProvider.notifier).reportNetworkChange(recover: true),
+        ref
+            .read(coreActionProvider.notifier)
+            .reportNetworkChange(recover: true),
       );
     });
   }

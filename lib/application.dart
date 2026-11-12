@@ -81,8 +81,7 @@ Set<ConnectivityResult> physicalNetworks(List<ConnectivityResult> results) =>
     results
         .where(
           (type) =>
-              type != ConnectivityResult.none &&
-              type != ConnectivityResult.vpn,
+              type != ConnectivityResult.none && type != ConnectivityResult.vpn,
         )
         .toSet();
 

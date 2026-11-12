@@ -178,10 +178,11 @@ class _NetworkHealthSheetState extends ConsumerState<NetworkHealthSheet> {
         ? DateTime.fromMillisecondsSinceEpoch(checkedAt).toLocal()
         : null;
     final rebuilt = snapshot?['rebuilt'] == true;
+    final rebuildStatus = rebuilt
+        ? _label(context, '已重建', 'Rebuilt')
+        : _label(context, '未重建', 'Not rebuilt');
     final rebuild = source == 'handover'
-        ? (rebuilt
-              ? _label(context, '已重建', 'Rebuilt')
-              : _label(context, '未重建', 'Not rebuilt'))
+        ? rebuildStatus
         : _label(context, '不适用', 'Not applicable');
     return Scaffold(
       title: _label(context, '网络健康', 'Network health'),

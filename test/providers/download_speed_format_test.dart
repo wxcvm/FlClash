@@ -37,6 +37,14 @@ void main() {
     );
     expect(
       networkHealthGate({
+        'state': 'inconclusive',
+        'dns': 'untested',
+        'checked-at': now.millisecondsSinceEpoch,
+      }, now, requireRecent: true),
+      NetworkHealthGate.wait,
+    );
+    expect(
+      networkHealthGate({
         'state': 'route-unreachable',
         'dns': 'resolved',
         'checked-at': now.millisecondsSinceEpoch,

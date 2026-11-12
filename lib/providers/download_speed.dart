@@ -177,6 +177,13 @@ NetworkHealthGate networkHealthGate(
   if (health['dns'] == 'failed') {
     return recent ? NetworkHealthGate.wait : NetworkHealthGate.refresh;
   }
-  if (requireRecent && !recent) return NetworkHealthGate.refresh;
+  if (requireRecent) {
+    if (!recent) return NetworkHealthGate.refresh;
+    if (state != 'reachable' &&
+        state != 'http-response' &&
+        (state != 'route-unreachable' || health['dns'] != 'resolved')) {
+      return NetworkHealthGate.wait;
+    }
+  }
   return NetworkHealthGate.allow;
 }
