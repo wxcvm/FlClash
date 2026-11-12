@@ -8,6 +8,7 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'common.dart';
 import 'tab.dart';
 
 class ProxiesView extends ConsumerStatefulWidget {
@@ -148,9 +149,13 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
     return IconButtonData(
       glyph: AppGlyphs.bolt,
       onPressed: () {
-        _proxiesTabKey.currentState?.delayTestCurrentGroup();
+        _proxiesTabKey.currentState?.delayTestCurrentGroup(
+          delayOnly: widget.picker,
+        );
       },
-      tooltip: '测试延迟及下载速度（先延迟，后逐个下载测速）',
+      tooltip: widget.picker
+          ? context.appLocalizations.delayTest
+          : '测试延迟及下载速度（先延迟，后逐个下载测速）',
       isLoading: isDelayTesting,
     );
   }
@@ -214,10 +219,13 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       menuItems: picker ? const [] : _buildMenuItems(context, style),
       title: context.appLocalizations.proxies,
       searchState: AppBarSearchState(onSearch: _onSearch),
-      body: switch (style.type) {
-        ProxiesType.tab => _tabView,
-        ProxiesType.list => const ProxiesListView(),
-      },
+      body: ProxyPickerScope(
+        delayOnly: picker,
+        child: switch (style.type) {
+          ProxiesType.tab => _tabView,
+          ProxiesType.list => const ProxiesListView(),
+        },
+      ),
     );
   }
 }

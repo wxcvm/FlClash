@@ -8,6 +8,8 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'common.dart';
+
 void selectGroupProxy(
   WidgetRef ref, {
   required String groupName,
@@ -135,6 +137,7 @@ class ProxyCard extends ConsumerWidget {
     final delayText = _DelayText(
       proxy: proxy,
       testUrl: testUrl,
+      delayOnly: ProxyPickerScope.delayOnlyOf(context),
       alignment: isLoose ? Alignment.centerLeft : Alignment.centerRight,
     );
     final proxyNameText = _buildProxyNameText(context);
@@ -260,11 +263,13 @@ class _DelayText extends ConsumerStatefulWidget {
     required this.proxy,
     required this.testUrl,
     required this.alignment,
+    required this.delayOnly,
   });
 
   final Proxy proxy;
   final String? testUrl;
   final Alignment alignment;
+  final bool delayOnly;
 
   @override
   ConsumerState<_DelayText> createState() => _DelayTextState();
@@ -298,9 +303,12 @@ class _DelayTextState extends ConsumerState<_DelayText> {
   }
 
   void _handleTestCurrentDelay() {
-    ref
-        .read(proxiesActionProvider.notifier)
-        .testProxyMetrics(widget.proxy, widget.testUrl);
+    final action = ref.read(proxiesActionProvider.notifier);
+    if (widget.delayOnly) {
+      action.proxyDelayTest(widget.proxy, widget.testUrl);
+    } else {
+      action.testProxyMetrics(widget.proxy, widget.testUrl);
+    }
   }
 
   Widget _withFocusRing(BuildContext context, Widget child) {
