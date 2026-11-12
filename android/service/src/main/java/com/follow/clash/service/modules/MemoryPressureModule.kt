@@ -9,7 +9,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-private const val POLL_INTERVAL_MS = 15_000L
+private const val PRESSURE_POLL_INTERVAL_MS = 15_000L
+private const val HEALTHY_POLL_INTERVAL_MS = 30_000L
+
+internal fun memoryPressurePollInterval(
+    lowMemory: Boolean,
+    availableBytes: Long,
+    thresholdBytes: Long,
+): Long = if (lowMemory || availableBytes < thresholdBytes * 2) {
+    PRESSURE_POLL_INTERVAL_MS
+} else {
+    HEALTHY_POLL_INTERVAL_MS
+}
 
 // Stands in for the running trim levels Android 14 stopped delivering.
 internal class MemoryPressureModule(
@@ -23,7 +34,7 @@ internal class MemoryPressureModule(
             while (isActive) {
                 activityManager.getMemoryInfo(info)
                 MitmPressure.onMemoryInfo(info)
-                delay(POLL_INTERVAL_MS)
+                delay(memoryPressurePollInterval(info.lowMemory, info.availMem, info.threshold))
             }
         }
     }
