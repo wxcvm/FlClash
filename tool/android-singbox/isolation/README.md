@@ -1,6 +1,7 @@
 # Android dual-runtime isolation experiment
 
-Standalone ARM64 diagnostic APK, not FlClash and not a VPN.
+Standalone ARM64 diagnostic APK, not production FlClash. It includes an
+isolation instrumentation test and an opt-in, app-only VPN traffic test.
 The host loads the real FlClash Mihomo bridge and libclash.so before and after
 two Binder calls to official sing-box in a separate :singbox process and
 classloader. Both calls verify the same remote PID, version and invalid JSON rejection.
@@ -58,6 +59,23 @@ AndroidVpnRuntime with the real platform callbacks and command server. Its
 fixed config allows only the diagnostic package and a single IPv4 test route
 (1.1.1.1/32), with direct outbound and DNS takeover disabled. Stop from the
 launcher or foreground notification. Inspect adb logcat -s FlClashVpnProbe
-for startup/cleanup. This is not a confirmed traffic test, not an alternative
-production VPN, and does not verify proxy protocols or DNS yet. Android allows
+for startup/cleanup. The diagnostic now checks real HTTPS through the VPN, but has not yet been
+executed on a device. It does not verify proxy protocols or DNS yet. Android allows
 one active VPN per user, so consent can replace an existing VPN.
+
+Traffic validation: after startup, locate the Android VPN network with the
+expected TUN address, bind a socket to that network, require the TUN source
+address, and connect to 1.1.1.1:443. Verify the TLS hostname cloudflare-dns.com
+with the platform trust store and require a valid HTTP response. No physical
+network fallback is allowed. The launcher displays the result and logs retain
+it; failure stops the diagnostic. On stop, check that the diagnostic VPN
+network disappears. These are bounded one-shot checks, not periodic polling.
+A successful HTTPS result is evidence of direct forwarding, not DNS, node
+protocols, handover or production integration.
+
+For handover validation, leave the diagnostic running, switch Wi-Fi/mobile data,
+then press Retest traffic after network change. Retest uses the same VPN and
+native session, not a restart or a physical-network fallback. A failed retest
+leaves the VPN running so recovery can be tested. Repeated taps are coalesced;
+pressing Retest when stopped never starts the VPN. The endpoint may be blocked
+on some networks: an HTTPS failure alone is not a diagnosis of a core bug.

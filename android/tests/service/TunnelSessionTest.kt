@@ -163,4 +163,115 @@ class TunnelSessionTest {
         session.stop()
         assertEquals(listOf("start:7", "stop", "stop"), engine.events)
     }
+
+    private class CallbackEngine(
+        private val events: MutableList<String>,
+    ) : CallbackTunnelEngine {
+        var validationFailure: IllegalStateException? = null
+        var startFailure: IllegalStateException? = null
+        var stopFailure: IllegalStateException? = null
+
+        override fun validate() {
+            events.add("validate")
+            validationFailure?.let { throw it }
+        }
+
+        override fun start() {
+            events.add("native-start")
+            startFailure?.let { throw it }
+        }
+
+        override fun stop() {
+            events.add("native-stop")
+            stopFailure?.let { throw it }
+        }
+    }
+
+    @Test
+    fun callbackValidationFailurePreservesActiveMihomo() {
+        val mihomo = FakeEngine()
+        val session = TunnelSession(mihomo)
+        session.start { request() }
+        val events = mutableListOf<String>()
+        val native = CallbackEngine(events).apply {
+            validationFailure = IllegalStateException("invalid config")
+        }
+        assertThrows(IllegalStateException::class.java) { session.start(native) }
+        assertEquals(listOf("start:7"), mihomo.events)
+        assertEquals(listOf("validate"), events)
+        session.stop()
+        assertEquals(listOf("start:7", "stop"), mihomo.events)
+    }
+
+    @Test
+    fun callbackEngineStartsAfterOldOwnerStopsAndMihomoCanReturn() {
+        val events = mutableListOf<String>()
+        val mihomo = object : TunnelEngine {
+            override fun start(request: TunnelRequest): Boolean {
+                events.add("mihomo-start")
+                return true
+            }
+
+            override fun stop() {
+                events.add("mihomo-stop")
+            }
+        }
+        val session = TunnelSession(mihomo)
+        val native = CallbackEngine(events)
+        session.start { request() }
+        session.start(native)
+        session.start {
+            events.add("establish")
+            request(8)
+        }
+        session.stop()
+        assertEquals(
+            listOf("mihomo-start", "validate", "mihomo-stop", "native-start",
+                "native-stop", "establish", "mihomo-start", "mihomo-stop"),
+            events,
+        )
+    }
+
+    @Test
+    fun callbackRestartStopsPreviousNativeSession() {
+        val events = mutableListOf<String>()
+        val native = CallbackEngine(events)
+        val session = TunnelSession(FakeEngine())
+        session.start(native)
+        session.start(native)
+        session.stop()
+        assertEquals(
+            listOf("validate", "native-start", "validate", "native-stop", "native-start", "native-stop"),
+            events,
+        )
+    }
+
+    @Test
+    fun callbackStartupFailureCleansUpBeforeMihomoRetry() {
+        val events = mutableListOf<String>()
+        val failure = IllegalStateException("native TUN failed")
+        val native = CallbackEngine(events).apply { startFailure = failure }
+        val mihomo = FakeEngine()
+        val session = TunnelSession(mihomo)
+        assertSame(failure, assertThrows(IllegalStateException::class.java) { session.start(native) })
+        session.start { request() }
+        session.stop()
+        assertEquals(listOf("validate", "native-start", "native-stop"), events)
+        assertEquals(listOf("start:7", "stop"), mihomo.events)
+    }
+
+    @Test
+    fun callbackStopFailurePreventsMihomoRouteEstablishment() {
+        val events = mutableListOf<String>()
+        val failure = IllegalStateException("native still owns TUN")
+        val native = CallbackEngine(events).apply { stopFailure = failure }
+        val session = TunnelSession(FakeEngine())
+        session.start(native)
+        assertSame(failure, assertThrows(IllegalStateException::class.java) {
+            session.start { error("must not establish routes") }
+        })
+        native.stopFailure = null
+        session.stop()
+        assertEquals(listOf("validate", "native-start", "native-stop", "native-stop"), events)
+    }
 }

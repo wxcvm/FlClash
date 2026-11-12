@@ -46,6 +46,13 @@ jobs:
           test -n "$aar" && test -n "$hash_file"
           test "$(sha256sum "$aar" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$hash_file")"
           echo "LIBBOX_AAR=$(realpath "$aar")" >> "$GITHUB_ENV"
+      - name: Install adapter compilation SDK
+        run: |
+          sdkmanager_path="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$sdkmanager_path" 'platforms;android-35'
       - name: Build optional production service module
         run: |
           flutter pub get

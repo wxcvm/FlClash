@@ -24,3 +24,7 @@ before enabling production selection. Older Android versions retain Mihomo.
 CI checks the real service AAR contains the expected isolated asset and native
 library, that libbox classes do not enter the host classpath, and that a default
 build does not include either runtime file.
+
+The isolated adapter compiles against Android 35 (minimum runtime API 29),
+independently of the production app compile SDK. Install platform android-35
+alongside the normal app SDK before an optional build.

@@ -121,7 +121,7 @@ if (singBoxAar.isPresent) {
         ?.split(",")?.map { abiByPlatform[it.trim()] ?: error("Unsupported Android target $it") }
         ?: abiByPlatform.values.toList()
     val sdk = androidComponents.sdkComponents.sdkDirectory
-    val compileApi = libs.versions.compileSdk.get()
+    val compileApi = "35"
     val buildTools = android.buildToolsVersion
     val packageRuntime = tasks.register<PackageSingBoxRuntime>("packageSingBoxRuntime") {
         aar.set(rootProject.layout.file(singBoxAar.map { rootProject.file(it) }))
