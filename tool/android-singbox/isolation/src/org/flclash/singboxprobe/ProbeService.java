@@ -85,6 +85,9 @@ public final class ProbeService extends Service {
         if (session.getClassLoader() != api.getClassLoader()) {
             throw new IllegalStateException("VPN session escaped its classloader");
         }
+        Class<?> platform = Class.forName(
+            "org.flclash.singboxprobe.isolated.AndroidPlatform", true, api.getClassLoader());
+        platform.getMethod("verifyNetworkSnapshot", android.content.Context.class).invoke(null, this);
         return version;
     }
 

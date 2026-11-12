@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.flclash.singboxprobe">
     <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="35" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <application android:label="FlClash libbox isolation probe"
         android:extractNativeLibs="true" android:allowBackup="false">
         <service android:name=".ProbeService" android:process=":singbox"

@@ -45,3 +45,9 @@ Java's TUN descriptor. It is compiled and classloader-checked by this probe,
 not started by the current instrumentation. A complete PlatformInterface
 implementation and VPN consent are still required.
 Next: full platform callbacks, single VPN owner, rollback and device memory tests.
+
+AndroidPlatform implements the pinned libbox platform callbacks: TUN/protect,
+Android UID/package ownership, non-VPN network selection and change callbacks,
+interface metadata, and raw Android DNS queries bound to the underlying network.
+The smoke test enumerates real interfaces; it does not create a VPN or test
+DNS traffic. Optional root/SSH/bridge/neighbor features are unsupported.

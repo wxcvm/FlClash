@@ -2,6 +2,7 @@ package org.flclash.singboxprobe.isolated;
 
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
+import io.nekohasekai.libbox.Libbox;
 import io.nekohasekai.libbox.RoutePrefix;
 import io.nekohasekai.libbox.RoutePrefixIterator;
 import io.nekohasekai.libbox.StringIterator;
@@ -41,8 +42,10 @@ public final class AndroidTunBridge implements Closeable {
             addRoutes(builder, options.getInet4RouteRange());
             addRoutes(builder, options.getInet6RouteRange());
         }
-        StringIterator dns = options.getDNSServerAddress();
-        while (dns != null && dns.hasNext()) builder.addDnsServer(dns.next());
+        if (options.getAutoRoute() && !Libbox.DNSModeDisabled.equals(options.getDNSMode().getValue())) {
+            StringIterator dns = options.getDNSServerAddress();
+            while (dns != null && dns.hasNext()) builder.addDnsServer(dns.next());
+        }
 
         StringIterator include = options.getIncludePackage();
         StringIterator exclude = options.getExcludePackage();
