@@ -31,3 +31,22 @@ classloader isolation, not VPN traffic, actual TUN descriptor ownership, VpnServ
 engine switching or memory release.
 The diagnostic has its own package ID and does not modify production FlClash.
 Next: libbox platform callbacks, single VPN owner, rollback and device memory tests.
+
+## Optional real VPN smoke test
+
+This requires Android VPN consent and temporarily replaces any existing VPN on
+the test device (including FlClash or AdGuard). Use a spare device/emulator or
+stop the other VPN first. The diagnostic VPN routes only this APK and only
+198.18.0.9/32; no internet server or user proxy configuration is used.
+
+    adb shell am start -n org.flclash.singboxprobe/.VpnConsentActivity
+    # Confirm the Android VPN prompt, then:
+    adb shell am instrument -w org.flclash.singboxprobe/.VpnProbeInstrumentation
+
+The host opens a local echo server and connects to the synthetic destination.
+The isolated libbox runtime opens a real Android TUN, rewrites the destination
+to the loopback server, and must return the challenge response. The test also
+requires a successful native socket-protection callback and stops the tunnel
+on exit. A successful build alone does not establish that the test passes.
+This narrow IPv4 probe does not validate arbitrary profiles, DNS, IPv6,
+physical network changes, production VPN handoff or memory/power behavior.

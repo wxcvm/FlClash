@@ -14,7 +14,7 @@ test -f "$PLATFORM"
 for tool in aapt2 d8 zipalign apksigner; do test -x "$TOOLS/$tool"; done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/host" "$WORK/dex" "$WORK/libbox"
+mkdir -p "$WORK/host" "$WORK/dex" "$WORK/libbox" "$WORK/libbox-adapter"
 unzip -p "$AAR" classes.jar > "$WORK/libbox.jar"
 unzip -p "$AAR" jni/arm64-v8a/libbox.so > "$WORK/libbox.so"
 unzip -p "$MIHOMO_AAR" jni/arm64-v8a/libgojni.so > "$WORK/libclash.so"
@@ -22,7 +22,9 @@ test -s "$WORK/libclash.so"
 javac --release 8 -cp "$PLATFORM:$MIHOMO_JAR" -d "$WORK/host" $(find "$ROOT/src" -name '*.java')
 jar cf "$WORK/host.jar" -C "$WORK/host" .
 "$TOOLS/d8" --min-api 29 --lib "$PLATFORM" --output "$WORK/dex" "$WORK/host.jar" "$MIHOMO_JAR"
-"$TOOLS/d8" --min-api 29 --lib "$PLATFORM" --output "$WORK/libbox" "$WORK/libbox.jar"
+javac --release 8 -cp "$PLATFORM:$WORK/libbox.jar" -d "$WORK/libbox-adapter" $(find "$ROOT/libbox-src" -name '*.java')
+jar cf "$WORK/libbox-adapter.jar" -C "$WORK/libbox-adapter" .
+"$TOOLS/d8" --min-api 29 --lib "$PLATFORM" --output "$WORK/libbox" "$WORK/libbox.jar" "$WORK/libbox-adapter.jar"
 test "$(find "$WORK/dex" -name 'classes*.dex' | wc -l)" -eq 1
 test "$(find "$WORK/libbox" -name 'classes*.dex' | wc -l)" -eq 1
 "$TOOLS/aapt2" link -I "$PLATFORM" --manifest "$ROOT/AndroidManifest.xml" -o "$WORK/base.apk"
