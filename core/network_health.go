@@ -20,11 +20,30 @@ const (
 type recoveryHealthResult struct {
 	state  string
 	status int
+	delay  int64
+}
+
+// The snapshot is only about the configured test endpoint on the current
+// route. DNS is marked untested unless an independent lookup actually ran.
+type NetworkHealthSnapshot struct {
+	State        string `json:"state"`
+	Source       string `json:"source,omitempty"`
+	Host         string `json:"host,omitempty"`
+	Attempt      int    `json:"attempt"`
+	HTTPStatus   int    `json:"http-status,omitempty"`
+	Delay        int64  `json:"delay,omitempty"`
+	DNS          string `json:"dns"`
+	Rebuilt      bool   `json:"rebuilt"`
+	CheckedAt    int64  `json:"checked-at,omitempty"`
+	CoreEpoch    uint64 `json:"core-epoch"`
+	RouteVersion uint64 `json:"route-version"`
 }
 
 var (
 	recoveryHealthMu     sync.Mutex
 	recoveryHealthCancel context.CancelFunc
+	recoveryHealth       NetworkHealthSnapshot
+	recoveryHealthRun    uint64
 )
 
 func cancelRecoveryHealth() {
@@ -34,6 +53,40 @@ func cancelRecoveryHealth() {
 		recoveryHealthCancel()
 		recoveryHealthCancel = nil
 	}
+	recoveryHealthRun++
+	recoveryHealth = NetworkHealthSnapshot{}
+}
+
+func handleNetworkHealth() NetworkHealthSnapshot {
+	epoch, version := routeStamp()
+	recoveryHealthMu.Lock()
+	defer recoveryHealthMu.Unlock()
+	if !isRunning.Load() {
+		return NetworkHealthSnapshot{State: "stopped", DNS: "untested"}
+	}
+	if recoveryHealth.State == "" || recoveryHealth.CoreEpoch != epoch ||
+		recoveryHealth.RouteVersion != version {
+		return NetworkHealthSnapshot{State: "idle", DNS: "untested", CoreEpoch: epoch, RouteVersion: version}
+	}
+	return recoveryHealth
+}
+
+func handleCheckNetworkHealth() {
+	if isRunning.Load() {
+		startRecoveryHealth("manual", false)
+	}
+}
+
+func recoveryDNSState(result recoveryHealthResult, host string) string {
+	switch result.state {
+	case "dns-failure":
+		return "failed"
+	case "route-unreachable":
+		if _, err := netip.ParseAddr(host); err != nil {
+			return "resolved"
+		}
+	}
+	return "untested"
 }
 
 // Probe the configured test address through the actual tunnel route. A
@@ -53,9 +106,9 @@ func checkRecoveryHealth(ctx context.Context, target string,
 	}
 	if result.Error == "" && result.StatusCode > 0 {
 		if result.StatusCode >= 200 && result.StatusCode < 300 {
-			return recoveryHealthResult{state: "reachable", status: result.StatusCode}
+			return recoveryHealthResult{state: "reachable", status: result.StatusCode, delay: result.Delay}
 		}
-		return recoveryHealthResult{state: "http-response", status: result.StatusCode}
+		return recoveryHealthResult{state: "http-response", status: result.StatusCode, delay: result.Delay}
 	}
 	if _, err := netip.ParseAddr(u.Hostname()); err == nil {
 		return recoveryHealthResult{state: "route-unreachable"}
@@ -76,18 +129,67 @@ func checkRecoveryHealth(ctx context.Context, target string,
 // connections or restarting the core. A newer handover or route change
 // invalidates the result.
 func scheduleRecoveryHealth(rebuilt bool) {
+	startRecoveryHealth("handover", rebuilt)
+}
+
+func startRecoveryHealth(source string, rebuilt bool) {
+	epoch, version := routeStamp()
+	target := currentTestURL()
+	host := ""
+	if u, err := url.Parse(target); err == nil {
+		host = u.Hostname()
+	}
 	recoveryHealthMu.Lock()
+	// A manual tap must not replace an active handover verification.
+	if source == "manual" && recoveryHealth.State == "checking" &&
+		recoveryHealth.CoreEpoch == epoch && recoveryHealth.RouteVersion == version {
+		recoveryHealthMu.Unlock()
+		return
+	}
 	if recoveryHealthCancel != nil {
 		recoveryHealthCancel()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	recoveryHealthCancel = cancel
+	recoveryHealthRun++
+	run := recoveryHealthRun
+	snapshot := NetworkHealthSnapshot{
+		State: "checking", Source: source, Host: host, DNS: "untested",
+		Rebuilt: rebuilt, CoreEpoch: epoch, RouteVersion: version,
+	}
+	recoveryHealth = snapshot
 	recoveryHealthMu.Unlock()
 
-	epoch, version := routeStamp()
-	target := currentTestURL()
+	publish := func(attempt int, result recoveryHealthResult, final bool) {
+		recoveryHealthMu.Lock()
+		defer recoveryHealthMu.Unlock()
+		if ctx.Err() != nil || recoveryHealthRun != run {
+			return
+		}
+		snapshot.Attempt = attempt
+		snapshot.DNS = recoveryDNSState(result, host)
+		snapshot.HTTPStatus = result.status
+		snapshot.Delay = result.delay
+		snapshot.CheckedAt = time.Now().UnixMilli()
+		if final {
+			snapshot.State = result.state
+		}
+		recoveryHealth = snapshot
+	}
 	safeGo("networkRecoveryHealth", func() {
-		defer cancel()
+		defer func() {
+			cancel()
+			recoveryHealthMu.Lock()
+			defer recoveryHealthMu.Unlock()
+			if recoveryHealthRun != run {
+				return
+			}
+			recoveryHealthCancel = nil
+			if recoveryHealth.State == "checking" {
+				recoveryHealth.State = "inconclusive"
+				recoveryHealth.CheckedAt = time.Now().UnixMilli()
+			}
+		}()
 		valid := func() bool {
 			e, v := routeStamp()
 			return ctx.Err() == nil && isRunning.Load() && e == epoch && v == version
@@ -100,6 +202,9 @@ func scheduleRecoveryHealth(rebuilt bool) {
 			if !valid() {
 				return
 			}
+			done := result.state == "reachable" || result.state == "http-response" ||
+				result.state == "invalid-test-url" || attempt == 2
+			publish(attempt, result, done)
 			if result.state == "reachable" || result.state == "http-response" {
 				log.Infoln("[Network recovery] %s HTTP %d (attempt %d, rebuilt=%t)", result.state, result.status, attempt, rebuilt)
 				return

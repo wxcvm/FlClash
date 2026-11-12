@@ -63,6 +63,8 @@ const (
 	dnsClearCacheMethod      CoreMethod = "dns.clearCache"
 	networkChangedMethod     CoreMethod = "network.changed"
 	networkRecoverMethod     CoreMethod = "network.recover"
+	networkHealthMethod      CoreMethod = "network.health"
+	networkCheckMethod       CoreMethod = "network.check"
 
 	logStartMethod      CoreMethod = "log.start"
 	logStopMethod       CoreMethod = "log.stop"

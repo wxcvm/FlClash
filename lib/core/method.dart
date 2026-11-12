@@ -46,6 +46,8 @@ enum CoreMethod {
   dnsClearCache('dns.clearCache'),
   networkChanged('network.changed'),
   networkRecover('network.recover'),
+  networkHealth('network.health'),
+  networkCheck('network.check'),
   logStart('log.start'),
   logStop('log.stop'),
   listenerStart('listener.start'),

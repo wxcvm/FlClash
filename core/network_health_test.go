@@ -63,3 +63,54 @@ func TestRecoveryHealthIPDoesNotRequireDNS(t *testing.T) {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 }
+
+func TestNetworkHealthDoesNotReuseOldRoute(t *testing.T) {
+	previous := isRunning.Load()
+	isRunning.Store(true)
+	t.Cleanup(func() {
+		cancelRecoveryHealth()
+		isRunning.Store(previous)
+	})
+	epoch, version := routeStamp()
+	recoveryHealthMu.Lock()
+	recoveryHealth = NetworkHealthSnapshot{
+		State: "reachable", DNS: "untested",
+		CoreEpoch: epoch, RouteVersion: version,
+	}
+	recoveryHealthMu.Unlock()
+	if got := handleNetworkHealth(); got.State != "reachable" {
+		t.Fatalf("current result not returned: %+v", got)
+	}
+	recoveryHealthMu.Lock()
+	recoveryHealth.RouteVersion = version + 1
+	recoveryHealthMu.Unlock()
+	if got := handleNetworkHealth(); got.State != "idle" {
+		t.Fatalf("stale result presented as current: %+v", got)
+	}
+	cancelRecoveryHealth()
+	if got := handleNetworkHealth(); got.State != "idle" {
+		t.Fatalf("cancelled result not cleared: %+v", got)
+	}
+	isRunning.Store(false)
+	if got := handleNetworkHealth(); got.State != "stopped" {
+		t.Fatalf("stopped core presented as active: %+v", got)
+	}
+}
+
+func TestRecoveryHealthDNSRequiresSeparateLookup(t *testing.T) {
+	for _, tc := range []struct {
+		state string
+		host  string
+		want  string
+	}{
+		{"reachable", "example.test", "untested"},
+		{"http-response", "example.test", "untested"},
+		{"route-unreachable", "192.0.2.1", "untested"},
+		{"route-unreachable", "example.test", "resolved"},
+		{"dns-failure", "example.test", "failed"},
+	} {
+		if got := recoveryDNSState(recoveryHealthResult{state: tc.state}, tc.host); got != tc.want {
+			t.Errorf("%s/%s: DNS %q, want %q", tc.state, tc.host, got, tc.want)
+		}
+	}
+}

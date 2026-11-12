@@ -20,6 +20,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:prism_ui/shapes/shapes.dart';
 
 import 'card.dart';
+import 'network_health.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 const _builtinOutbounds = {'DIRECT', 'REJECT', 'REJECT-DROP', 'PASS'};
@@ -173,6 +174,7 @@ class _CurrentOutboundCardState extends ConsumerState<CurrentOutboundCard>
                             dot: isStart,
                           ),
                         ],
+                        trailing: const [NetworkHealthEntry()],
                       ),
                       SizedBox(height: metrics.ipTop),
                       _ExitRow(

@@ -334,6 +334,12 @@ abstract class CoreHandlerInterface {
 
   Future<void> recoverNetwork() => _command(CoreMethod.networkRecover);
 
+  Future<Map<String, dynamic>> getNetworkHealth() {
+    return _query(CoreMethod.networkHealth, _json);
+  }
+
+  Future<void> checkNetworkHealth() => _command(CoreMethod.networkCheck);
+
   Future<void> startLog() => _commandUnobserved(CoreMethod.logStart);
 
   Future<void> stopLog() => _commandUnobserved(CoreMethod.logStop);
