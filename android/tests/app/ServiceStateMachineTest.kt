@@ -17,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 private fun vpnOptions(enable: Boolean = true, stack: String = "gvisor") = VpnOptions(
     enable = enable,
@@ -94,6 +95,9 @@ private class FakeHost(override val scope: CoroutineScope) : ServiceStateHost {
     var storedSharedState = configuredState()
     var setupResult: Result<String> = Result.success("")
     var startSucceeds = true
+    var nativeStartResult = NativeStartResult(true, false, "")
+    var nativeStartCalls = 0
+    override var hasNativeOwner = false
     var vpnPermissionGranted = true
     var localNetworkPermissionGranted = true
     var runsAsVpn: Boolean? = null
@@ -162,14 +166,90 @@ private class FakeHost(override val scope: CoroutineScope) : ServiceStateHost {
         return true
     }
 
+    override suspend fun startNativeService(config: File): NativeStartResult {
+        nativeStartCalls++
+        if (nativeStartResult.started) {
+            runtime = ServiceRuntime(true, STARTED_AT, "sing-box")
+            hasNativeOwner = true
+        }
+        return nativeStartResult
+    }
+
     override suspend fun stopService() {
         stopCalls++
         runtime = null
+        hasNativeOwner = false
     }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServiceStateMachineTest {
+
+    @Test
+    fun `native start owns the existing run state and normal start does not replace it`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState(enable = false))
+        val result = machine.requestNativeStart(File("native.json")).await()
+        assertTrue(result.started)
+        assertEquals("sing-box", host.runtime?.engine)
+        assertEquals(RunState.STARTED, machine.runState.value)
+        assertTrue(machine.requestStart().await())
+        assertEquals(0, host.startCalls)
+        assertTrue(machine.requestStop().await())
+        assertFalse(host.hasNativeOwner)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
+
+    @Test
+    fun `invalid native config leaves the working Mihomo run intact`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestStart().await())
+        host.nativeStartResult = NativeStartResult(false, false, "invalid config")
+        val result = machine.requestNativeStart(File("bad.json")).await()
+        assertFalse(result.started)
+        assertEquals("mihomo", host.runtime?.engine)
+        assertTrue(machine.isRunRequested)
+        assertEquals(RunState.STARTED, machine.runState.value)
+        assertEquals(0, host.stopCalls)
+    }
+
+    @Test
+    fun `native start failure from idle settles the run request`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        host.nativeStartResult = NativeStartResult(false, false, "invalid config")
+        assertFalse(machine.requestNativeStart(File("bad.json")).await().started)
+        assertFalse(machine.isRunRequested)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
+
+    @Test
+    fun `native VPN permission refusal does not call the controller`() = runTest {
+        val host = FakeHost(backgroundScope)
+        host.vpnPermissionGranted = false
+        val machine = ServiceStateMachine(host)
+        val result = machine.requestNativeStart(File("native.json")).await()
+        assertFalse(result.started)
+        assertEquals(VPN_PERMISSION_MESSAGE, result.error)
+        assertEquals(0, host.nativeStartCalls)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
+
+    @Test
+    fun `native cleanup pending can still be explicitly stopped`() = runTest {
+        val host = FakeHost(backgroundScope)
+        host.hasNativeOwner = true
+        host.nativeStartResult = NativeStartResult(false, false, "cleanup pending")
+        val machine = ServiceStateMachine(host)
+        assertFalse(machine.requestNativeStart(File("native.json")).await().started)
+        assertEquals(RunState.STOPPING, machine.runState.value)
+        assertTrue(machine.requestStop().await())
+        assertEquals(1, host.stopCalls)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
 
     @Test
     fun `initParams spells the keys the Go wrapper expects`() {
