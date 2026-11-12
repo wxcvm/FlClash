@@ -31,7 +31,11 @@ void main() {
       'hysteria-linux-amd64',
     );
     expect(
-      nativeReleaseAssetName(NativeCoreKind.hysteria2, 'v2.13.0', Abi.macosArm64),
+      nativeReleaseAssetName(
+        NativeCoreKind.hysteria2,
+        'v2.13.0',
+        Abi.macosArm64,
+      ),
       'hysteria-darwin-arm64',
     );
     expect(

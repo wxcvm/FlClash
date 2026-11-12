@@ -28,7 +28,9 @@ void main() {
       '-config',
       'config.json',
     ]);
-    final hysteriaCheck = NativeCoreKind.hysteria2.checkArguments('config.yaml');
+    final hysteriaCheck = NativeCoreKind.hysteria2.checkArguments(
+      'config.yaml',
+    );
     expect(hysteriaCheck, ['version']);
     expect(NativeCoreKind.hysteria2.runArguments('config.yaml'), [
       'client',
