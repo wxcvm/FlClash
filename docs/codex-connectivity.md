@@ -29,3 +29,7 @@ A completed HTTPS response, even an HTTP error status, is not proof of successfu
 The copied PowerShell command now uses valid assignment syntax and all three proxy variables; the POSIX command sets both cases. This addresses one confirmed client-side configuration defect, not every possible Codex disconnection. Real WebSocket/HTTPS stream validation, network handover, and AdGuard coexistence still need device-side reproduction.
 
 References: https://github.com/openai/codex/issues/38402 and https://github.com/openai/codex/issues/44517 (community reports, not a confirmed diagnosis of this installation).
+
+## Native core handoff
+
+When a native sing-box, Xray, or Hysteria client owns the system HTTP proxy, copy the environment variables again after switching cores: the listener can use a different port from Mihomo. The app uses the successfully activated native HTTP port instead of the old Mihomo port. If the native core only provides TUN routing or has not taken over the HTTP system proxy, it does not copy a stale Mihomo address. Existing Codex processes still need to be relaunched with the updated environment. This does not change global proxy settings or establish that a particular disconnect was caused by the old port.
