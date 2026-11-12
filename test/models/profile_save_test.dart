@@ -60,6 +60,45 @@ void main() {
       expect(await savedFile.readAsString(), 'proxies: []');
     });
 
+    test('streams gzip and zlib subscriptions into the validated file', () async {
+      final yaml = utf8.encode('proxies: []\n# ${'x' * 300000}');
+      for (final codec in [gzip, zlib]) {
+        final profile = Profile.normal(label: 'compressed');
+        String? temporary;
+        await profile.saveFile(
+          Uint8List.fromList(codec.encode(yaml)),
+          decompress: true,
+          validate: (path, _) async {
+            temporary = path;
+            expect(await File(path).readAsBytes(), yaml);
+            return null;
+          },
+        );
+        expect(await (await profile.file).readAsBytes(), yaml);
+        expect(await File(temporary!).exists(), isFalse);
+      }
+    });
+
+    test('cleans a rejected compressed profile without replacing the old file', () async {
+      final profile = Profile.normal(label: 'p');
+      final saved = await profile.file;
+      await saved.writeAsString('proxies: []');
+      String? temporary;
+      await expectLater(
+        profile.saveFile(
+          Uint8List.fromList(gzip.encode(utf8.encode('invalid'))),
+          decompress: true,
+          validate: (path, _) async {
+            temporary = path;
+            return 'invalid config';
+          },
+        ),
+        throwsA(isA<MessageException>()),
+      );
+      expect(await saved.readAsString(), 'proxies: []');
+      expect(await File(temporary!).exists(), isFalse);
+    });
+
     test('validates with the profile age key', () async {
       final profile = Profile.normal(
         label: 'p',

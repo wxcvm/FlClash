@@ -194,24 +194,33 @@ extension ProfileExtension on Profile {
       ]),
       subscriptionInfo: SubscriptionInfo.formHString(userinfo),
     ).saveFile(
-      decompressUnlabeled(response.data ?? Uint8List(0)),
+      response.data ?? Uint8List(0),
       validate: validate,
+      decompress: true,
     );
   }
 
   Future<Profile> saveFile(
     Uint8List bytes, {
     required ValidateConfig validate,
+    bool decompress = false,
   }) async {
     final path = await appPath.tempFilePath;
     final tempFile = File(path);
-    await tempFile.safeWriteAsBytes(bytes);
-    if (await validate(path, ageSecretKey) case final issue?) {
-      throw MessageException(issue);
+    try {
+      if (decompress) {
+        await writeUnlabeledBody(tempFile, bytes);
+      } else {
+        await tempFile.safeWriteAsBytes(bytes);
+      }
+      if (await validate(path, ageSecretKey) case final issue?) {
+        throw MessageException(issue);
+      }
+      final mFile = await file;
+      await tempFile.copy(mFile.path);
+      return copyWith(lastUpdateDate: DateTime.now());
+    } finally {
+      await tempFile.safeDelete();
     }
-    final mFile = await file;
-    await tempFile.copy(mFile.path);
-    await tempFile.safeDelete();
-    return copyWith(lastUpdateDate: DateTime.now());
   }
 }
