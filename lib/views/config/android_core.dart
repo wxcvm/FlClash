@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/native_auto_recovery.dart';
 import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/views/config/general.dart';
 import 'package:fl_clash/views/config/android_native_dashboard.dart';
@@ -57,6 +59,30 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
     if (!mounted || file?.path == null) return '未选择配置';
     setState(() => _configPath = file!.path!);
     return '已选择原生配置，启动前将进行完整预检';
+  }
+
+  Future<String> _createAutoProfile() async {
+    final source = File(_configPath);
+    if (await source.length() > 16 * 1024 * 1024) {
+      throw const FormatException('原生配置超过 16 MiB');
+    }
+    final generated = buildNativeAutoRecovery(await source.readAsString());
+    final directory = await Directory(await appPath.homeDirPath).createTemp('singbox-auto-');
+    final copy = File('${directory.path}/config.json');
+    try {
+      await copy.writeAsString(generated.json, flush: true);
+      await _service.validateNativeCore(copy.path);
+      if (!mounted) {
+        await directory.delete(recursive: true);
+        return '未选择自动恢复配置';
+      }
+      setState(() => _configPath = copy.path);
+      return '已生成并验证配置副本：${generated.addedGroups.join('、')}。'
+          '启动后在策略组中选择新增自动组，原配置未修改。';
+    } catch (_) {
+      await directory.delete(recursive: true);
+      rethrow;
+    }
   }
 
   Future<String> _validate() async {
@@ -155,6 +181,13 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                         : null,
                   ),
                   ListItem(
+                    title: const Text('生成自动恢复配置副本'),
+                    subtitle: const Text('最多 5 个原有代理组成原生自动组；不改原文件或默认路由'),
+                    onTap: canConfigure && _configPath.isNotEmpty
+                        ? () => _perform(_createAutoProfile)
+                        : null,
+                  ),
+                  ListItem(
                     title: const Text('启动 / 切换到 sing-box'),
                     onTap: canConfigure && _configPath.isNotEmpty
                         ? () => _perform(_start)
@@ -169,7 +202,7 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                 ],
                 footer: '使用带 TUN 的 sing-box 原生 JSON；不会转换 Clash 订阅。'
                     '启动失败时尝试恢复先前的 Mihomo VPN。'
-                    '节点、流量与日志可在运行管理查看；暂不支持自动切换。',
+                    '节点、流量与日志可在运行管理查看；选择原生自动组后由内核重新选路。',
               ),
               if (_busy)
                 const Padding(
