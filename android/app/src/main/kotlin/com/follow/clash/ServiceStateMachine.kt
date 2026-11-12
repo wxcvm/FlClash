@@ -16,6 +16,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
+import java.io.File
 
 enum class RunState {
     STARTED,
@@ -128,6 +129,37 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return host.scope.async { outcome.await() == StartOutcome.STARTED }
     }
 
+    fun requestNativeStart(config: File): Deferred<NativeStartResult> {
+        val request = createRequest(running = true)
+        return host.scope.async {
+            val result = startPreparationLock.withLock preparation@ {
+                val options = sharedState.vpnOptions?.copy(enable = true, nativeConfigPath = config.path)
+                    ?: return@preparation NativeStartResult(false, false, MISSING_CONFIG_MESSAGE)
+                if (!isCurrent(request)) return@preparation NativeStartResult(false, false, "Superseded")
+                if (!prepareVpn(options)) return@preparation NativeStartResult(false, false, VPN_PERMISSION_MESSAGE)
+                transitionLock.withLock transition@ {
+                    if (!isCurrent(request)) return@transition NativeStartResult(false, false, "Superseded")
+                    transitioning(RunState.STARTING) {
+                        try {
+                            host.startNativeService(options)
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            NativeStartResult(false, false, error.message.orEmpty())
+                        }
+                    }
+                }
+            }
+            transitionLock.withLock {
+                if (isCurrent(request) && !result.started && host.runtime == null && !host.hasNativeOwner) {
+                    arbiter.resetToStopped(request)
+                }
+                publish()
+            }
+            result
+        }
+    }
+
     fun requestStop(): Deferred<Boolean> {
         val request = createRequest(running = false)
         return host.scope.async { stop(request) }
@@ -140,7 +172,8 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
 
     // No new request for a settled run: one refused at a prompt would take the service down.
     private fun isStartedAs(options: VpnOptions?): Boolean =
-        runState.value == RunState.STARTED && host.runtime?.matches(options) == true
+        runState.value == RunState.STARTED &&
+            (host.runtime?.nativeConfigPath != null || host.runtime?.matches(options) == true)
 
     // The intent is claimed before the Core is set up, so a second action that lands meanwhile
     // toggles this start off instead of racing a second setup against it.
@@ -258,7 +291,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return transitionLock.withLock {
             when {
                 !isCurrent(request) -> false
-                host.runtime?.matches(options) == true -> true
+                host.runtime?.nativeConfigPath != null || host.runtime?.matches(options) == true -> true
                 else -> transitioning(RunState.STARTING) {
                     host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
                 }
@@ -295,10 +328,10 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             return@withLock false
         }
         abandonVpnPreparation()
-        if (host.runtime != null) {
+        if (host.runtime != null || host.hasNativeOwner) {
             stopLocked()
         }
-        isCurrent(request)
+        isCurrent(request) && host.runtime == null && !host.hasNativeOwner
     }
 
     private suspend fun stopLocked() = transitioning(RunState.STOPPING) { stopService() }
@@ -327,6 +360,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     @Synchronized
     private fun publish() {
         mutableRunState.value = transition ?: when {
+            host.hasNativeOwner && host.runtime == null -> RunState.STOPPING
             host.runtime == null -> RunState.STOPPED
             isRunRequested -> RunState.STARTED
             else -> RunState.STOPPING

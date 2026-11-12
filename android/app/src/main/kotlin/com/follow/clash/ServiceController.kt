@@ -7,6 +7,7 @@ import android.content.ServiceConnection
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Build
 import com.follow.clash.common.GlobalState
 import com.follow.clash.common.intent
 import com.follow.clash.core.Core
@@ -33,6 +34,8 @@ import kotlin.coroutines.resume
 object ServiceController {
     private val lock = Mutex()
     private var binding: ManagedServiceBinding? = null
+    @Volatile private var nativeCleanupPending = false
+    internal val hasNativeOwner: Boolean get() = runtime?.nativeConfigPath != null || nativeCleanupPending
 
     @Volatile
     internal var runtime: ServiceRuntime? = null
@@ -47,6 +50,7 @@ object ServiceController {
     private fun release() {
         clearBinding()
         runtime = null
+        nativeCleanupPending = false
         Core.stopListener()
     }
 
@@ -73,10 +77,14 @@ object ServiceController {
     }
 
     suspend fun start(options: VpnOptions): Boolean = lock.withLock {
-        if (options.nativeConfigPath != null) return@withLock startNative(options)
-        if (runtime?.nativeConfigPath != null) {
+        if (options.nativeConfigPath != null) return@withLock startNative(options).started
+        if (hasNativeOwner) {
             if (!stopForHandoff()) return@withLock false
         }
+        startMihomoLocked(options)
+    }
+
+    private suspend fun startMihomoLocked(options: VpnOptions): Boolean {
         ServiceConfig.updateVpnOptions(options)
         val nextIntent = if (options.enable) {
             VpnService::class.intent
@@ -96,11 +104,11 @@ object ServiceController {
             nextBinding.bind().onFailure { error ->
                 GlobalState.log("Unable to bind background service: $error")
                 release()
-                return@withLock false
+                return false
             }
         }
 
-        val currentBinding = binding ?: return@withLock false
+        val currentBinding = binding ?: return false
         val result = currentBinding.useService { service -> service.start() }
         if (result.isFailure) {
             GlobalState.log("Unable to start background service: ${result.exceptionOrNull()}")
@@ -109,7 +117,7 @@ object ServiceController {
                     GlobalState.log("Unable to clean up failed background service start: $error")
                 }
             release()
-            return@withLock false
+            return false
         }
 
         Core.startListener()
@@ -117,23 +125,41 @@ object ServiceController {
             vpn = options.enable,
             startedAtMillis = runtime?.startedAtMillis ?: System.currentTimeMillis(),
         )
-        true
+        return true
     }
 
-    // Candidate preflight happens before disturbing the existing VPN. The native
-    // service uses its own process and does not initialize libbox in Flutter.
-    private suspend fun startNative(options: VpnOptions): Boolean {
+    internal suspend fun startNativeForUi(options: VpnOptions): NativeStartResult = lock.withLock {
+        startNative(options)
+    }
+
+    internal suspend fun validateNativeProfile(profile: File): String = lock.withLock {
+        check(!hasNativeOwner) { "Stop the native VPN before checking another profile" }
         val app = GlobalState.application
-        val path = options.nativeConfigPath ?: return false
+        check(SingBoxVpnControl.isAvailable(app)) { "Native sing-box VPN is unavailable" }
+        check(profile.isFile) { "Native profile is missing" }
+        val candidate = ManagedServiceBinding(SingBoxVpnControl.bindIntent(app), {}, profile)
+        try {
+            candidate.bind().getOrThrow()
+            candidate.useService { (it as NativeManagedService).validate() }.getOrThrow()
+            "1.14.4"
+        } finally {
+            candidate.unbind()
+        }
+    }
+
+    private suspend fun startNative(options: VpnOptions): NativeStartResult {
+        val app = GlobalState.application
+        val path = options.nativeConfigPath ?: return NativeStartResult(false, false, "Native profile is missing")
         if (!options.enable || !SingBoxVpnControl.isAvailable(app)) {
-            GlobalState.log("Native sing-box VPN is unavailable")
-            return false
+            return NativeStartResult(false, false, "Native sing-box VPN is unavailable")
+        }
+        if (hasNativeOwner) {
+            return NativeStartResult(false, false, "Stop the current native session first")
         }
         val profile = File(path)
-        if (!profile.isFile) {
-            GlobalState.log("Native sing-box profile is missing")
-            return false
-        }
+        if (!profile.isFile) return NativeStartResult(false, false, "Native profile is missing")
+        val previous = runtime
+        val previousOptions = ServiceConfig.vpnOptions
         lateinit var candidate: ManagedServiceBinding
         candidate = ManagedServiceBinding(
             SingBoxVpnControl.bindIntent(app),
@@ -145,34 +171,46 @@ object ServiceController {
         }
         if (preflight.isFailure) {
             candidate.unbind()
-            GlobalState.log("Native profile rejected: ${preflight.exceptionOrNull()}")
-            return false
+            return NativeStartResult(false, false, preflight.exceptionOrNull()?.message.orEmpty())
         }
         if (!stopForHandoff()) {
             candidate.unbind()
-            return false
+            return NativeStartResult(false, false, "Existing VPN could not be stopped")
         }
         binding = candidate
         val result = candidate.useService { service -> service.start() }
         if (result.isFailure) {
-            GlobalState.log("Native VPN start failed: ${result.exceptionOrNull()}")
-            candidate.stopIfConnected()
+            val cleanup = candidate.stopIfConnected()
+            if (cleanup.isFailure) {
+                nativeCleanupPending = true
+                return NativeStartResult(false, false, "Native startup and cleanup failed: ${result.exceptionOrNull()?.message}")
+            }
             release()
-            return false
+            val restored = previous != null && previousOptions != null &&
+                startMihomoLocked(previousOptions.copy(nativeConfigPath = null))
+            return NativeStartResult(false, restored, result.exceptionOrNull()?.message.orEmpty())
         }
+        ServiceConfig.updateVpnOptions(options)
         runtime = ServiceRuntime(
             vpn = true,
             startedAtMillis = System.currentTimeMillis(),
             nativeConfigPath = path,
         )
-        return true
+        return NativeStartResult(true, false, "")
     }
 
     // Unlike general shutdown, handoff must not ignore an old owner's stop error.
     private suspend fun stopForHandoff(): Boolean {
         val current = binding
         if (current != null) {
-            val stopped = current.useService { service -> service.stop() }
+            val stopped = current.useService { service ->
+                if (service is VpnService && Build.VERSION.SDK_INT >= 29) {
+                    check(!service.isAlwaysOn && !service.isLockdownEnabled) {
+                        "Disable always-on/lockdown VPN before switching cores"
+                    }
+                }
+                service.stop()
+            }
             if (stopped.isFailure) {
                 GlobalState.log("VPN handoff blocked: ${stopped.exceptionOrNull()}")
                 return false
@@ -184,6 +222,10 @@ object ServiceController {
     }
 
     suspend fun stop() = lock.withLock {
+        if (hasNativeOwner) {
+            check(stopForHandoff()) { "Native VPN cleanup failed" }
+            return@withLock
+        }
         tearDownServices()
         runCatching { GlobalState.application.stopService(SingBoxVpnControl.foregroundIntent(GlobalState.application)) }
         release()
@@ -230,6 +272,12 @@ object ServiceController {
         }
     }
 }
+
+internal data class NativeStartResult(
+    val started: Boolean,
+    val restoredMihomo: Boolean,
+    val error: String,
+)
 
 private class ManagedServiceBinding(
     private val intent: Intent,
