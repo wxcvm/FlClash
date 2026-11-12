@@ -77,6 +77,10 @@ object ServiceController {
         if (runtime?.nativeConfigPath != null) {
             if (!stopForHandoff()) return@withLock false
         }
+        startMihomo(options)
+    }
+
+    private suspend fun startMihomo(options: VpnOptions): Boolean {
         ServiceConfig.updateVpnOptions(options)
         val nextIntent = if (options.enable) {
             VpnService::class.intent
@@ -96,11 +100,11 @@ object ServiceController {
             nextBinding.bind().onFailure { error ->
                 GlobalState.log("Unable to bind background service: $error")
                 release()
-                return@withLock false
+                return false
             }
         }
 
-        val currentBinding = binding ?: return@withLock false
+        val currentBinding = binding ?: return false
         val result = currentBinding.useService { service -> service.start() }
         if (result.isFailure) {
             GlobalState.log("Unable to start background service: ${result.exceptionOrNull()}")
@@ -109,7 +113,7 @@ object ServiceController {
                     GlobalState.log("Unable to clean up failed background service start: $error")
                 }
             release()
-            return@withLock false
+            return false
         }
 
         Core.startListener()
@@ -117,7 +121,7 @@ object ServiceController {
             vpn = options.enable,
             startedAtMillis = runtime?.startedAtMillis ?: System.currentTimeMillis(),
         )
-        true
+        return true
     }
 
     // Candidate preflight happens before disturbing the existing VPN. The native
@@ -148,6 +152,7 @@ object ServiceController {
             GlobalState.log("Native profile rejected: ${preflight.exceptionOrNull()}")
             return false
         }
+        val previous = ServiceConfig.vpnOptions?.takeIf { runtime?.nativeConfigPath == null && runtime != null }
         if (!stopForHandoff()) {
             candidate.unbind()
             return false
@@ -156,8 +161,12 @@ object ServiceController {
         val result = candidate.useService { service -> service.start() }
         if (result.isFailure) {
             GlobalState.log("Native VPN start failed: ${result.exceptionOrNull()}")
-            candidate.stopIfConnected()
+            val cleanup = candidate.stopIfConnected()
             release()
+            if (cleanup.isSuccess && previous != null) {
+                runCatching { startMihomo(previous) }
+                    .onFailure { GlobalState.log("Mihomo fallback failed: $it") }
+            }
             return false
         }
         runtime = ServiceRuntime(

@@ -88,6 +88,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             arbiter.resetToStopped(token).also { publish() }
         }
         if (dropped) {
+            clearNativeSelection()
             host.notifyStopped()
         }
     }
@@ -120,6 +121,32 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         handleStopAction()
     }
 
+    @Volatile private var nativeSelection: String? = null
+    @Volatile private var ordinaryOptions: VpnOptions? = null
+
+    fun requestNativeStart(path: String): Deferred<Boolean> {
+        require(path.isNotBlank()) { "Select a sing-box JSON profile" }
+        val options = sharedState.vpnOptions ?: host.loadSharedState().vpnOptions
+            ?: return CompletableDeferred(false)
+        if (host.runtime?.nativeConfigPath != null || nativeSelection != null) return CompletableDeferred(false)
+        ordinaryOptions = options
+        nativeSelection = path
+        sharedState = sharedState.copy(vpnOptions = options.copy(enable = true, nativeConfigPath = path))
+        val outcome = requestStart()
+        return host.scope.async {
+            val started = outcome.await()
+            if (!started && nativeSelection == path) clearNativeSelection()
+            started
+        }
+    }
+
+    private fun clearNativeSelection() {
+        if (nativeSelection == null) return
+        nativeSelection = null
+        sharedState = sharedState.copy(vpnOptions = ordinaryOptions)
+        ordinaryOptions = null
+    }
+
     fun requestStart(): Deferred<Boolean> {
         if (isStartedAs(sharedState.vpnOptions)) {
             return CompletableDeferred(true)
@@ -129,12 +156,17 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     }
 
     fun requestStop(): Deferred<Boolean> {
+        clearNativeSelection()
         val request = createRequest(running = false)
         return host.scope.async { stop(request) }
     }
 
     fun syncSharedState(state: SharedState) {
-        sharedState = state
+        val path = nativeSelection
+        if (path != null && state.vpnOptions != null) ordinaryOptions = state.vpnOptions
+        sharedState = if (path == null) state else state.copy(
+            vpnOptions = ordinaryOptions?.copy(enable = true, nativeConfigPath = path),
+        )
         applySharedState()
     }
 

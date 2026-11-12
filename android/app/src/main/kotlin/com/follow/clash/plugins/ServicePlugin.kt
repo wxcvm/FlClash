@@ -7,6 +7,7 @@ import com.follow.clash.common.GlobalState
 import com.follow.clash.core.Core
 import com.follow.clash.models.SharedState
 import com.follow.clash.service.NetworkObserver
+import com.follow.clash.service.SingBoxVpnControl
 import com.google.gson.Gson
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.BinaryMessenger
@@ -61,6 +62,8 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "getRunTime" -> getRunTime(result)
             "syncState" -> syncState(call, result)
             "start" -> start(call, result)
+            "nativeStatus" -> nativeStatus(result)
+            "startNative" -> startNative(call, result)
             "stop" -> stop(call, result)
             else -> result.notImplemented()
         }
@@ -116,6 +119,29 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
             ServiceState.syncSharedState(state)
             result.success("")
+        }
+    }
+
+    private fun nativeStatus(result: MethodChannel.Result) {
+        val runtime = ServiceController.runtime
+        result.success(mapOf(
+            "available" to SingBoxVpnControl.isAvailable(GlobalState.application),
+            "active" to (runtime?.nativeConfigPath != null),
+            "path" to runtime?.nativeConfigPath,
+        ))
+    }
+
+    private fun startNative(call: MethodCall, result: MethodChannel.Result) {
+        val path = call.argument<String>("path")
+        if (path.isNullOrBlank()) {
+            result.error("INVALID_ARGUMENT", "Select a sing-box JSON profile", null)
+            return
+        }
+        commandRevision = call.argument<Int>("revision") ?: commandRevision
+        scope.launch {
+            runCatching { ServiceState.requestNativeStart(path).await() }
+                .onSuccess { result.success(it) }
+                .onFailure { result.error("NATIVE_START", it.message, null) }
         }
     }
 

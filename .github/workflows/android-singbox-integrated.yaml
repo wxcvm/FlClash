@@ -1,0 +1,81 @@
+name: Android sing-box integrated APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/android-singbox-user-entry]
+    paths:
+      - 'android/**'
+      - 'lib/**'
+      - 'tool/android-singbox/isolation/libbox-src/**'
+      - '.github/workflows/android-singbox-integrated.yaml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: core/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Obtain verified official ARM64 AAR
+        run: |
+          gh run download 43219145718 --repo "$GITHUB_REPOSITORY" --name sing-box-v1.14.4-arm64-probe --dir libbox-input
+          aar="$(find libbox-input -name libbox.aar -print -quit)"
+          hash_file="$(find libbox-input -name sha256.txt -print -quit)"
+          test -n "$aar" && test -n "$hash_file"
+          test "$(sha256sum "$aar" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$hash_file")"
+          echo "LIBBOX_AAR=$(realpath "$aar")" >> "$GITHUB_ENV"
+      - name: Install adapter compilation SDK
+        run: |
+          sdkmanager_path="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$sdkmanager_path" 'platforms;android-35'
+      - name: Build integrated ARM64 development APK
+        run: |
+          flutter pub get
+          cd android
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_ROOT" "$ANDROID_HOME" > local.properties
+          wrapper="$FLUTTER_ROOT/bin/cache/artifacts/gradle_wrapper"
+          test -d "$wrapper" || flutter precache
+          cp -R "$wrapper/." .
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug -Ptarget-platform=android-arm64 -PflclashSingBoxAar="$LIBBOX_AAR"
+      - name: Verify APK payload
+        run: |
+          apk=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
+          test -n "$apk"
+          unzip -l "$apk" > apk-entries.txt
+          grep -F 'assets/singbox/libbox.dex' apk-entries.txt
+          grep -F 'lib/arm64-v8a/libbox.so' apk-entries.txt
+          grep -F 'lib/arm64-v8a/libclash.so' apk-entries.txt
+          mkdir -p integrated-apk
+          cp "$apk" integrated-apk/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flclash-singbox-integrated-arm64-development
+          path: integrated-apk/*.apk
+          retention-days: 7
