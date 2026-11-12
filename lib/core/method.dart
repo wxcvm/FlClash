@@ -22,6 +22,7 @@ enum CoreMethod {
   proxySelect('proxy.select'),
   proxyDefinition('proxy.definition'),
   proxyTestDelay('proxy.testDelay'),
+  proxyTestSpeed('proxy.testSpeed'),
   proxyValidate('proxy.validate'),
   proxyConvert('proxy.convert'),
   shareLinkEncode('shareLink.encode'),
