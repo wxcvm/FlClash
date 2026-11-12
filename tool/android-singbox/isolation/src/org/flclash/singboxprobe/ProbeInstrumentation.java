@@ -70,7 +70,7 @@ public final class ProbeInstrumentation extends Instrumentation {
                 }
             }
             result.putString("stream", "PASS: isolated libbox " + firstVersion
-                + ", remote PID " + firstPid + ", 2/2 Binder calls\\n");
+                + ", remote PID " + firstPid + ", 2/2 Binder calls\n");
             finish(Activity.RESULT_OK, result);
         } catch (Exception | LinkageError error) {
             result.putString("stream", "FAIL: " + error + "\n");
