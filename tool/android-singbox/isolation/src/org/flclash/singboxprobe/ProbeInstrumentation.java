@@ -42,26 +42,36 @@ public final class ProbeInstrumentation extends Instrumentation {
             if (!bound || !connected.await(15, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("Probe service did not connect");
             }
-            Parcel data = Parcel.obtain();
-            Parcel reply = Parcel.obtain();
-            try {
-                data.writeInterfaceToken(ProbeService.DESCRIPTOR);
-                if (!remote[0].transact(ProbeService.PROBE, data, reply, 0)) {
-                    throw new IllegalStateException("Probe transaction was rejected");
+            int firstPid = -1;
+            String firstVersion = null;
+            for (int attempt = 0; attempt < 2; attempt++) {
+                Parcel data = Parcel.obtain();
+                Parcel reply = Parcel.obtain();
+                try {
+                    data.writeInterfaceToken(ProbeService.DESCRIPTOR);
+                    if (!remote[0].transact(ProbeService.PROBE, data, reply, 0)) {
+                        throw new IllegalStateException("Probe transaction was rejected");
+                    }
+                    reply.readException();
+                    int pid = reply.readInt();
+                    String version = reply.readString();
+                    if (pid <= 0 || pid == Process.myPid()) {
+                        throw new IllegalStateException("Probe did not run in a separate process");
+                    }
+                    if (attempt == 0) {
+                        firstPid = pid;
+                        firstVersion = version;
+                    } else if (pid != firstPid || !firstVersion.equals(version)) {
+                        throw new IllegalStateException("Probe runtime changed between calls");
+                    }
+                } finally {
+                    data.recycle();
+                    reply.recycle();
                 }
-                reply.readException();
-                int pid = reply.readInt();
-                String version = reply.readString();
-                if (pid == Process.myPid()) {
-                    throw new IllegalStateException("Probe did not run in a separate process");
-                }
-                result.putString("stream", "PASS: isolated libbox " + version
-                    + ", remote PID " + pid + "\n");
-                finish(Activity.RESULT_OK, result);
-            } finally {
-                data.recycle();
-                reply.recycle();
             }
+            result.putString("stream", "PASS: isolated libbox " + firstVersion
+                + ", remote PID " + firstPid + ", 2/2 Binder calls\\n");
+            finish(Activity.RESULT_OK, result);
         } catch (Exception | LinkageError error) {
             result.putString("stream", "FAIL: " + error + "\n");
             finish(Activity.RESULT_CANCELED, result);
