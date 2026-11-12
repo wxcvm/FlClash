@@ -132,24 +132,29 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     fun requestNativeStart(config: File): Deferred<NativeStartResult> {
         val request = createRequest(running = true)
         return host.scope.async {
-            val result = startPreparationLock.withLock {
+            val result = startPreparationLock.withLock preparation@ {
                 if (!isCurrent(request)) {
-                    return@withLock NativeStartResult(false, false, "Superseded by a newer request")
+                    return@preparation NativeStartResult(false, false, "Superseded by a newer request")
                 }
                 if (!prepareVpn(true)) {
-                    return@withLock NativeStartResult(false, false, VPN_PERMISSION_MESSAGE)
+                    return@preparation NativeStartResult(false, false, VPN_PERMISSION_MESSAGE)
                 }
-                transitionLock.withLock {
+                transitionLock.withLock transition@ {
                     if (!isCurrent(request)) {
-                        return@withLock NativeStartResult(false, false, "Superseded by a newer request")
+                        return@transition NativeStartResult(false, false, "Superseded by a newer request")
                     }
                     transitioning(RunState.STARTING) {
-                        host.startNativeService(config)
+                        try {
+                            host.startNativeService(config)
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            NativeStartResult(false, false, error.message.orEmpty())
+                        }
                     }
                 }
             }
-            // A rejected native config or restored Mihomo is still a live run.
-            // Do not use abandon(), which would stop that working service.
+            // Do not tear down a working or restored Mihomo on failed native preflight.
             transitionLock.withLock {
                 if (isCurrent(request) && !result.started && host.runtime == null && !host.hasNativeOwner) {
                     arbiter.resetToStopped(request)
@@ -351,6 +356,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     @Synchronized
     private fun publish() {
         mutableRunState.value = transition ?: when {
+            host.hasNativeOwner && host.runtime == null -> RunState.STOPPING
             host.runtime == null -> RunState.STOPPED
             isRunRequested -> RunState.STARTED
             else -> RunState.STOPPING

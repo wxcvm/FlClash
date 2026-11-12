@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var messenger: BinaryMessenger
@@ -39,6 +40,11 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         messenger = binding.binaryMessenger
         channel = MethodChannel(messenger, SERVICE_CHANNEL)
         channel.setMethodCallHandler(this)
+        scope.launch(Dispatchers.Main) {
+            ServiceState.runState.collect {
+                channel.invokeMethod("nativeCoreStatusChanged", nativeStatus())
+            }
+        }
         // Serial: watchRoute keeps the latest intent by the order calls reach the Core.
         coreChannel = MethodChannel(
             messenger,
@@ -64,7 +70,8 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "syncState" -> syncState(call, result)
             "start" -> start(call, result)
             "stop" -> stop(call, result)
-            "nativeCoreStatus" -> nativeCoreStatus(result)
+            "nativeCoreStatus" -> result.success(nativeStatus())
+            "validateNativeCore" -> validateNativeCore(call, result)
             "startNativeCore" -> startNativeCore(call, result)
             "stopNativeCore" -> stopNativeCore(call, result)
             else -> result.notImplemented()
@@ -124,13 +131,24 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
     }
 
-    private fun nativeCoreStatus(result: MethodChannel.Result) {
-        result.success(mapOf(
-            "available" to NativeVpnSessions.isAvailable(GlobalState.application),
-            "engine" to (ServiceController.runtime?.engine ?: "idle"),
-            "nativeOwner" to ServiceController.hasNativeOwner,
-            "state" to ServiceState.runState.value.name,
-        ))
+    private fun nativeStatus(): Map<String, Any> = mapOf(
+        "available" to NativeVpnSessions.isAvailable(GlobalState.application),
+        "engine" to (ServiceController.runtime?.engine ?: "idle"),
+        "nativeOwner" to ServiceController.hasNativeOwner,
+        "state" to ServiceState.runState.value.name,
+    )
+
+    private fun validateNativeCore(call: MethodCall, result: MethodChannel.Result) {
+        val path = call.argument<String>("path")
+        if (path.isNullOrBlank()) {
+            result.error("INVALID_ARGUMENT", "Select a native JSON config", null)
+            return
+        }
+        scope.launch {
+            runCatching { NativeVpnSessions.validate(GlobalState.application, File(path)) }
+                .onSuccess { result.success(it) }
+                .onFailure { result.error("NATIVE_CONFIG", it.message, null) }
+        }
     }
 
     private fun startNativeCore(call: MethodCall, result: MethodChannel.Result) {

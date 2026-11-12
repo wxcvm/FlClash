@@ -10,6 +10,9 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.util.Log
+import com.follow.clash.common.QuickAction
+import com.follow.clash.common.quickIntent
+import com.follow.clash.common.toPendingIntent
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
@@ -117,6 +120,7 @@ class SingBoxVpnService : SystemVpnService() {
             .setContentText("Native VPN active")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
+            .addAction(Notification.Action.Builder(null, "Stop", QuickAction.STOP.quickIntent.toPendingIntent).build())
             .build()
         startForeground(NOTIFICATION_ID, notification)
     }

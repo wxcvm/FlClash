@@ -14,6 +14,9 @@ interface NativeVpnSession {
 object NativeVpnSessions {
     fun isAvailable(context: Context): Boolean = IsolatedLibbox.isAvailable(context)
 
+    suspend fun validate(context: Context, config: File): String =
+        SingBoxPreflight.validate(context, config)
+
     suspend fun prepare(
         context: Context,
         config: File,
