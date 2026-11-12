@@ -77,9 +77,13 @@ func handleResetNetwork() {
 	// applying. Never overlap outbound rebuilds or connection cleanup.
 	networkResetMu.Lock()
 	defer networkResetMu.Unlock()
+	cancelRecoveryHealth()
 	handleCloseConnections()
 	handleNetworkChanged()
-	reloadOutboundsOnNetworkChange()
+	rebuilt := reloadOutboundsOnNetworkChange()
+	if isRunning.Load() {
+		scheduleRecoveryHealth(rebuilt)
+	}
 }
 
 // A connection that is already gone is closed as far as the host is concerned.

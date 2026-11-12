@@ -79,17 +79,17 @@ func loadNetworkReloadConfig(path string, digest configDigest, active *config.Co
 // Some long-lived outbounds (notably WireGuard) retain sockets bound to the
 // previous Android network. Clearing tracked connections and DNS alone does
 // not make those outbounds reconnect after cellular -> Wi-Fi handover.
-func reloadOutboundsOnNetworkChange() {
+func reloadOutboundsOnNetworkChange() bool {
 	configMu.Lock()
 	defer configMu.Unlock()
 
 	if !isRunning.Load() || currentConfig == nil || appliedConfigDigest == nil {
-		return
+		return false
 	}
 	cfg, err := loadNetworkReloadConfig(runningConfigPath(), *appliedConfigDigest, currentConfig)
 	if err != nil {
 		logError("network change: cannot rebuild outbounds: %v", err)
-		return
+		return false
 	}
 
 	selected := manualSelectionsOnNetworkChange()
@@ -99,4 +99,5 @@ func reloadOutboundsOnNetworkChange() {
 	bumpRouteEpoch()
 	updateListeners(cfg)
 	reconcileGeoUpdater()
+	return true
 }
