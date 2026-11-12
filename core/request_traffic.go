@@ -14,6 +14,10 @@ const requestTrafficInterval = time.Second
 // A full bulk queue drops a report; a closed request holds its connection only this many retries.
 const requestTrafficCloseRetries = 5
 
+// Only compact large, substantially drained maps; ordinary traffic must not
+// repeatedly allocate a new map for small fluctuations.
+const requestTrafficCompactThreshold = 1024
+
 type RequestTraffic struct {
 	Id       string `json:"id"`
 	Upload   int64  `json:"upload"`
@@ -33,23 +37,26 @@ type watchedRequest struct {
 type requestTrafficWatch struct {
 	mu       sync.Mutex
 	requests map[string]*watchedRequest
+	peak     int
 	running  bool
 }
 
-var currentRequestTraffic = requestTrafficWatch{
-	requests: map[string]*watchedRequest{},
-}
+var currentRequestTraffic requestTrafficWatch
 
 func (w *requestTrafficWatch) add(tracker statistic.Tracker) (start bool) {
 	info := tracker.Info()
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.requests == nil {
+		w.requests = make(map[string]*watchedRequest)
+	}
 	w.requests[tracker.ID()] = &watchedRequest{
 		tracker:  tracker,
 		upload:   info.UploadTotal.Load(),
 		download: info.DownloadTotal.Load(),
 		fresh:    true,
 	}
+	w.peak = max(w.peak, len(w.requests))
 	start = !w.running
 	w.running = true
 	return start
@@ -85,14 +92,37 @@ func (w *requestTrafficWatch) collect(
 			delete(w.requests, id)
 		}
 	}
+	w.compactLocked()
 	w.running = len(w.requests) > 0
 	return w.running
+}
+
+// The Go map does not necessarily return its backing storage when entries
+// are deleted. Release the idle map, or rebuild a large map after a burst
+// subsides, without dropping any of the remaining live or retrying requests.
+func (w *requestTrafficWatch) compactLocked() {
+	remaining := len(w.requests)
+	if remaining == 0 {
+		w.requests = nil
+		w.peak = 0
+		return
+	}
+	if w.peak < requestTrafficCompactThreshold || remaining > w.peak/4 {
+		return
+	}
+	compact := make(map[string]*watchedRequest, remaining)
+	for id, request := range w.requests {
+		compact[id] = request
+	}
+	w.requests = compact
+	w.peak = remaining
 }
 
 func (w *requestTrafficWatch) clear() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	clear(w.requests)
+	w.requests = nil
+	w.peak = 0
 	w.running = false
 }
 
