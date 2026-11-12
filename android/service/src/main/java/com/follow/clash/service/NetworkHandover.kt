@@ -1,0 +1,36 @@
+package com.follow.clash.service
+
+// Prefer a usable network over a faster transport. Keep an unvalidated network
+// as a fallback when validation is blocked or no validated network exists.
+internal fun networkSelectionPriority(
+    transportPriority: Int,
+    validated: Boolean,
+    hasDns: Boolean,
+    losing: Boolean,
+): Int = transportPriority +
+    (if (validated) 0 else 40) +
+    (if (hasDns) 0 else 25) +
+    (if (losing) 100 else 0)
+
+// Runs on the NetworkObserver handler. Do not reset the core on initial
+// availability or repeatedly while offline; reset once when service returns.
+internal class NetworkHandoverTracker<T : Any> {
+    var current: T? = null
+        private set
+    private var seenNetwork = false
+
+    fun markLost(network: T) {
+        if (current == network) current = null
+    }
+
+    fun update(next: T?): Boolean {
+        if (next == null) {
+            current = null
+            return false
+        }
+        val reset = seenNetwork && current != next
+        current = next
+        seenNetwork = true
+        return reset
+    }
+}
