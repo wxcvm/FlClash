@@ -1,10 +1,13 @@
 import json
 import unittest
-from device_acceptance import EXPECTED, parse_result, summarize
+import tempfile
+from pathlib import Path
+from device_acceptance import EXPECTED, load_outbound, parse_result, summarize
 
 
 def fixture():
     return [{"phase": phase, "tlsMs": 100,
+             **({"dnsMs": 30, "egress": "direct"} if phase in ("singbox-1", "singbox-2") else {}),
              "samples": [[{"name": "com.follow.clash.dev", "pid": 1, "pssKiB": v}]
                          for v in [100, 200, 300]]}
             for phase in EXPECTED[:-1]] + [{"phase": "stopped", "pss": []}]
@@ -34,8 +37,43 @@ class AcceptanceReportTest(unittest.TestCase):
 
     def test_optional_handover(self):
         report = fixture()
-        report.insert(2, {"phase": "singbox-network-handover", "tlsMs": 80})
-        self.assertEqual(len(summarize(report)), 7)
+        report.insert(2, {"phase": "singbox-network-handover", "tlsMs": 80,
+                          "dnsMs": 20, "beforeGeneration": 1, "afterGeneration": 3})
+        self.assertEqual(len(summarize(report, handover=True)), 7)
+        with self.assertRaises(ValueError):
+            summarize(report)
+
+    def test_proxy_requires_explicit_egress_and_dns(self):
+        report = fixture()
+        with self.assertRaises(ValueError):
+            summarize(report, proxy=True)
+        for phase in report:
+            if phase["phase"] in ("singbox-1", "singbox-2"):
+                phase["egress"] = "proxy"
+        self.assertEqual(len(summarize(report, proxy=True)), 6)
+        del report[1]["dnsMs"]
+        with self.assertRaises(ValueError):
+            summarize(report, proxy=True)
+
+    def test_soak_requires_measurements(self):
+        report = fixture()
+        report.insert(2, {"phase": "singbox-soak", "durationSeconds": 60,
+                          "checks": [{"tlsMs": 100, "dnsMs": 10}]})
+        self.assertEqual(len(summarize(report, soak_seconds=60)), 7)
+        with self.assertRaises(ValueError):
+            summarize(report, soak_seconds=120)
+
+    def test_single_outbound_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "outbound.json"
+            good = {"type": "vless", "server": "example.com", "server_port": 443}
+            path.write_text(json.dumps(good))
+            self.assertEqual(json.loads(load_outbound(path)), good)
+            for value in [{"type": "direct"}, {**good, "detour": "other"},
+                          {**good, "server_port": True}, {"outbounds": [good]}]:
+                path.write_text(json.dumps(value))
+                with self.assertRaises(ValueError):
+                    load_outbound(path)
 
 
 if __name__ == "__main__":

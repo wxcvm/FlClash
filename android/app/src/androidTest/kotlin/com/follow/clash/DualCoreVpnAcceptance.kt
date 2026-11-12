@@ -52,6 +52,8 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         check(cm.allNetworks.none { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true }) {
             "Stop every existing VPN first"
         }
+        require(soakSeconds in 0..120)
+        val outbound = if (nativeProxy) readNativeOutbound() else JSONObject().put("type", "direct").put("tag", "acceptance-egress")
         val activity = runner.startActivitySync(Intent().setClassName(context, "com.follow.clash.VpnAcceptanceActivity")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         runner.waitForIdleSync()
@@ -73,7 +75,6 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
                   - MATCH,DIRECT
             """.trimIndent())
         }
-        val outbound = if (nativeProxy) readNativeOutbound() else JSONObject().put("type", "direct").put("tag", "acceptance-egress")
         val native = File(home, "singbox.json").apply {
             writeText(JSONObject("""
                 {"log":{"level":"warn"},"inbounds":[{"type":"tun","tag":"acceptance",
@@ -97,7 +98,6 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         val setup = JSONObject().put("base", JSONObject().put("path", profile.path).put("overlay", ""))
             .put("selected-map", JSONObject()).put("options", JSONObject())
         try {
-            require(soakSeconds in 0..120)
             runBlocking {
                 withTimeout(480_000) {
                     val state = SharedState(vpnOptions = options, setupParams = JsonParser.parseString(setup.toString()).asJsonObject)
