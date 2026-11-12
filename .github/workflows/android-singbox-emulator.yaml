@@ -1,0 +1,103 @@
+name: Android sing-box VPN emulator
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/android-singbox-real-vpn-probe]
+    paths:
+      - 'tool/android-singbox/isolation/**'
+      - '.github/workflows/android-singbox-emulator.yaml'
+permissions:
+  contents: read
+concurrency:
+  group: singbox-vpn-emulator-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  vpn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: c005f35300ce76427dc285481ec5695f5b179cd2
+          path: upstream-sing-box
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: upstream-sing-box/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
+      - name: Build official x86_64 libbox
+        working-directory: upstream-sing-box
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          git tag -f v1.14.4
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/amd64
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: core/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build x86_64 Mihomo
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          flutter pub get
+          cd android
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_ROOT" "$ANDROID_HOME" > local.properties
+          wrapper="$FLUTTER_ROOT/bin/cache/artifacts/gradle_wrapper"
+          test -d "$wrapper" || flutter precache
+          cp -R "$wrapper/." .
+          chmod +x gradlew
+          ./gradlew :core:bindCore -Ptarget-platform=android-x64
+      - name: Build emulator diagnostic APK
+        run: |
+          sdkmanager_path="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$sdkmanager_path" 'platforms;android-35' 'build-tools;35.0.0'
+          bash tool/android-singbox/isolation/build.sh upstream-sing-box/libbox.aar probe-apk \
+            build/core/gomobile/classes.jar build/core/gomobile/core.aar x86_64
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run real Android VPN smoke tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          disable-animations: true
+          script: bash tool/android-singbox/isolation/run-emulator.sh probe-apk/singbox-isolation-probe.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: singbox-vpn-emulator-results
+          path: |
+            probe-apk/
+            probe-results/
+          retention-days: 7

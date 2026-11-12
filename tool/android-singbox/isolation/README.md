@@ -50,3 +50,12 @@ requires a successful native socket-protection callback and stops the tunnel
 on exit. A successful build alone does not establish that the test passes.
 This narrow IPv4 probe does not validate arbitrary profiles, DNS, IPv6,
 physical network changes, production VPN handoff or memory/power behavior.
+
+## Automated emulator test
+
+The x86_64 workflow builds both official native libraries for the emulator ABI,
+then runs the existing isolation test and two full VPN TCP echo start/stop cycles.
+VPN consent is granted only on the disposable CI emulator using its shell appop.
+No ARM translation is assumed. Instrumentation output must contain the expected
+PASS marker and Android success result; logcat and APK are uploaded on failure.
+This does not replace ARM64/ColorOS device verification.

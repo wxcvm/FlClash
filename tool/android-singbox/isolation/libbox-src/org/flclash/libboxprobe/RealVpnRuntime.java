@@ -5,11 +5,10 @@ import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.VpnService;
-import android.os.ParcelFileDescriptor;
 import android.system.OsConstants;
-import go.Seq;
 import io.nekohasekai.libbox.*;
-import java.io.File;
+import org.flclash.singboxprobe.isolated.AndroidTunBridge;
+import org.flclash.singboxprobe.isolated.LibboxVpnSession;
 import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.net.InterfaceAddress;
@@ -23,25 +22,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class RealVpnRuntime {
     private final VpnService service;
     private final AtomicInteger protectedSockets = new AtomicInteger();
-    private CommandServer server;
-    private ParcelFileDescriptor tun;
+    private final AndroidTunBridge bridge;
+    private LibboxVpnSession session;
 
-    public RealVpnRuntime(VpnService service) { this.service = service; }
+    public RealVpnRuntime(VpnService service) {
+        this.service = service;
+        this.bridge = new AndroidTunBridge(service);
+    }
 
     public void start(int port) throws Exception {
         if (port < 1 || port > 65535) throw new IllegalArgumentException("Invalid echo port");
-        Seq.setContext(service.getApplicationContext());
-        File base = new File(service.getFilesDir(), "libbox-vpn-probe");
-        if (!base.isDirectory() && !base.mkdirs()) throw new IllegalStateException("Cannot create probe directory");
-        SetupOptions setup = new SetupOptions();
-        setup.setBasePath(base.getAbsolutePath());
-        setup.setWorkingPath(base.getAbsolutePath());
-        setup.setTempPath(service.getCacheDir().getAbsolutePath());
-        setup.setLogMaxLines(100);
-        Libbox.setup(setup);
         String config = "{\"inbounds\":[{\"type\":\"tun\",\"tag\":\"tun\","
             + "\"address\":[\"198.18.0.1/30\"],\"auto_route\":true,\"stack\":\"gvisor\","
-            + "\"dns_mode\":\"disabled\",\"route_address\":[\"198.18.0.9/32\"],\"mtu\":1500}],"
+            + "\"dns_mode\":\"disabled\",\"route_address\":[\"198.18.0.9/32\"],"
+            + "\"include_package\":[\"" + service.getPackageName() + "\"],\"mtu\":1500}],"
             + "\"outbounds\":[{\"type\":\"direct\",\"tag\":\"direct\"}],"
             + "\"route\":{\"auto_detect_interface\":true,\"rules\":[{\"ip_cidr\":[\"198.18.0.9/32\"],"
             + "\"action\":\"route\",\"outbound\":\"direct\",\"override_address\":\"127.0.0.1\","
@@ -53,9 +47,9 @@ public final class RealVpnRuntime {
                 switch (method.getName()) {
                     case "usePlatformAutoDetectInterfaceControl": return true;
                     case "autoDetectInterfaceControl":
-                        if (!service.protect((Integer) args[0])) throw new IllegalStateException("Socket protect rejected");
+                        bridge.autoDetectInterfaceControl((Integer) args[0]);
                         protectedSockets.incrementAndGet(); return null;
-                    case "openTun": return openTun((TunOptions) args[0]);
+                    case "openTun": return bridge.openTun((TunOptions) args[0]);
                     case "getInterfaces": return interfaces();
                     case "startDefaultInterfaceMonitor":
                         publishDefault((InterfaceUpdateListener) args[0]); return null;
@@ -86,29 +80,13 @@ public final class RealVpnRuntime {
                     default: throw new UnsupportedOperationException("Probe handler: " + method.getName());
                 }
             });
-        server = Libbox.newCommandServer(handler, platform);
+        session = new LibboxVpnSession(bridge, platform, handler);
         try {
-            server.start();
-            server.startOrReloadService(config, new OverrideOptions());
-            if (tun == null) throw new IllegalStateException("libbox did not establish TUN");
-        } catch (Exception error) {
+            session.start(service, config);
+        } catch (Exception | LinkageError error) {
             try { stop(); } catch (Exception cleanup) { error.addSuppressed(cleanup); }
             throw error;
         }
-    }
-
-    private int openTun(TunOptions options) throws Exception {
-        if (tun != null) throw new IllegalStateException("Duplicate TUN open");
-        if (VpnService.prepare(service) != null) throw new IllegalStateException("VPN consent lost");
-        VpnService.Builder builder = service.new Builder()
-            .setSession("FlClash local TUN diagnostic")
-            .setMtu(options.getMTU()).setBlocking(false).setMetered(false)
-            .addAddress("198.18.0.1", 30).addRoute("198.18.0.9", 32)
-            .addAllowedApplication(service.getPackageName());
-        tun = builder.establish();
-        if (tun == null) throw new IllegalStateException("Android rejected TUN");
-        // libbox duplicates this descriptor; retain and close the original.
-        return tun.getFd();
     }
 
     private ConnectivityManager connectivity() {
@@ -178,12 +156,10 @@ public final class RealVpnRuntime {
     public int protectCount() { return protectedSockets.get(); }
 
     public void stop() throws Exception {
-        try {
-            if (server != null) {
-                try { server.closeService(); } finally { server.close(); server = null; }
-            }
-        } finally {
-            if (tun != null) { try { tun.close(); } finally { tun = null; } }
+        if (session != null) {
+            try { session.close(); } finally { session = null; }
+        } else {
+            bridge.close();
         }
     }
 }
