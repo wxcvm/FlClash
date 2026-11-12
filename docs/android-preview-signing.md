@@ -32,3 +32,9 @@ If a dedicated preview key was previously configured, reuse it as the shared rel
 - Future fork preview and stable APKs with the same package and certificate can update in place when their Android version code is not lower than the installed code. Preview codes are derived from the pubspec build number and the release run/attempt. A future stable release must use a build number greater than the highest published preview code; do not reset the build number when switching channels.
 
 The preview workflow fails if the shared signing secrets are absent, verifies the APK signature, application ID and version, and records the certificate fingerprint in the release notes. Historical separate-package builds must not be overwritten with a new application identity.
+
+## Published upgrade identity
+
+Each new dual-platform release publishes `android-build.json` with the actual verified certificate SHA-256, Android versionCode, application ID, source commit and release tag. Its hash is included in SHA256SUMS. The publisher rejects a different certificate or a versionCode that does not exceed every previous published unified APK. Only the two historical .dev releases are excluded. A future stable publisher must reuse this gate and the same signing identity; the current workflow still creates previews only.
+
+Android builds are now artifact-only reusable jobs. Do not backfill or replace an existing release APK: publish a new tag with a higher versionCode instead. The original official app requires one backup/reinstall/restore if its certificate differs. A rollback must be rebuilt under a new higher versionCode; an older APK is not an in-place rollback.

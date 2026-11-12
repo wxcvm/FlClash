@@ -125,11 +125,44 @@ jobs:
           test -s "android-assets/$name"
           cp "android-assets/$name" preview-assets/
           test -s android-assets/signing.txt
+          test -s android-assets/android-build.json
+          cp android-assets/android-build.json preview-assets/
           (
             cd preview-assets
-            sha256sum *.exe *.zip *.apk > SHA256SUMS
+            sha256sum *.exe *.zip *.apk android-build.json > SHA256SUMS
             sha256sum -c SHA256SUMS
           )
+      - name: Verify Android upgrade identity against published releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          meta=preview-assets/android-build.json
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$GITHUB_SHA" '
+            .applicationId == "com.follow.clash" and .tag == $tag and .sourceSha == $sha and
+            (.certificateSha256 | test("^[0-9a-f]{64}$")) and
+            (.versionCode | type == "number" and . > 0 and . <= 2100000000 and . == floor)
+          ' "$meta" >/dev/null
+          cert=$(jq -r .certificateSha256 "$meta")
+          code=$(jq -r .versionCode "$meta")
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and any(.assets[]; .name | endswith(".apk"))) | .tag_name' > published-tags
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          while IFS= read -r tag; do
+            # These two historical releases were explicitly published as
+            # com.follow.clash.dev with debug signing, not the shared identity.
+            case "$tag" in
+              v0.9.3-preview.1.1|v0.9.3-preview.2.1) continue ;;
+            esac
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern android-build.json --dir "$tmp" --clobber
+            jq -e --arg tag "$tag" --arg cert "$cert" --argjson code "$code" '
+              .applicationId == "com.follow.clash" and .tag == $tag and
+              .certificateSha256 == $cert and
+              (.versionCode | type == "number" and . > 0 and . == floor and . < $code)
+            ' "$tmp/android-build.json" >/dev/null || {
+              echo "::error::Android signing identity or versionCode conflicts with $tag"
+              exit 1
+            }
+          done < published-tags
       - name: Publish complete dual-platform prerelease
         shell: bash
         run: |
