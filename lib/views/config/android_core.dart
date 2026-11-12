@@ -8,7 +8,6 @@ import 'package:fl_clash/views/config/general.dart';
 import 'package:fl_clash/views/config/android_native_dashboard.dart';
 import 'package:fl_clash/views/config/network.dart';
 import 'package:fl_clash/widgets/widgets.dart';
-import 'package:flutter/material.dart' show SelectableText;
 import 'package:flutter/widgets.dart';
 
 class AndroidCoreView extends StatefulWidget {
