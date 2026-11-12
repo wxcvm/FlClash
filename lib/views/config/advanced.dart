@@ -137,7 +137,8 @@ class AndroidCoreView extends ConsumerWidget {
                 trailing: const CoreStatusButton(),
               ),
             ],
-            footer: 'Android 使用内置 Mihomo。点击状态按钮可重启内核；'
+            footer:
+                'Android 使用内置 Mihomo。点击状态按钮可重启内核；'
                 '当前不支持切换独立 sing-box、Xray 或 Hysteria 2。',
           ),
           generateSection(
