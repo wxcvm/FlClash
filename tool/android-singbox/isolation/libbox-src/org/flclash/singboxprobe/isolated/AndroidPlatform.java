@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /** Platform callbacks for the isolated Android VPN. No polling; a callback thread exists only during monitoring. */
@@ -31,7 +32,8 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
     private final VpnService service;
     private final AndroidTunBridge tun;
     private final ConnectivityManager connectivity;
-    private volatile Network underlying;
+    private final NetworkEpoch<Network> networks = new NetworkEpoch<>();
+    private final ConcurrentHashMap<CancellationSignal, NetworkEpoch.Snapshot<Network>> dnsQueries = new ConcurrentHashMap<>();
     private volatile ConnectivityManager.NetworkCallback callback;
     private HandlerThread monitorThread;
 
@@ -70,55 +72,116 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
         NetworkRequest request = new NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build();
+        HandlerThread thread = new HandlerThread("flclash-libbox-network");
+        thread.start();
+        Handler handler = new Handler(thread.getLooper());
         ConnectivityManager.NetworkCallback next = new ConnectivityManager.NetworkCallback() {
+            private Network candidate;
+            private LinkProperties link;
+            private NetworkCapabilities caps;
+            private int retries;
+            private final Runnable retry = () -> refresh();
+
             @Override public void onAvailable(Network network) {
                 if (callback != this) return;
-                underlying = network;
+                if (network.equals(candidate)) return;
+                candidate = network;
+                link = null;
+                caps = null;
+                retries = 0;
+                handler.removeCallbacks(retry);
+                // A new Android Network handle can reuse the same interface/index.
+                // Invalidate the old path before publishing the replacement.
+                if (networks.select(network)) {
+                    cancelStaleDns();
+                    listener.updateDefaultInterface("", -1, false, false);
+                }
             }
-            @Override public void onLinkPropertiesChanged(Network network, LinkProperties link) {
-                if (callback != this || !network.equals(underlying)) return;
-                publish(listener, network, link, connectivity.getNetworkCapabilities(network));
+
+            @Override public void onLinkPropertiesChanged(Network network, LinkProperties value) {
+                if (callback != this || !network.equals(candidate)) return;
+                link = value;
+                refresh();
             }
-            @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) {
-                if (callback != this || !network.equals(underlying)) return;
-                publish(listener, network, connectivity.getLinkProperties(network), caps);
+
+            @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities value) {
+                if (callback != this || !network.equals(candidate)) return;
+                caps = value;
+                refresh();
             }
+
             @Override public void onLost(Network network) {
-                if (callback != this || !network.equals(underlying)) return;
-                underlying = null;
-                listener.updateDefaultInterface("", -1, false, false);
+                if (callback != this || !network.equals(candidate)) return;
+                candidate = null;
+                link = null;
+                caps = null;
+                handler.removeCallbacks(retry);
+                if (networks.lose(network)) {
+                    cancelStaleDns();
+                    listener.updateDefaultInterface("", -1, false, false);
+                }
+            }
+
+            private void refresh() {
+                if (callback != this || candidate == null) return;
+                handler.removeCallbacks(retry);
+                // Prefer callback-delivered properties, not synchronous queries from onAvailable.
+                if (link == null || caps == null) return;
+                String name = link.getInterfaceName();
+                if (name != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) {
+                    try {
+                        java.net.NetworkInterface nic = java.net.NetworkInterface.getByName(name);
+                        if (nic != null && nic.getIndex() > 0) {
+                            boolean metered = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
+                            String fingerprint = name + "/" + nic.getIndex() + "/" + metered
+                                + "/" + link.getDnsServers() + "/" + link.getLinkAddresses()
+                                + "/" + link.getRoutes();
+                            NetworkEpoch.Snapshot<Network> previous = networks.snapshot();
+                            if (networks.publish(candidate, fingerprint)) {
+                                cancelStaleDns();
+                                // Same handle, new address/route: libbox deduplicates name/index/DNS.
+                                // Force a loss/wake pair so cached transports are actually reset.
+                                if (previous.network != null && previous.network.equals(candidate)
+                                    && previous.fingerprint != null
+                                    && !previous.fingerprint.equals(fingerprint)) {
+                                    listener.updateDefaultInterface("", -1, false, false);
+                                }
+                                if (callback == this) {
+                                    listener.updateDefaultInterface(name, nic.getIndex(), metered, false);
+                                }
+                            }
+                            retries = 0;
+                            return;
+                        }
+                    } catch (java.net.SocketException error) {
+                        android.util.Log.w("FlClashLibbox", "Cannot read underlying interface", error);
+                    }
+                }
+                // A bounded retry handles Android creating the NIC after the callback.
+                if (++retries <= 10 && callback == this) handler.postDelayed(retry, 100);
             }
         };
         callback = next;
-        monitorThread = new HandlerThread("flclash-libbox-network");
-        monitorThread.start();
-        Handler handler = new Handler(monitorThread.getLooper());
+        monitorThread = thread;
         try {
             if (Build.VERSION.SDK_INT >= 31) {
-                connectivity.registerBestMatchingNetworkCallback(request, next,
-                    handler);
+                connectivity.registerBestMatchingNetworkCallback(request, next, handler);
             } else {
                 connectivity.requestNetwork(request, next, handler);
             }
         } catch (RuntimeException error) {
             callback = null;
-            underlying = null;
-            monitorThread.quitSafely();
+            networks.clear();
+            cancelStaleDns();
+            thread.quit();
             monitorThread = null;
             throw error;
         }
     }
 
-    private void publish(InterfaceUpdateListener listener, Network network,
-            LinkProperties link, NetworkCapabilities caps) {
-        if (link == null || caps == null || link.getInterfaceName() == null) return;
-        try {
-            java.net.NetworkInterface nic = java.net.NetworkInterface.getByName(link.getInterfaceName());
-            if (nic == null) return;
-            listener.updateDefaultInterface(nic.getName(), nic.getIndex(),
-                !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED), false);
-        } catch (java.net.SocketException error) {
-            android.util.Log.w("FlClashLibbox", "Cannot read underlying network interface", error);
+    private void cancelStaleDns() {
+        for (java.util.Map.Entry<CancellationSignal, NetworkEpoch.Snapshot<Network>> entry : dnsQueries.entrySet()) {
+            if (!networks.isCurrent(entry.getValue())) entry.getKey().cancel();
         }
     }
 
@@ -129,11 +192,12 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
     @Override public synchronized void close() {
         ConnectivityManager.NetworkCallback active = callback;
         callback = null;
-        underlying = null;
+        networks.clear();
+        cancelStaleDns();
         try {
             if (active != null) connectivity.unregisterNetworkCallback(active);
         } finally {
-            if (monitorThread != null) monitorThread.quitSafely();
+            if (monitorThread != null) monitorThread.quit();
             monitorThread = null;
         }
     }
@@ -208,14 +272,19 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                 throw unsupported("non-raw local DNS");
             }
             public void exchange(ExchangeContext ctx, byte[] message) throws Exception {
-                Network network = underlying;
+                NetworkEpoch.Snapshot<Network> path = networks.snapshot();
+                Network network = path.network;
                 if (network == null) throw new IOException("No underlying network for local DNS");
                 CancellationSignal signal = new CancellationSignal();
                 CountDownLatch done = new CountDownLatch(1);
                 byte[][] answer = new byte[1][];
                 Exception[] failure = new Exception[1];
-                ctx.onCancel(() -> { signal.cancel(); done.countDown(); });
-                DnsResolver.getInstance().rawQuery(network, message, 0, Runnable::run, signal,
+                signal.setOnCancelListener(done::countDown);
+                ctx.onCancel(signal::cancel);
+                dnsQueries.put(signal, path);
+                try {
+                    if (!networks.isCurrent(path)) throw new IOException("Underlying network changed before DNS query");
+                    DnsResolver.getInstance().rawQuery(network, message, 0, Runnable::run, signal,
                     new DnsResolver.Callback<byte[]>() {
                         public void onAnswer(byte[] response, int rcode) {
                             answer[0] = response;
@@ -226,13 +295,13 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                             done.countDown();
                         }
                     });
-                try {
                     if (!done.await(10, TimeUnit.SECONDS)) throw new IOException("Local DNS timed out");
-                    if (signal.isCanceled()) throw new IOException("Local DNS canceled");
+                    if (signal.isCanceled() || !networks.isCurrent(path)) throw new IOException("Local DNS canceled or network changed");
                     if (failure[0] != null) throw failure[0];
                     if (answer[0] == null) throw new IOException("Local DNS returned no response");
                     ctx.rawSuccess(answer[0]);
                 } finally {
+                    dnsQueries.remove(signal);
                     signal.cancel();
                 }
             }
