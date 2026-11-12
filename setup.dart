@@ -164,7 +164,12 @@ Future<int> _package(
   required bool verbose,
 }) async {
   final file = File(p.join(rootDir, 'env.json'));
-  await file.writeAsString(jsonEncode(createBuildEnvironment(env)));
+  final buildEnvironment = createBuildEnvironment(env);
+  final previewTag = Platform.environment['FLCLASH_PREVIEW_TAG'];
+  if (previewTag != null) {
+    buildEnvironment['FLCLASH_PREVIEW_TAG'] = previewTag;
+  }
+  await file.writeAsString(jsonEncode(buildEnvironment));
 
   final flutterBuildArgs = createFlutterBuildArgs(
     platform: platform,

@@ -48,6 +48,12 @@ jobs:
         run: flutter pub get
       - name: Analyze
         run: flutter analyze --no-fatal-infos
+      - name: Set preview tag
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version: \([0-9.]*\).*/\1/p' pubspec.yaml)
+          test -n "$version"
+          echo "FLCLASH_PREVIEW_TAG=v${version}-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
       - name: Build Windows preview packages
         run: dart setup.dart windows --env pre --targets exe,zip -v
       - name: Verify and hash packages
@@ -59,7 +65,10 @@ jobs:
           }
           New-Item -ItemType Directory -Force preview-assets | Out-Null
           foreach ($file in $files) {
-            Copy-Item $file.FullName (Join-Path preview-assets $file.Name)
+            $version = $env:FLCLASH_PREVIEW_TAG.Substring(1)
+            $suffix = if ($file.Extension -eq '.exe') { 'windows-amd64-setup.exe' } else { 'windows-amd64.zip' }
+            $name = "FlClash-$version-$suffix"
+            Copy-Item $file.FullName (Join-Path preview-assets $name)
           }
           Get-ChildItem preview-assets -File | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
@@ -76,9 +85,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          version=$(sed -n 's/^version: \([0-9.]*\).*/\1/p' pubspec.yaml)
-          test -n "$version"
-          tag="v${version}-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          tag="$FLCLASH_PREVIEW_TAG"
           cat > preview-notes.md <<'NOTES'
           Windows x64 preview of wxcvm/FlClash.
 
