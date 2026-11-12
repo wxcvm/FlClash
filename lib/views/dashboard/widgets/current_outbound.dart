@@ -164,17 +164,18 @@ class _CurrentOutboundCardState extends ConsumerState<CurrentOutboundCard>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      DashboardCardHeader(
-                        glyph: AppGlyphs.status,
-                        title: appLocalizations.status,
-                        leading: [
-                          DashboardChip(
-                            label: chipLabel,
-                            tone: chipTone,
-                            dot: isStart,
-                          ),
-                        ],
-                        trailing: const [NetworkHealthEntry()],
+                      NetworkHealthEntry(
+                        child: DashboardCardHeader(
+                          glyph: AppGlyphs.status,
+                          title: appLocalizations.status,
+                          leading: [
+                            DashboardChip(
+                              label: chipLabel,
+                              tone: chipTone,
+                              dot: isStart,
+                            ),
+                          ],
+                        ),
                       ),
                       SizedBox(height: metrics.ipTop),
                       _ExitRow(

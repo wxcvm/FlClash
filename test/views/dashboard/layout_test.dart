@@ -7,6 +7,7 @@ import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/views/dashboard/dashboard.dart';
 import 'package:fl_clash/views/dashboard/layout.dart';
 import 'package:fl_clash/views/dashboard/widgets/card.dart';
+import 'package:fl_clash/views/dashboard/widgets/network_health.dart';
 import 'package:fl_clash/views/dashboard/widgets/widgets.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -342,6 +343,7 @@ void main() {
         );
         expect(clipped(), isEmpty, reason: '$size x$textScale');
         expect(tester.takeException(), isNull);
+        expect(find.byType(NetworkHealthEntry).hitTestable(), findsOneWidget);
       }
     }
 

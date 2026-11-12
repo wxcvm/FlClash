@@ -12,7 +12,9 @@ String _label(BuildContext context, String zh, String en) =>
     Localizations.localeOf(context).languageCode == 'zh' ? zh : en;
 
 class NetworkHealthEntry extends StatelessWidget {
-  const NetworkHealthEntry({super.key});
+  const NetworkHealthEntry({super.key, required this.child});
+
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
@@ -31,14 +33,7 @@ class NetworkHealthEntry extends StatelessWidget {
       label: title,
       child: Tooltip(
         message: title,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: open,
-          child: const SizedBox.square(
-            dimension: 24,
-            child: Center(child: GlyphIcon(AppGlyphs.verified, size: 18)),
-          ),
-        ),
+        child: PressRegion(onTap: open, child: child),
       ),
     );
   }
