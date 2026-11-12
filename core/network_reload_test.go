@@ -37,7 +37,7 @@ func TestNetworkReloadPreservesLiveSettings(t *testing.T) {
 	live.General.Tun.Enable = true
 	live.General.Tun.Device = "live-tun"
 	next := &config.Config{
-		General: &config.General{},
+		General:    &config.General{},
 		Controller: &config.Controller{Secret: "old"},
 	}
 	preserveNetworkRuntimeConfig(next, live)
