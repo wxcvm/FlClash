@@ -40,6 +40,12 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
     ProxiesStyleProps style,
   ) {
     final appLocalizations = context.appLocalizations;
+    final autoGroup = ref.watch(downloadSpeedAutoGroupProvider);
+    final autoGroups = ref
+        .watch(groupsProvider)
+        .where((group) => group.type == GroupType.URLTest && group.hidden != true)
+        .toList();
+    final action = ref.read(proxiesActionProvider.notifier);
     return [
       _optionsMenuItem(
         glyph: AppGlyphs.appsList,
@@ -65,6 +71,24 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
         onSelected: (type) =>
             _updateStyle((state) => state.copyWith(sortType: type)),
       ),
+      if (autoGroups.isNotEmpty || autoGroup != null)
+        PopupMenuItem(
+          glyph: AppGlyphs.speed,
+          label: '自动下载速度优选（本次运行）',
+          subItems: [
+            PopupMenuItem(
+              label: '关闭',
+              checked: autoGroup == null,
+              onPressed: () => action.setDownloadSpeedAutoGroup(null),
+            ),
+            for (final group in autoGroups)
+              PopupMenuItem(
+                label: group.name,
+                checked: autoGroup == group.name,
+                onPressed: () => action.setDownloadSpeedAutoGroup(group.name),
+              ),
+          ],
+        ),
       _optionsMenuItem(
         glyph: AppGlyphs.dashboard,
         label: appLocalizations.layout,

@@ -21,6 +21,28 @@ String? chooseDownloadSpeedWinner(Map<String, int> rates, String incumbent) {
   return winner;
 }
 
+/// Retest the incumbent and known fast nodes, leaving room to explore.
+List<String> automaticSpeedCandidates(
+  List<String> names,
+  String incumbent,
+  Map<String, int> rates,
+  int cursor,
+) {
+  if (names.isEmpty) {
+    return [];
+  }
+  final candidates = <String>{
+    if (names.contains(incumbent)) incumbent,
+  };
+  final known = names.where((name) => (rates[name] ?? 0) > 0).toList()
+    ..sort((a, b) => rates[b]!.compareTo(rates[a]!));
+  candidates.addAll(known.where((name) => !candidates.contains(name)).take(2));
+  for (var i = 0; i < names.length && candidates.length < 4; i++) {
+    candidates.add(names[(cursor + i) % names.length]);
+  }
+  return candidates.toList();
+}
+
 class _DelayTestTarget {
   const _DelayTestTarget({
     required this.proxyName,
@@ -54,6 +76,10 @@ class ProxiesAction extends _$ProxiesAction {
   final TaskPool _speedTestPool = TaskPool(1);
   int _speedTestGeneration = 0;
   final Set<String> _speedTestingGroups = {};
+  Timer? _autoSpeedTimer;
+  bool _autoSpeedOnline = true;
+  bool _autoSpeedRunning = false;
+  int _autoSpeedCursor = 0;
 
   final List<_DelayTestJob> _delayTestJobs = [];
   final Map<String, int> _latestDelayTestGeneration = {};
@@ -71,16 +97,80 @@ class ProxiesAction extends _$ProxiesAction {
 
   @override
   void build() {
-    ref.onDispose(() => _delayFlushTimer?.cancel());
+    ref.onDispose(() {
+      _delayFlushTimer?.cancel();
+      _autoSpeedTimer?.cancel();
+    });
     ref.listen(currentProfileIdProvider, (previous, next) {
-      if (previous != next) _speedTestGeneration++;
+      if (previous != next) {
+        _speedTestGeneration++;
+        _autoSpeedTimer?.cancel();
+        _autoSpeedCursor = 0;
+      }
     });
     ref.listen(coreStatusProvider, (_, next) {
       if (next != CoreStatus.connected) {
         cancelDelayTests();
         _speedTestGeneration++;
       }
+      _scheduleAutoSpeed();
     });
+    ref.listen(isStartProvider, (_, _) => _scheduleAutoSpeed());
+    ref.listen(appVisibleProvider, (_, _) => _scheduleAutoSpeed());
+  }
+
+  bool get _autoSpeedReady =>
+      _autoSpeedOnline &&
+      ref.read(downloadSpeedAutoGroupProvider) != null &&
+      ref.read(appVisibleProvider) &&
+      ref.read(isStartProvider) &&
+      ref.read(coreStatusProvider) == CoreStatus.connected;
+
+  void setDownloadSpeedAutoGroup(String? name) {
+    ref.read(downloadSpeedAutoGroupProvider.notifier).select(name);
+    _autoSpeedCursor = 0;
+    _scheduleAutoSpeed();
+  }
+
+  void onAutoSpeedNetworkChange(bool online) {
+    _autoSpeedOnline = online;
+    _scheduleAutoSpeed();
+  }
+
+  void _scheduleAutoSpeed({
+    Duration delay = const Duration(seconds: 2),
+  }) {
+    _autoSpeedTimer?.cancel();
+    if (!_autoSpeedReady) {
+      return;
+    }
+    _autoSpeedTimer = Timer(delay, () => unawaited(_runAutoSpeed()));
+  }
+
+  Future<void> _runAutoSpeed() async {
+    if (!_autoSpeedReady) {
+      return;
+    }
+    if (_autoSpeedRunning ||
+        _speedTestingGroups.isNotEmpty ||
+        _speedTestPool.activeCount > 0) {
+      _scheduleAutoSpeed(delay: const Duration(seconds: 15));
+      return;
+    }
+    final name = ref.read(downloadSpeedAutoGroupProvider);
+    final group = ref.read(groupsProvider).getGroup(name ?? '');
+    if (group == null || group.type != GroupType.URLTest) {
+      return;
+    }
+    _autoSpeedRunning = true;
+    try {
+      await selectByDownloadSpeed(group.name, automatic: true);
+    } finally {
+      _autoSpeedRunning = false;
+      if (ref.mounted && _autoSpeedTimer?.isActive != true) {
+        _scheduleAutoSpeed(delay: const Duration(minutes: 30));
+      }
+    }
   }
 
   void cancelDelayTests() {
@@ -125,6 +215,9 @@ class ProxiesAction extends _$ProxiesAction {
   }
 
   void changeProxyDebounce(String groupName, String proxyName) {
+    if (ref.read(downloadSpeedAutoGroupProvider) == groupName) {
+      setDownloadSpeedAutoGroup(null);
+    }
     _pendingSelectedRollback.putIfAbsent(
       groupName,
       () => _currentSelectedName(groupName),
@@ -347,6 +440,7 @@ class ProxiesAction extends _$ProxiesAction {
     String groupName, {
     bool selectWinner = true,
     bool matchSearch = false,
+    bool automatic = false,
   }) async {
     if (!_speedTestingGroups.add(groupName)) {
       return;
@@ -375,17 +469,29 @@ class ProxiesAction extends _$ProxiesAction {
           ref.read(routeTrackerProvider).hostEpoch == initialHostEpoch &&
           ref.read(currentProfileIdProvider) == initialProfileId &&
           ref.read(currentProfileProvider)?.selectedMap[groupName] ==
-              initialSelection;
+              initialSelection &&
+          (!automatic ||
+              (_autoSpeedReady &&
+                  ref.read(downloadSpeedAutoGroupProvider) == groupName));
       // Test the actual group members, not resolved leaves of nested groups.
       // A resolved leaf may not be a selectable member of this group.
       final query = SearchQuery(
         matchSearch ? ref.read(queryProvider(QueryTag.proxies)) : '',
       );
-      final candidates = group.all
+      final names = group.all
           .whereMatches(query, (proxy) => proxy.searchFields)
           .map((proxy) => proxy.name)
           .where((name) => !reservedCustomProxyNames.contains(name))
-          .toSet();
+          .toSet()
+          .toList();
+      final candidates = automatic
+          ? automaticSpeedCandidates(
+              names,
+              incumbent,
+              ref.read(downloadSpeedSortSnapshotProvider),
+              _autoSpeedCursor++,
+            )
+          : names;
       if (candidates.isEmpty) {
         return;
       }
@@ -436,7 +542,12 @@ class ProxiesAction extends _$ProxiesAction {
         return;
       }
       if (stable.isEmpty) {
-        dialogs.showBanner('下载测速失败：没有节点完成有效的数据下载', level: BannerLevel.warning);
+        if (!automatic) {
+          dialogs.showBanner(
+            '下载测速失败：没有节点完成有效的数据下载',
+            level: BannerLevel.warning,
+          );
+        }
         return;
       }
       final currentGroup = ref.read(groupsProvider).getGroup(groupName);

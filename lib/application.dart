@@ -162,6 +162,13 @@ class ApplicationState extends ConsumerState<Application> {
     _previousConnectivityResults = List.of(results);
     if (changed) {
       ref.read(routeTrackerProvider.notifier).bumpHostEpoch();
+      ref.read(proxiesActionProvider.notifier).onAutoSpeedNetworkChange(
+        results.any(
+          (type) =>
+              type != ConnectivityResult.none &&
+              type != ConnectivityResult.vpn,
+        ),
+      );
       // Android's NetworkObserver tells the Core about a new network itself.
       if (system.isDesktop) {
         debouncer.call(

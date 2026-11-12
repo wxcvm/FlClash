@@ -22,6 +22,22 @@ class DownloadSpeedTestingGroups extends Notifier<Set<String>> {
   }
 }
 
+/// An explicit, session-scoped opt-in for one URL-test group.
+final downloadSpeedAutoGroupProvider =
+    NotifierProvider<DownloadSpeedAutoGroup, String?>(
+      DownloadSpeedAutoGroup.new,
+    );
+
+class DownloadSpeedAutoGroup extends Notifier<String?> {
+  @override
+  String? build() {
+    ref.watch(currentProfileIdProvider);
+    return null;
+  }
+
+  void select(String? name) => state = name;
+}
+
 /// Missing entries are untested; zero means a completed unsuccessful test.
 typedef DownloadSpeedSample = ({bool running, int bytesPerSecond});
 
