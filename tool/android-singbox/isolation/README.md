@@ -13,8 +13,15 @@ Build using the official libbox.aar from the previous library probe:
 
 Run on an Android 10+ ARM64 device:
 
-    adb install -r out/singbox-isolation-probe.apk
+    adb install out/singbox-isolation-probe.apk
+    adb shell am force-stop org.flclash.singboxprobe
     adb shell am instrument -w org.flclash.singboxprobe/.ProbeInstrumentation
+
+Each build generates a fresh diagnostic signing key. To install a newly built
+APK over a previous probe, first run `adb uninstall org.flclash.singboxprobe`.
+Do not uninstall the production FlClash application. For repeat runs of the
+same APK, force-stop the probe first to ensure the JNI library is loaded in a
+fresh process rather than attempting to load it through a second classloader.
 
 PASS means the child classloader and libbox JNI initialization worked and the
 Binder round-trip reached a separate process. It does not verify simultaneous
