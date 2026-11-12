@@ -10,6 +10,7 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import androidx.core.content.getSystemService
 import com.follow.clash.common.GlobalState
 import com.follow.clash.core.Core
@@ -21,10 +22,8 @@ import java.util.concurrent.ConcurrentHashMap
 private data class NetworkInfo(
     @Volatile var losingUntilMillis: Long = 0,
     @Volatile var dnsList: List<InetAddress> = emptyList(),
-) {
-    val priorityPenalty: Int
-        get() = if (losingUntilMillis > System.currentTimeMillis()) 10 else 0
-}
+    @Volatile var capabilities: NetworkCapabilities? = null,
+)
 
 // Outlives every service run: the Core also tests delays and updates providers
 // while stopped, and a `system` nameserver has no upstream until DNS arrives here.
@@ -38,7 +37,7 @@ object NetworkObserver {
         Handler(HandlerThread("NetworkObserve").apply { start() }.looper)
     }
     private var currentDnsList = listOf<String>()
-    private var currentNetwork: Network? = null
+    private val handover = NetworkHandoverTracker<Network>()
     private var started = false
 
     private val request = NetworkRequest.Builder().apply {
@@ -52,13 +51,13 @@ object NetworkObserver {
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            networkInfos[network] = NetworkInfo()
+            networkInfos.putIfAbsent(network, NetworkInfo())
             scheduleUpdateDns()
         }
 
         override fun onLosing(network: Network, maxMsToLive: Int) {
             val info = networkInfos[network] ?: return
-            info.losingUntilMillis = System.currentTimeMillis() + maxMsToLive
+            info.losingUntilMillis = SystemClock.elapsedRealtime() + maxMsToLive
             scheduleUpdateDns()
             if (maxMsToLive > 0) {
                 handler.postDelayed({
@@ -71,6 +70,12 @@ object NetworkObserver {
 
         override fun onLost(network: Network) {
             networkInfos.remove(network)
+            handler.post { handover.markLost(network) }
+            scheduleUpdateDns()
+        }
+
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            networkInfos[network]?.capabilities = capabilities
             scheduleUpdateDns()
         }
 
@@ -97,11 +102,12 @@ object NetworkObserver {
             .onFailure { error -> GlobalState.log("Unable to observe networks: $error") }
     }
 
-    private fun networkPriority(entry: Map.Entry<Network, NetworkInfo>): Int {
-        val capabilities = connectivity?.getNetworkCapabilities(entry.key)
-        return when {
-            capabilities == null -> 100
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> 90
+    private fun networkPriority(entry: Map.Entry<Network, NetworkInfo>): Int? {
+        val info = entry.value
+        val capabilities = info.capabilities ?: connectivity?.getNetworkCapabilities(entry.key)
+            ?: return null
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return null
+        val transport = when {
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> 0
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> 1
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
@@ -113,12 +119,24 @@ object NetworkObserver {
                 capabilities.hasTransport(TRANSPORT_SATELLITE) -> 5
 
             else -> 20
-        } + entry.value.priorityPenalty
+        }
+        return networkSelectionPriority(
+            transportPriority = transport,
+            validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            hasDns = info.dnsList.isNotEmpty(),
+            losing = info.losingUntilMillis > SystemClock.elapsedRealtime(),
+        )
     }
 
     @Synchronized
     private fun updateDns() {
-        val preferred = networkInfos.entries.minByOrNull(::networkPriority)
+        val preferred = networkInfos.entries.mapNotNull { entry ->
+            networkPriority(entry)?.let { priority -> entry to priority }
+        }.minWithOrNull(compareBy(
+            { it.second },
+            { if (it.first.key == handover.current) 0 else 1 },
+            { it.first.key.networkHandle },
+        ))?.first
         val dnsList = preferred
             ?.value
             ?.dnsList
@@ -129,13 +147,11 @@ object NetworkObserver {
             currentDnsList = dnsList
             Core.updateDNS(dnsList.joinToString(","))
         }
-        val network = preferred?.key ?: return
-        // Sockets protected onto the network we left stay bound to it; closing
-        // them makes apps reconnect now instead of after a TCP timeout.
-        if (currentNetwork != null && currentNetwork != network) {
+        // Reset protected sockets after a real switch or an outage, even if
+        // Android supplies the same Network identity when connectivity returns.
+        if (handover.update(preferred?.key)) {
             Core.resetNetwork()
         }
-        currentNetwork = network
     }
 }
 
