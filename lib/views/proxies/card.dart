@@ -144,34 +144,23 @@ class ProxyCard extends ConsumerWidget {
           overflow: TextOverflow.ellipsis,
           color: context.colorScheme.onSurface.opacity80,
         );
-    final details = isLoose
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                height: measure.textHeight(AppTextStyle.footnote),
-                child: _ProxyDesc(proxy: proxy, style: typeStyle),
-              ),
-              const SizedBox(height: 6),
-              delayText,
-            ],
-          )
-        : SizedBox(
-            height: measure.textHeight(AppTextStyle.footnote),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Flexible(
-                  flex: 1,
-                  child: TooltipText(
-                    text: Text(proxy.type, maxLines: 1, style: typeStyle),
-                  ),
-                ),
-                delayText,
-              ],
-            ),
-          );
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: measure.textHeight(AppTextStyle.footnote),
+          child: _ProxyDesc(proxy: proxy, style: typeStyle),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            delayText,
+            const SizedBox(width: 6),
+            Expanded(child: _DownloadSpeedText(proxyName: proxy.name)),
+          ],
+        ),
+      ],
+    );
     return Consumer(
       builder: (context, ref, _) {
         final inUse = ref.watch(
@@ -300,7 +289,7 @@ class _DelayTextState extends ConsumerState<_DelayText> {
   void _handleTestCurrentDelay() {
     ref
         .read(proxiesActionProvider.notifier)
-        .proxyDelayTest(widget.proxy, widget.testUrl);
+        .testProxyMetrics(widget.proxy, widget.testUrl);
   }
 
   Widget _withFocusRing(BuildContext context, Widget child) {
@@ -404,6 +393,33 @@ class _DelayTextState extends ConsumerState<_DelayText> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DownloadSpeedText extends ConsumerWidget {
+  const _DownloadSpeedText({required this.proxyName});
+
+  final String proxyName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sample = ref.watch(
+      downloadSpeedResultsProvider.select((results) => results[proxyName]),
+    );
+    final label = switch (sample) {
+      null => '↓ —',
+      (running: true, bytesPerSecond: _) => '↓ 测速中',
+      (running: false, bytesPerSecond: 0) => '↓ 失败',
+      (running: false, :final bytesPerSecond) =>
+        '↓ ${formatDownloadSpeed(bytesPerSecond)}',
+    };
+    return Text(
+      label,
+      textAlign: TextAlign.end,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: AppTextStyle.caption2.of(context, emphasized: true),
     );
   }
 }

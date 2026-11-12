@@ -6,6 +6,7 @@ import (
 
 	"github.com/metacubex/mihomo/component/geodata"
 	"github.com/metacubex/mihomo/component/updater"
+	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/log"
 )
 
@@ -96,6 +97,19 @@ func syncGeoUpdater(autoUpdate *bool, interval *int) {
 	if changed {
 		reconcileGeoUpdater()
 	}
+}
+
+// Keep the applied configuration in sync with the updater's live settings
+// so a network handover cannot restore the previous download URLs or cadence.
+func snapshotGeoSettings(general *config.General) {
+	general.GeoXUrl = config.GeoXUrl{
+		GeoIp:   geodata.GeoIpUrl(),
+		Mmdb:    geodata.MmdbUrl(),
+		ASN:     geodata.ASNUrl(),
+		GeoSite: geodata.GeoSiteUrl(),
+	}
+	general.GeoAutoUpdate = updater.GeoAutoUpdate()
+	general.GeoUpdateInterval = updater.GeoUpdateInterval()
 }
 
 func reconcileGeoUpdater() {

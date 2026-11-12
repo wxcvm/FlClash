@@ -59,6 +59,7 @@ func handleStopListener() {
 	configMu.Lock()
 	defer configMu.Unlock()
 	setRunning(false)
+	cancelRecoveryHealth()
 	listener.StopListener()
 	finishEgress()
 	resolver.ResetConnection()
@@ -97,6 +98,7 @@ func handleShutdown() {
 
 	configMu.Lock()
 	setRunning(false)
+	cancelRecoveryHealth()
 	listener.StopListener()
 	finishEgress()
 	updater.StopGeoUpdater()

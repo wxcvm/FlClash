@@ -26,9 +26,13 @@ double getItemHeight(ProxyCardType proxyCardType) {
   return switch (proxyCardType) {
     ProxyCardType.loose =>
       baseHeight + measure.textHeight(AppTextStyle.caption2) + 6,
-    ProxyCardType.standard => baseHeight,
+    ProxyCardType.standard =>
+      baseHeight + measure.textHeight(AppTextStyle.caption2) + 6,
     ProxyCardType.compact =>
-      baseHeight - measure.textHeight(AppTextStyle.subheadline),
+      baseHeight -
+          measure.textHeight(AppTextStyle.subheadline) +
+          measure.textHeight(AppTextStyle.caption2) +
+          6,
   };
 }
 

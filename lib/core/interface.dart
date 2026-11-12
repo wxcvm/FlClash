@@ -177,6 +177,15 @@ abstract class CoreHandlerInterface {
     );
   }
 
+  Future<ChangeProxyResult> selectSpeedProxy(ChangeProxyParams params) {
+    return _query(
+      CoreMethod.proxySelectSpeed,
+      _model(ChangeProxyResult.fromJson),
+      arguments: params.toJson(),
+      timeout: const Duration(seconds: 15),
+    );
+  }
+
   Future<Map<String, dynamic>?> getProxyDefinition(String name) {
     return _find(CoreMethod.proxyDefinition, _json, arguments: {'name': name});
   }
@@ -331,6 +340,14 @@ abstract class CoreHandlerInterface {
   Future<void> clearDnsCache() => _command(CoreMethod.dnsClearCache);
 
   Future<void> reportNetworkChange() => _command(CoreMethod.networkChanged);
+
+  Future<void> recoverNetwork() => _command(CoreMethod.networkRecover);
+
+  Future<Map<String, dynamic>> getNetworkHealth() {
+    return _query(CoreMethod.networkHealth, _json);
+  }
+
+  Future<void> checkNetworkHealth() => _command(CoreMethod.networkCheck);
 
   Future<void> startLog() => _commandUnobserved(CoreMethod.logStart);
 

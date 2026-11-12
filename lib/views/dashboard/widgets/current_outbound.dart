@@ -20,6 +20,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:prism_ui/shapes/shapes.dart';
 
 import 'card.dart';
+import 'network_health.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 const _builtinOutbounds = {'DIRECT', 'REJECT', 'REJECT-DROP', 'PASS'};
@@ -163,16 +164,18 @@ class _CurrentOutboundCardState extends ConsumerState<CurrentOutboundCard>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      DashboardCardHeader(
-                        glyph: AppGlyphs.status,
-                        title: appLocalizations.status,
-                        leading: [
-                          DashboardChip(
-                            label: chipLabel,
-                            tone: chipTone,
-                            dot: isStart,
-                          ),
-                        ],
+                      NetworkHealthEntry(
+                        child: DashboardCardHeader(
+                          glyph: AppGlyphs.status,
+                          title: appLocalizations.status,
+                          leading: [
+                            DashboardChip(
+                              label: chipLabel,
+                              tone: chipTone,
+                              dot: isStart,
+                            ),
+                          ],
+                        ),
                       ),
                       SizedBox(height: metrics.ipTop),
                       _ExitRow(

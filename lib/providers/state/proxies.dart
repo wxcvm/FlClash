@@ -11,6 +11,21 @@ GroupsState currentGroupsState(Ref ref) {
     Mode.global => groups,
     Mode.rule => groups.where((item) => item.hidden == false),
   };
+  final sortType = ref.watch(
+    proxiesStyleSettingProvider.select((state) => state.sortType),
+  );
+  if (sortType == ProxiesSortType.speed) {
+    final rates = ref.watch(downloadSpeedSortSnapshotProvider);
+    return GroupsState(
+      value: shown
+          .map(_withoutSelection)
+          .map(
+            (group) =>
+                group.copyWith(all: sortByDownloadSpeed(group.all, rates)),
+          )
+          .toList(),
+    );
+  }
   return GroupsState(value: shown.map(_withoutSelection).toList());
 }
 
@@ -170,11 +185,17 @@ bool currentGroupDelayTesting(Ref ref) {
   final currentGroupName = ref.watch(
     proxiesTabControllerStateProvider.select((state) => state.currentGroupName),
   );
-  return ref.watch(
+  final delayTesting = ref.watch(
     delayTestingGroupsProvider.select(
       (state) => state.contains(currentGroupName),
     ),
   );
+  final speedTesting = ref.watch(
+    downloadSpeedTestingGroupsProvider.select(
+      (state) => state.contains(currentGroupName),
+    ),
+  );
+  return delayTesting || speedTesting;
 }
 
 @riverpod

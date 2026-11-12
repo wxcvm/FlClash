@@ -31,6 +31,7 @@ class WindowManager extends ConsumerStatefulWidget {
 class _WindowContainerState extends ConsumerState<WindowManager>
     with WindowListener {
   Timer? _windowGeometryTimer;
+  Timer? _systemResumeTimer;
   StreamSubscription<ProcessSignal>? _terminateSubscription;
   int _windowGeometryRevision = 0;
   int _windowBlurRevision = 0;
@@ -106,6 +107,20 @@ class _WindowContainerState extends ConsumerState<WindowManager>
   Future<void> onWindowShouldTerminate() async {
     await ref.read(systemActionProvider.notifier).handleExit();
     super.onWindowShouldTerminate();
+  }
+
+  @override
+  void onSystemResume() {
+    _systemResumeTimer?.cancel();
+    _systemResumeTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted || !ref.read(isStartProvider)) return;
+      ref.read(routeTrackerProvider.notifier).bumpHostEpoch();
+      unawaited(
+        ref
+            .read(coreActionProvider.notifier)
+            .reportNetworkChange(recover: true),
+      );
+    });
   }
 
   void _scheduleWindowGeometryCapture() {
@@ -197,6 +212,7 @@ class _WindowContainerState extends ConsumerState<WindowManager>
   @override
   void dispose() {
     _invalidateWindowGeometryCapture();
+    _systemResumeTimer?.cancel();
     unawaited(_terminateSubscription?.cancel());
     desktopWindow.removeListener(this);
     super.dispose();

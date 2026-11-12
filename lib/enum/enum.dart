@@ -169,7 +169,7 @@ enum TrafficUnit { B, KB, MB, GB, TB }
 
 enum NavigationItemMode { mobile, desktop, more, moreFull }
 
-enum ProxiesSortType { none, delay, name }
+enum ProxiesSortType { none, delay, name, speed }
 
 enum TunStack { gvisor, system, mixed, mips }
 

@@ -29,5 +29,7 @@ abstract mixin class WindowListener {
 
   void onWindowActivate() {}
 
+  void onSystemResume() {}
+
   void onWindowEvent(WindowEvent event) {}
 }

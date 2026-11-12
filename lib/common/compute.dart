@@ -37,7 +37,7 @@ List<Group> computeSort({
   return groups.map((group) {
     final proxies = group.all;
     final newProxies = switch (sortType) {
-      ProxiesSortType.none => proxies,
+      ProxiesSortType.none || ProxiesSortType.speed => proxies,
       ProxiesSortType.delay => sortOfDelay(
         groups: groups,
         proxies: proxies,
@@ -49,6 +49,22 @@ List<Group> computeSort({
     };
     return group.copyWith(all: newProxies);
   }).toList();
+}
+
+/// Sort a completed download-test snapshot; equal scores retain source order.
+/// Unknown nodes precede failed nodes but follow successful measurements.
+List<Proxy> sortByDownloadSpeed(List<Proxy> proxies, Map<String, int> rates) {
+  int score(Proxy proxy) {
+    final rate = rates[proxy.name];
+    return rate == 0 ? -1 : rate ?? 0;
+  }
+
+  final indexed = proxies.indexed.toList()
+    ..sort((a, b) {
+      final byRate = score(b.$2).compareTo(score(a.$2));
+      return byRate != 0 ? byRate : a.$1.compareTo(b.$1);
+    });
+  return [for (final entry in indexed) entry.$2];
 }
 
 /// Built-in adapters whose delay probe always fails, so a timeout says nothing.
