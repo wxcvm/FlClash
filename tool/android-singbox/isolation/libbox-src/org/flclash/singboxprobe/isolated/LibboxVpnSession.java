@@ -46,18 +46,23 @@ public final class LibboxVpnSession implements AutoCloseable {
         options.setCommandServerListenPort(0); // private Unix socket, never a TCP listener
         options.setLogMaxLines(100);
         options.setFixAndroidStack(true);
+        go.Seq.setContext(context.getApplicationContext());
         Libbox.setup(options);
         initialized = true;
     }
 
-    public synchronized void start(Context context, String config) throws Exception {
-        if (server != null) throw new IllegalStateException("libbox session already started");
+    public static void validate(Context context, String config) throws Exception {
         setup(context);
         // Reject incompatible profiles before invoking OpenTun or creating routes.
         Libbox.checkConfig(config);
         if (!Libbox.hasTunInbound(config)) {
             throw new IllegalArgumentException("Android VPN requires a TUN inbound");
         }
+    }
+
+    public synchronized void start(Context context, String config) throws Exception {
+        if (server != null) throw new IllegalStateException("libbox session already started");
+        validate(context, config);
         try {
             server = Libbox.newCommandServer(handler, platform);
             server.start();
