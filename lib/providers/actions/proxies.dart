@@ -1,5 +1,26 @@
 part of '../action.dart';
 
+/// Keep a working incumbent unless the contender is at least 20% faster.
+/// Rates are conservative lower-of-two samples in bytes per second.
+String? chooseDownloadSpeedWinner(Map<String, int> rates, String incumbent) {
+  String? winner;
+  var best = 0;
+  for (final entry in rates.entries) {
+    if (entry.value > best) {
+      winner = entry.key;
+      best = entry.value;
+    }
+  }
+  if (winner == null) {
+    return null;
+  }
+  final current = rates[incumbent] ?? 0;
+  if (current > 0 && best * 5 < current * 6) {
+    return incumbent;
+  }
+  return winner;
+}
+
 class _DelayTestTarget {
   const _DelayTestTarget({
     required this.proxyName,
@@ -30,7 +51,8 @@ class ProxiesAction extends _$ProxiesAction {
   CoreController get _core => ref.read(coreHandlerProvider);
 
   final TaskPool _delayTestPool = TaskPool(maxConcurrentDelayTests);
-  final TaskPool _speedTestPool = TaskPool(3);
+  final TaskPool _speedTestPool = TaskPool(1);
+  int _speedTestGeneration = 0;
   final Set<String> _speedTestingGroups = {};
 
   final List<_DelayTestJob> _delayTestJobs = [];
@@ -53,6 +75,7 @@ class ProxiesAction extends _$ProxiesAction {
     ref.listen(coreStatusProvider, (_, next) {
       if (next != CoreStatus.connected) {
         cancelDelayTests();
+        _speedTestGeneration++;
       }
     });
   }
@@ -333,18 +356,38 @@ class ProxiesAction extends _$ProxiesAction {
       final initialSelection = ref
           .read(currentProfileProvider)
           ?.selectedMap[groupName];
+      final initialHostEpoch = ref.read(routeTrackerProvider).hostEpoch;
+      final initialGeneration = _speedTestGeneration;
+      final incumbent = group.getCurrentSelectedName(initialSelection ?? '');
+
+      bool isCurrent() =>
+          ref.mounted &&
+          ref.read(coreStatusProvider) == CoreStatus.connected &&
+          _speedTestGeneration == initialGeneration &&
+          ref.read(routeTrackerProvider).hostEpoch == initialHostEpoch &&
+          ref.read(currentProfileIdProvider) == initialProfileId &&
+          ref.read(currentProfileProvider)?.selectedMap[groupName] ==
+              initialSelection;
       // Test the actual group members, not resolved leaves of nested groups.
       // A resolved leaf may not be a selectable member of this group.
-      final candidates = group.all.map((proxy) => proxy.name).toSet();
+      final candidates = group.all
+          .map((proxy) => proxy.name)
+          .where((name) {
+            return !const {'DIRECT', 'REJECT', 'REJECT-DROP'}.contains(name);
+          })
+          .toSet();
       if (candidates.isEmpty) {
         return;
       }
 
       Future<int> measure(String name) async {
+        if (!isCurrent()) {
+          return 0;
+        }
         try {
           final result = await _core.testSpeed(name);
           final value = result['bytes-per-second'];
-          return value is num ? value.toInt() : 0;
+          return isCurrent() && value is num ? value.toInt() : 0;
         } catch (error) {
           commonPrint.log(
             'Download speed test failed for $name: $error',
@@ -367,42 +410,49 @@ class ProxiesAction extends _$ProxiesAction {
 
       final ranked = first.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
+      if (!isCurrent()) {
+        return;
+      }
+      final finalists = {
+        for (final candidate in ranked.take(3)) candidate.key,
+        if (first.containsKey(incumbent)) incumbent,
+      };
       final stable = <String, int>{};
       await Future.wait([
-        for (final candidate in ranked.take(3))
+        for (final name in finalists)
           _speedTestPool.run(() async {
-            final second = await measure(candidate.key);
+            final second = await measure(name);
+            final initial = first[name]!;
             if (second > 0) {
-              stable[candidate.key] = second < candidate.value
-                  ? second
-                  : candidate.value;
+              stable[name] = second < initial ? second : initial;
             }
           }),
       ]);
 
-      if (!ref.mounted) {
+      if (!isCurrent()) {
         return;
       }
       if (stable.isEmpty) {
         dialogs.showBanner('下载测速失败：没有节点完成有效的数据下载', level: BannerLevel.warning);
         return;
       }
-      if (ref.read(coreStatusProvider) != CoreStatus.connected ||
-          ref.read(currentProfileIdProvider) != initialProfileId ||
-          ref.read(currentProfileProvider)?.selectedMap[groupName] !=
-              initialSelection ||
-          ref.read(groupsProvider).getGroup(groupName) == null) {
-        return;
-      }
-      final winner = stable.entries.reduce(
-        (a, b) => a.value >= b.value ? a : b,
-      );
       final currentGroup = ref.read(groupsProvider).getGroup(groupName);
-      if (currentGroup == null ||
-          !currentGroup.all.any((proxy) => proxy.name == winner.key)) {
+      if (currentGroup == null) {
         return;
       }
-      await changeProxy(groupName: groupName, proxyName: winner.key);
+      final current = currentGroup.getCurrentSelectedName(
+        initialSelection ?? '',
+      );
+      final winner = chooseDownloadSpeedWinner(stable, current);
+      if (winner == null ||
+          winner == current ||
+          !currentGroup.all.any((proxy) => proxy.name == winner)) {
+        return;
+      }
+      await changeProxy(groupName: groupName, proxyName: winner);
+      if (ref.mounted) {
+        await updateGroups();
+      }
     } finally {
       _speedTestingGroups.remove(groupName);
     }
