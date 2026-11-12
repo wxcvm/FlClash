@@ -1,0 +1,58 @@
+name: Android sing-box isolation APK
+on:
+  workflow_dispatch:
+    inputs:
+      libbox_run:
+        description: Successful official libbox build run ID
+        required: true
+        default: '43219145718'
+  push:
+    branches:
+      - feat/android-singbox-isolation-probe
+    paths:
+      - 'tool/android-singbox/isolation/**'
+      - '.github/workflows/android-singbox-isolation.yaml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LIBBOX_RUN: ${{ inputs.libbox_run || '43219145718' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Obtain verified ARM64 AAR from official library probe
+        run: |
+          for attempt in $(seq 1 75); do
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LIBBOX_RUN" --jq .status)
+            if [ "$status" = completed ]; then
+              test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LIBBOX_RUN" --jq .conclusion)" = success
+              break
+            fi
+            test "$attempt" -lt 75
+            sleep 20
+          done
+          gh run download "$LIBBOX_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name sing-box-v1.14.4-arm64-probe --dir libbox-input
+          aar=$(find libbox-input -name libbox.aar -print -quit)
+          test -n "$aar"
+          hash_file=$(find libbox-input -name sha256.txt -print -quit)
+          test -n "$hash_file"
+          test "$(sha256sum "$aar" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$hash_file")"
+          echo "LIBBOX_AAR=$aar" >> "$GITHUB_ENV"
+      - name: Build standalone instrumentation APK
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          bash tool/android-singbox/isolation/build.sh "$LIBBOX_AAR" probe-apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: singbox-isolation-probe-arm64
+          path: probe-apk/singbox-isolation-probe.apk
+          retention-days: 7

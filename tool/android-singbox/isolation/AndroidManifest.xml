@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.flclash.singboxprobe">
+    <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="35" />
+    <application android:label="FlClash libbox isolation probe"
+        android:extractNativeLibs="true" android:allowBackup="false">
+        <service android:name=".ProbeService" android:process=":singbox"
+            android:exported="false" />
+    </application>
+    <instrumentation android:name=".ProbeInstrumentation"
+        android:targetPackage="org.flclash.singboxprobe" />
+</manifest>
