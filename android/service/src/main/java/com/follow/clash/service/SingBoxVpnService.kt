@@ -24,7 +24,7 @@ import java.util.concurrent.Executors
 class SingBoxVpnService : VpnService() {
     private val lifecycle = Any()
     private var session: IsolatedSingBoxRuntime.Session? = null
-    private var running = false
+    @Volatile private var running = false
     @Volatile private var destroyed = false
 
     private val control = object : Binder() {
@@ -33,7 +33,7 @@ class SingBoxVpnService : VpnService() {
                 return super.onTransact(code, data, reply, flags)
             }
             data.enforceInterface(SingBoxVpnControl.TOKEN)
-            if (getCallingUid() != Process.myUid()) throw SecurityException("Private VPN control")
+            if (Binder.getCallingUid() != Process.myUid()) throw SecurityException("Private VPN control")
             try {
                 val result = synchronized(lifecycle) {
                     check(!destroyed) { "VPN owner has been destroyed" }
@@ -80,10 +80,10 @@ class SingBoxVpnService : VpnService() {
         check(prepare(this) == null) { "Android VPN consent required" }
         IsolatedSingBoxRuntime.validate(this, config)
         stopLocked()
-        promote("Starting sing-box")
-        val next = IsolatedSingBoxRuntime.create(this)
-        session = next
         try {
+            promote("Starting sing-box")
+            val next = IsolatedSingBoxRuntime.create(this)
+            session = next
             next.start(config)
             running = true
             promote("sing-box VPN is running")
@@ -131,7 +131,7 @@ class SingBoxVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            SingBoxVpnControl.FOREGROUND -> promote("Starting sing-box")
+            SingBoxVpnControl.FOREGROUND -> promote(if (running) "sing-box VPN is running" else "Starting sing-box")
             SingBoxVpnControl.STOP_ACTION -> closeAsync()
             else -> stopSelf(startId)
         }
