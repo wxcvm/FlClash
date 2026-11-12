@@ -35,6 +35,13 @@ final class NetworkEpoch<T> {
         return true;
     }
 
+    /** Temporarily unavailable without discarding the selected Android Network. */
+    synchronized boolean invalidate(Object token, T network) {
+        if (owner != token || !network.equals(candidate) || current.network == null) return false;
+        current = new Snapshot<>(null, null, current.generation + 1);
+        return true;
+    }
+
     synchronized boolean lose(Object token, T network) {
         if (owner != token || !network.equals(candidate)) return false;
         boolean lost = current.network != null;
