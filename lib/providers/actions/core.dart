@@ -11,6 +11,7 @@ class CoreAction extends _$CoreAction {
   void build() {}
 
   Future<void> initCore() async {
+    if (service?.nativeOwnsRuntime == true) return;
     final isInit = await _core.isInit;
 
     final version = ref.read(versionProvider);
@@ -75,6 +76,7 @@ class CoreAction extends _$CoreAction {
   }
 
   Future<void> reportNetworkChange({bool recover = false}) async {
+    if (service?.nativeOwnsRuntime == true) return;
     if (ref.read(coreStatusProvider) != CoreStatus.connected) {
       return;
     }
@@ -101,6 +103,7 @@ class CoreAction extends _$CoreAction {
   }
 
   Future<bool> restartCore() {
+    if (service?.nativeOwnsRuntime == true) return Future.value(false);
     _requestedRestartRevision++;
     final activeOperation = _restartOperation;
     if (activeOperation != null) {

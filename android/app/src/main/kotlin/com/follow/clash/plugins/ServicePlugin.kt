@@ -1,6 +1,7 @@
 package com.follow.clash.plugins
 
 import com.follow.clash.ServiceController
+import com.follow.clash.MihomoCoreTransport
 import com.follow.clash.ServiceState
 import com.follow.clash.common.Components
 import com.follow.clash.common.GlobalState
@@ -20,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collect
 
 class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
@@ -34,7 +36,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         // The main thread is also Flutter's UI thread, where "init" would load it.
         scope.launch {
-            runCatching { Core.load() }
+            runCatching { if (!MihomoCoreTransport.isolated) Core.load() }
                 .onFailure { error -> GlobalState.log("Unable to load the Core: $error") }
         }
         messenger = binding.binaryMessenger
@@ -59,7 +61,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         channel.setMethodCallHandler(null)
         coreChannel.setMethodCallHandler(null)
         scope.cancel()
-        ServiceController.setEventListener(null)
+        GlobalState.launch(Dispatchers.IO) { ServiceController.setEventListener(null) }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -81,6 +83,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 true
             }
             "nativeSnapshot" -> nativeOperation(result) { ServiceController.nativeSnapshot() }
+            "nativeStatusSnapshot" -> nativeOperation(result) { ServiceController.nativeStatusSnapshot() }
             "resetNativeNetwork" -> nativeOperation(result) {
                 ServiceController.resetNativeNetwork()
                 true
@@ -96,6 +99,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "validateNativeCore" -> validateNativeCore(call, result)
             "startNativeCore" -> startNativeCore(call, result)
             "stopNativeCore" -> stopNativeCore(call, result)
+            "startMihomoCore" -> startMihomoCore(call, result)
             else -> result.notImplemented()
         }
     }
@@ -108,15 +112,20 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     private fun initialize(result: MethodChannel.Result) {
-        NetworkObserver.start()
-        ServiceController.setEventListener(::sendEvent)
-            .onSuccess { result.success("") }
-            .onFailure { error -> result.success(error.message.orEmpty()) }
+        scope.launch(Dispatchers.IO) {
+            if (!MihomoCoreTransport.isolated) NetworkObserver.start()
+            ServiceController.setEventListener(::sendEvent)
+                .onSuccess { result.success("") }
+                .onFailure { error -> result.success(error.message.orEmpty()) }
+        }
     }
 
     private fun shutdown(result: MethodChannel.Result) {
-        ServiceController.setEventListener(null)
-        result.success(true)
+        scope.launch(Dispatchers.IO) {
+            ServiceController.setEventListener(null)
+                .onSuccess { result.success(true) }
+                .onFailure { result.error("CORE_ERROR", it.message, null) }
+        }
     }
 
     private fun invokeMethod(call: MethodCall, result: MethodChannel.Result) {
@@ -126,7 +135,8 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             return
         }
         ServiceController.invokeMethod(data) { response ->
-            result.success(response)
+            response.onSuccess { result.success(it) }
+                .onFailure { result.error("CORE_ERROR", it.message, null) }
         }.onFailure { error ->
             result.error("CORE_ERROR", error.message, null)
         }
@@ -165,6 +175,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         "available" to SingBoxVpnControl.isAvailable(GlobalState.application),
         "engine" to (ServiceController.runtime?.let { if (it.nativeConfigPath != null) "sing-box" else "mihomo" } ?: "idle"),
         "nativeOwner" to ServiceController.hasNativeOwner,
+        "mihomoSuspended" to ServiceController.mihomoSuspended,
         "startedAt" to (ServiceController.runtime?.startedAtMillis ?: 0L),
         "state" to ServiceState.runState.value.name,
     )
@@ -201,6 +212,16 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     ))
                 }
                 .onFailure { result.error("NATIVE_START", it.message, null) }
+        }
+    }
+
+    private fun startMihomoCore(call: MethodCall, result: MethodChannel.Result) {
+        commandRevision = call.argument<Int>("revision") ?: commandRevision
+        val request = ServiceState.requestMihomoStart()
+        scope.launch {
+            runCatching { request.await() }
+                .onSuccess { result.success(it) }
+                .onFailure { result.error("MIHOMO_START", it.message, null) }
         }
     }
 

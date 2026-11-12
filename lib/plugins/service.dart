@@ -47,6 +47,9 @@ class Service {
   final nativeStatus = ValueNotifier<AndroidNativeStatus?>(null);
 
   int _commandRevision = 0;
+  int _nativeStatusRevision = 0;
+
+  bool get nativeOwnsRuntime => nativeStatus.value?.ownsRuntime == true;
   bool _startRequested = false;
 
   factory Service() {
@@ -72,6 +75,7 @@ class Service {
           }
           break;
         case 'nativeCoreStatusChanged':
+          _nativeStatusRevision++;
           nativeStatus.value = AndroidNativeStatus.fromMap(
             Map<Object?, Object?>.from(call.arguments as Map),
           );
@@ -91,6 +95,12 @@ class Service {
   }
 
   Future<CoreMethodResponse> invokeMethod(CoreMethodCall call) async {
+    if (nativeOwnsRuntime) {
+      throw const CoreMethodException(
+        code: 'core_unavailable',
+        message: 'Mihomo is unavailable while sing-box owns the runtime',
+      );
+    }
     final data = await _coreChannel.invokeMethod<Uint8List>(
       'invokeMethod',
       json.encode(call),
@@ -121,10 +131,14 @@ class Service {
   }
 
   Future<AndroidNativeStatus> getNativeStatus() async {
+    final revision = ++_nativeStatusRevision;
     final data = await methodChannel.invokeMapMethod<Object?, Object?>(
       'nativeCoreStatus',
     );
     final status = AndroidNativeStatus.fromMap(data ?? const {});
+    if (revision != _nativeStatusRevision) {
+      return nativeStatus.value ?? status;
+    }
     nativeStatus.value = status;
     return status;
   }
@@ -140,6 +154,11 @@ class Service {
 
   Future<void> cancelNativeQuality() async {
     await methodChannel.invokeMethod<bool>('cancelNativeQuality');
+  }
+
+  Future<Map<String, dynamic>> getNativeStatusSnapshot() async {
+    final json = await methodChannel.invokeMethod<String>('nativeStatusSnapshot');
+    return Map<String, dynamic>.from(jsonDecode(json ?? '{}') as Map);
   }
 
   Future<Map<String, dynamic>> getNativeSnapshot() async {
@@ -188,6 +207,24 @@ class Service {
     }
   }
 
+  Future<bool> startMihomoCore() async {
+    final revision = ++_commandRevision;
+    _startRequested = true;
+    try {
+      return await methodChannel.invokeMethod<bool>(
+            'startMihomoCore', {'revision': revision},
+          ) ??
+          false;
+    } finally {
+      if (revision == _commandRevision) {
+        final status = await getNativeStatus();
+        if (revision == _commandRevision) {
+          _startRequested = status.engine != 'idle' || status.nativeOwner;
+        }
+      }
+    }
+  }
+
   Future<bool> stopNativeCore() async {
     final revision = ++_commandRevision;
     _startRequested = false;
@@ -223,7 +260,9 @@ class Service {
   }
 
   Future<String> init() async {
-    return await methodChannel.invokeMethod<String>('init') ?? '';
+    final error = await methodChannel.invokeMethod<String>('init') ?? '';
+    if (error.isEmpty) await getNativeStatus();
+    return error;
   }
 
   Future<String> syncState(SharedState state) async {
@@ -266,6 +305,7 @@ class AndroidNativeStatus {
     required this.nativeOwner,
     required this.state,
     this.startedAt = 0,
+    this.mihomoSuspended = false,
   });
 
   factory AndroidNativeStatus.fromMap(Map<Object?, Object?> data) =>
@@ -275,6 +315,7 @@ class AndroidNativeStatus {
         nativeOwner: data['nativeOwner'] == true,
         state: data['state'] as String? ?? 'STOPPED',
         startedAt: (data['startedAt'] as num?)?.toInt() ?? 0,
+        mihomoSuspended: data['mihomoSuspended'] == true,
       );
 
   final bool available;
@@ -282,6 +323,9 @@ class AndroidNativeStatus {
   final bool nativeOwner;
   final String state;
   final int startedAt;
+  final bool mihomoSuspended;
+
+  bool get ownsRuntime => engine == 'sing-box' || nativeOwner || mihomoSuspended;
 }
 
 class AndroidNativeStartResult {

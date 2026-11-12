@@ -9,10 +9,11 @@ import com.follow.clash.service.modules.ServiceModules
 class ProxyService : Service(), ManagedService {
     private val modules = ServiceModules(this)
     private val binder = LocalBinder()
+    private val control = MihomoServiceControl.binder(this, vpn = false) { true }
 
     override fun onDestroy() {
         try {
-            cleanup()
+            MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
             super.onDestroy()
         }
@@ -33,9 +34,10 @@ class ProxyService : Service(), ManagedService {
             get() = this@ProxyService
     }
 
-    override fun onBind(intent: Intent): IBinder = binder
+    override fun onBind(intent: Intent): IBinder =
+        if (intent.action == MihomoServiceControl.ACTION) control else binder
 
-    override fun start() {
+    override fun start() = MihomoProcessLifecycle.start(this) {
         try {
             modules.start()
         } catch (error: Exception) {
@@ -46,7 +48,7 @@ class ProxyService : Service(), ManagedService {
 
     override fun stop() {
         try {
-            cleanup()
+            MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
             stopSelf()
         }

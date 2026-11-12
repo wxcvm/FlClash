@@ -7,6 +7,13 @@ import android.net.ProxyInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
+import androidx.core.app.NotificationCompat
+import com.follow.clash.common.ensureNotificationChannel
+import com.follow.clash.common.startForeground
+import com.follow.clash.common.Components
+import com.follow.clash.common.toPendingIntent
 import androidx.core.content.getSystemService
 import com.follow.clash.common.AccessControlMode
 import com.follow.clash.common.GlobalState
@@ -26,12 +33,29 @@ import android.net.VpnService as SystemVpnService
 class VpnService : SystemVpnService(), ManagedService {
     private val modules = ServiceModules(this)
     private val binder = LocalBinder()
+    private val control = MihomoServiceControl.binder(this, vpn = true) {
+        Build.VERSION.SDK_INT < 29 || (!isAlwaysOn && !isLockdownEnabled)
+    }
     private val tunnel = TunnelSession(MihomoTunnelEngine)
+    private val main = Handler(Looper.getMainLooper())
+    @Volatile private var established = false
+    private var startupTimeout: Runnable? = null
+    private var startupRetry: Runnable? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        MihomoProcessLifecycle.register(this)
+    }
 
     override fun onDestroy() {
+        startupTimeout?.let(main::removeCallbacks)
+        startupRetry?.let(main::removeCallbacks)
+        startupTimeout = null
+        startupRetry = null
         try {
-            cleanup()
+            MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
+            MihomoProcessLifecycle.unregister(this)
             super.onDestroy()
         }
     }
@@ -104,6 +128,8 @@ class VpnService : SystemVpnService(), ManagedService {
     override fun onBind(intent: Intent): IBinder? =
         if (intent.action == SystemVpnService.SERVICE_INTERFACE) {
             super.onBind(intent)
+        } else if (intent.action == MihomoServiceControl.ACTION) {
+            control
         } else {
             binder
         }
@@ -111,7 +137,36 @@ class VpnService : SystemVpnService(), ManagedService {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Android starts always-on VPN through this callback instead of FlClash's bound-service
         // path. Notify the app layer so it can restore Core and fully initialize the VPN service.
-        notifyVpnStartRequested()
+        if (!established) {
+            // The system may start this process before Flutter exists. Promote
+            // immediately; the normal notification module replaces this on start.
+            ensureNotificationChannel()
+            startForeground(NotificationCompat.Builder(this, GlobalState.NOTIFICATION_CHANNEL)
+                .setSmallIcon(com.follow.clash.service.R.drawable.ic_service)
+                .setContentTitle("FlClash")
+                .setContentText("Restoring VPN configuration…")
+                .setContentIntent(Intent().setComponent(Components.mainActivity).toPendingIntent)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .build())
+            startupTimeout?.let(main::removeCallbacks)
+            startupTimeout = Runnable {
+                if (!established) {
+                    GlobalState.log("System VPN restore timed out")
+                    stopSelf(startId)
+                }
+            }.also { main.postDelayed(it, 90_000L) }
+            notifyVpnStartRequested()
+            // A replacement service may report before the controller has
+            // processed old Binder death. One delayed notification closes
+            // that window; the state machine deduplicates pending starts.
+            startupRetry?.let(main::removeCallbacks)
+            startupRetry = Runnable {
+                if (!established && Build.VERSION.SDK_INT >= 29 && isAlwaysOn) {
+                    notifyVpnStartRequested()
+                }
+            }.also { main.postDelayed(it, 5_000L) }
+        }
         return super.onStartCommand(intent, flags, startId)
     }
 
@@ -245,10 +300,13 @@ class VpnService : SystemVpnService(), ManagedService {
         }
     }
 
-    override fun start() {
+    override fun start() = MihomoProcessLifecycle.start(this) {
         try {
             modules.start()
             handleStart(requireNotNull(ServiceConfig.vpnOptions) { "VPN options are missing" })
+            established = true
+            startupRetry?.let(main::removeCallbacks)
+            startupTimeout?.let(main::removeCallbacks)
         } catch (error: Exception) {
             stop()
             throw error
@@ -257,13 +315,14 @@ class VpnService : SystemVpnService(), ManagedService {
 
     override fun stop() {
         try {
-            cleanup()
+            MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
             stopSelf()
         }
     }
 
     private fun cleanup() {
+        established = false
         try {
             modules.stop()
         } finally {

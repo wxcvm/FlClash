@@ -57,6 +57,30 @@ class SetupAction extends _$SetupAction {
     );
   }
 
+  bool get _androidNativeOwned => service?.nativeOwnsRuntime == true;
+
+  /// Adopt the service's settled owner without issuing any Core start/stop RPC.
+  void adoptAndroidNativeStatus(AndroidNativeStatus status) {
+    _latestRunRequest = null;
+    _appliedInputs = null;
+    _stopRuntimeTicker();
+    debouncer.cancel(FunctionTag.applyProfile);
+    debouncer.cancel(FunctionTag.updateConfig);
+    debouncer.cancel(FunctionTag.suspend);
+    _pendingForceApply = false;
+    _startTime = status.ownsRuntime || status.engine == 'mihomo'
+        ? (status.startedAt > 0 ? DateTime.fromMillisecondsSinceEpoch(status.startedAt) : null)
+        : null;
+    ref.read(trafficsProvider.notifier).clear();
+    ref.read(totalTrafficProvider.notifier).value = const Traffic();
+    if (status.ownsRuntime) {
+      ref.read(runningVpnOptionsProvider.notifier).value = null;
+    }
+    ref.read(proxiesActionProvider.notifier).syncAndroidNativeOwnership();
+    _updateRunTime();
+    _syncRuntimeTicker();
+  }
+
   bool get _isTrafficShown =>
       ref.read(appVisibleProvider) ||
       (system.isMacOS &&
@@ -73,6 +97,7 @@ class SetupAction extends _$SetupAction {
       _setupParams.copyWith(selectedMap: const {});
 
   Future<bool> fullSetup() async {
+    if (_androidNativeOwned) return false;
     if (!ref.read(initProvider)) return true;
     ref.read(proxiesActionProvider.notifier).cancelDelayTests();
     ref.read(delayDataSourceProvider.notifier).value = {};
@@ -108,7 +133,7 @@ class SetupAction extends _$SetupAction {
   }
 
   void _syncRuntimeTicker() {
-    if (_startTime == null || !_isTrafficShown) {
+    if (_androidNativeOwned || _startTime == null || !_isTrafficShown) {
       _stopRuntimeTicker();
       return;
     }
@@ -147,6 +172,14 @@ class SetupAction extends _$SetupAction {
     if (!globalState.needInitStatus) {
       return;
     }
+    if (service case final android?) {
+      final status = await android.getNativeStatus();
+      if (status.ownsRuntime) {
+        globalState.needInitStatus = false;
+        adoptAndroidNativeStatus(status);
+        return;
+      }
+    }
     _startTime = await serviceStartTime();
     if (_isRunning) {
       globalState.lastConfigMd5 = await preferences.getAppliedConfigMd5();
@@ -159,6 +192,10 @@ class SetupAction extends _$SetupAction {
   }
 
   Future<bool> setRunning(bool running, {bool initialize = false}) {
+    if (_androidNativeOwned) {
+      // Native ownership must be changed through explicit service operations.
+      return running ? Future.value(false) : service!.stopNativeCore();
+    }
     if (running && nativeCoreRuntime.blocksMihomoStart) {
       return Future.error(
         StateError('Stop the independent core before starting Mihomo'),
@@ -285,9 +322,10 @@ class SetupAction extends _$SetupAction {
 
   /// An excluded SSID parks the listener without ending the run.
   void syncSuspend() {
+    if (_androidNativeOwned) return;
     debouncer.call(FunctionTag.suspend, () {
       return _listenerScheduler.run(() async {
-        if (!ref.read(isStartProvider) || ref.read(safeModeProvider)) {
+        if (_androidNativeOwned || !ref.read(isStartProvider) || ref.read(safeModeProvider)) {
           return;
         }
         try {
@@ -335,6 +373,7 @@ class SetupAction extends _$SetupAction {
 
   @visibleForTesting
   Future<void> updateConfig() async {
+    if (_androidNativeOwned) return;
     await globalState.safeRun(() async {
       final patchConfig = ref.read(patchClashConfigProvider);
       final shouldContinueSetup = await requestAdmin(patchConfig.tun.enable);
@@ -361,6 +400,7 @@ class SetupAction extends _$SetupAction {
   Duration get maxApplyDebounce => const Duration(seconds: 10);
 
   void applyProfileDebounce({bool silence = false, bool force = false}) {
+    if (_androidNativeOwned) return;
     _pendingForceApply |= force;
     debouncer.call(
       FunctionTag.applyProfile,
@@ -454,7 +494,9 @@ class SetupAction extends _$SetupAction {
     bool force = false,
     Future<void> Function()? preloadInvoke,
   }) async {
+    if (_androidNativeOwned) return _SetupTaskResult.failed;
     final result = await _setupScheduler.run(() {
+      if (_androidNativeOwned) return Future.value(_SetupTaskResult.failed);
       return _setupConfig(
         force: force,
         silence: silence,

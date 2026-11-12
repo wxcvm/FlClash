@@ -20,10 +20,11 @@ class AndroidManager extends ConsumerStatefulWidget {
 }
 
 class _AndroidContainerState extends ConsumerState<AndroidManager>
-    with ServiceListener {
+    with ServiceListener, WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     ref.listenManual(appSettingProvider.select((state) => state.hidden), (
       prev,
       next,
@@ -46,7 +47,63 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
       }
     });
     service?.addListener(this);
+    service?.nativeStatus.addListener(_nativeStatusChanged);
+    // Initial status is delivered asynchronously; do not modify providers during mount.
+    unawaited(_refreshNativeStatus());
     app?.onPackagesChanged = _reloadPackages;
+  }
+
+  bool _wasNative = false;
+  (String, String, int, bool)? _lastNativeState;
+  int _nativeRevision = 0;
+
+  Future<void> _refreshNativeStatus() async {
+    try {
+      await service?.getNativeStatus();
+    } catch (error) {
+      commonPrint.log('Android native status: $error', logLevel: LogLevel.debug);
+    }
+  }
+
+  void _nativeStatusChanged() {
+    if (!mounted) return;
+    final status = service?.nativeStatus.value;
+    if (status == null) return;
+    final signature = (status.engine, status.state, status.startedAt, status.ownsRuntime);
+    if (_lastNativeState == signature) return;
+    _lastNativeState = signature;
+    final wasNative = _wasNative;
+    _wasNative = status.ownsRuntime;
+    if (!wasNative && !_wasNative) return;
+    final revision = ++_nativeRevision;
+    if (_wasNative) {
+      ref.read(setupActionProvider.notifier).adoptAndroidNativeStatus(status);
+      return;
+    }
+    if (status.state == 'STARTING' || status.state == 'STOPPING') {
+      _wasNative = true;
+      return;
+    }
+    ref.read(setupActionProvider.notifier).adoptAndroidNativeStatus(status);
+    unawaited(_restoreMihomoView(revision));
+  }
+
+  Future<void> _restoreMihomoView(int revision) async {
+    try {
+      await ref.read(coreActionProvider.notifier).initCore();
+      if (!mounted || revision != _nativeRevision || service?.nativeOwnsRuntime == true) return;
+      // A retired Core reopened while idle needs the original stopped-state profile.
+      // On switch-back, the native controller already restored the running profile.
+      if (service?.nativeStatus.value?.engine == 'idle') {
+        await ref.read(setupActionProvider.notifier).applyProfile(force: true, silence: true);
+      }
+      if (!mounted || revision != _nativeRevision || service?.nativeOwnsRuntime == true) return;
+      if (ref.read(appSettingProvider).openLogs) {
+        await ref.read(coreHandlerProvider).startLog();
+      }
+    } catch (error) {
+      commonPrint.log('Restore Mihomo view: $error', logLevel: coreFailureLogLevel(error));
+    }
   }
 
   /// A reload reads every installed app's label, and a round of store updates
@@ -63,23 +120,35 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_refreshNativeStatus());
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     debouncer.cancel(FunctionTag.reloadPackages);
     if (app?.onPackagesChanged == _reloadPackages) {
       app?.onPackagesChanged = null;
     }
+    service?.nativeStatus.removeListener(_nativeStatusChanged);
     service?.removeListener(this);
     super.dispose();
   }
 
   @override
   void onServiceEvent(CoreEvent event) {
+    if (service?.nativeOwnsRuntime == true) return;
     coreEventManager.sendEvent(event);
     super.onServiceEvent(event);
   }
 
   @override
   void onServiceStopped() {
+    if (service?.nativeOwnsRuntime == true || _wasNative) {
+      unawaited(_refreshNativeStatus());
+      return;
+    }
     unawaited(ref.read(setupActionProvider.notifier).setRunning(false));
     super.onServiceStopped();
   }

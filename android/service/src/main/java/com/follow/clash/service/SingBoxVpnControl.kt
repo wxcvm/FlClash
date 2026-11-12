@@ -27,6 +27,7 @@ object SingBoxVpnControl {
     internal const val QUALITY_START = VALIDATE + 8
     internal const val QUALITY_STATUS = VALIDATE + 9
     internal const val QUALITY_CANCEL = VALIDATE + 10
+    internal const val STATUS_SNAPSHOT = VALIDATE + 11
 
     fun isAvailable(context: Context): Boolean = IsolatedSingBoxRuntime.isPackaged(context)
 
@@ -69,6 +70,7 @@ object SingBoxVpnControl {
     fun qualitySnapshot(remote: IBinder): String = transact(remote, QUALITY_STATUS) { it.readString().orEmpty() }
     fun cancelQuality(remote: IBinder) { call(remote, QUALITY_CANCEL) }
 
+    fun statusSnapshot(remote: IBinder): String = transact(remote, STATUS_SNAPSHOT) { it.readString().orEmpty() }
     fun snapshot(remote: IBinder): String = transact(remote, SNAPSHOT) { it.readString().orEmpty() }
     fun selectOutbound(remote: IBinder, group: String, tag: String, expectedGeneration: Long) {
         call(remote, SELECT) { it.writeString(group); it.writeString(tag); it.writeLong(expectedGeneration) }

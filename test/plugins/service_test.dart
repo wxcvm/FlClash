@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -91,6 +92,7 @@ void main() {
 
   setUp(() {
     calls = <MethodCall>[];
+    Service().nativeStatus.value = null;
   });
 
   tearDown(() {
@@ -102,6 +104,77 @@ void main() {
 
   test('is a singleton so the platform handler is installed once', () {
     expect(Service(), same(Service()));
+  });
+
+  group('native ownership', () {
+    const native = {
+      'available': true, 'engine': 'sing-box', 'nativeOwner': true,
+      'mihomoSuspended': true, 'startedAt': 1234, 'state': 'STARTED',
+    };
+
+    Future<void> emitStatus(Map<String, Object?> status) async {
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+            channelName,
+            codec.encodeMethodCall(MethodCall('nativeCoreStatusChanged', status)),
+            null,
+          );
+    }
+
+    test('native ownership blocks Mihomo traffic before any channel call', () async {
+      await emitStatus(native);
+      expect(Service().nativeOwnsRuntime, isTrue);
+      await expectLater(
+        Service().invokeMethod(const CoreMethodCall(method: CoreMethod.trafficCurrent)),
+        throwsA(isA<CoreMethodException>().having((e) => e.code, 'code', 'core_unavailable')),
+      );
+      expect(calls, isEmpty);
+      await emitStatus({'engine': 'mihomo', 'state': 'STARTED'});
+      mockCoreChannel((_) async => utf8.encode(json.encode(
+        const CoreMethodResponse(id: '1', result: {'up': 1}).toJson(),
+      )));
+      final result = await Service().invokeMethod(
+        const CoreMethodCall(id: '1', method: CoreMethod.trafficCurrent),
+      );
+      expect(result.result, {'up': 1});
+      expect(calls.single.method, 'invokeMethod');
+    });
+
+    test('an old status read cannot overwrite a newer native event', () async {
+      final response = Completer<Object?>();
+      mockChannel((_) => response.future);
+      final pending = Service().getNativeStatus();
+      await emitStatus(native);
+      response.complete({'engine': 'mihomo', 'state': 'STARTED'});
+      expect((await pending).engine, 'sing-box');
+      expect(Service().nativeStatus.value?.engine, 'sing-box');
+    });
+
+    test('only the latest overlapping status read updates ownership', () async {
+      final first = Completer<Object?>();
+      final second = Completer<Object?>();
+      mockChannel((_) => calls.length == 1 ? first.future : second.future);
+      final a = Service().getNativeStatus();
+      final b = Service().getNativeStatus();
+      second.complete(native);
+      expect((await b).engine, 'sing-box');
+      first.complete({'engine': 'idle', 'state': 'STOPPED'});
+      expect((await a).engine, 'sing-box');
+      expect(Service().nativeOwnsRuntime, isTrue);
+    });
+
+    test('cleanup and suspended state remain owned without a runtime', () {
+      expect(AndroidNativeStatus.fromMap({'engine': 'idle', 'nativeOwner': true}).ownsRuntime, isTrue);
+      expect(AndroidNativeStatus.fromMap({'engine': 'idle', 'mihomoSuspended': true}).ownsRuntime, isTrue);
+      expect(AndroidNativeStatus.fromMap({'engine': 'idle'}).ownsRuntime, isFalse);
+    });
+
+    test('native overview uses the status-only command', () async {
+      mockChannel((_) async => '{"status":{"upload":17},"rateAvailable":true}');
+      final result = await Service().getNativeStatusSnapshot();
+      expect(result['status']['upload'], 17);
+      expect(calls.single.method, 'nativeStatusSnapshot');
+    });
   });
 
   group('lifecycle commands', () {

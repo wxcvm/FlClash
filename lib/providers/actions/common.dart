@@ -48,7 +48,7 @@ class CommonAction extends _$CommonAction {
   }
 
   Future<void> updateTraffic() async {
-    if (_isUpdatingTraffic) {
+    if (_isUpdatingTraffic || service?.nativeOwnsRuntime == true) {
       return;
     }
     _isUpdatingTraffic = true;
@@ -60,6 +60,7 @@ class CommonAction extends _$CommonAction {
         _readTraffic(() => _core.getTraffic(onlyStatisticsProxy)),
         _readTraffic(() => _core.getTotalTraffic(onlyStatisticsProxy)),
       ]);
+      if (service?.nativeOwnsRuntime == true) return;
       if (traffic != null) {
         ref.read(trafficsProvider.notifier).addTraffic(traffic);
       }

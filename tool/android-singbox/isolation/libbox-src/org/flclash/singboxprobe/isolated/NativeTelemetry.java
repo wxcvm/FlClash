@@ -9,7 +9,12 @@ import java.util.concurrent.TimeUnit;
 
 /** On-demand native snapshots. No idle subscriptions, no extra Go runtime. */
 public final class NativeTelemetry implements CommandClientHandler {
-    private final CountDownLatch ready = new CountDownLatch(3);
+    private final CountDownLatch ready;
+    private final boolean statusOnly;
+    private NativeTelemetry(boolean statusOnly) {
+        this.statusOnly = statusOnly;
+        ready = new CountDownLatch(statusOnly ? 1 : 3);
+    }
     private final ArrayDeque<String> logs = new ArrayDeque<>();
     private JSONArray groups, outbounds;
     private JSONObject status;
@@ -18,13 +23,21 @@ public final class NativeTelemetry implements CommandClientHandler {
     private boolean truncated;
 
     public static String snapshot() throws Exception {
-        NativeTelemetry observer = new NativeTelemetry();
+        return snapshot(false);
+    }
+
+    public static String statusSnapshot() throws Exception { return snapshot(true); }
+
+    private static String snapshot(boolean statusOnly) throws Exception {
+        NativeTelemetry observer = new NativeTelemetry(statusOnly);
         CommandClientOptions options = new CommandClientOptions();
         options.setStatusInterval(1000000000L);
         options.addCommand(Libbox.CommandStatus);
-        options.addCommand(Libbox.CommandGroup);
-        options.addCommand(Libbox.CommandOutbounds);
-        options.addCommand(Libbox.CommandLog);
+        if (!statusOnly) {
+            options.addCommand(Libbox.CommandGroup);
+            options.addCommand(Libbox.CommandOutbounds);
+            options.addCommand(Libbox.CommandLog);
+        }
         CommandClient client = new CommandClient(observer, options);
         try {
             client.connect();
@@ -48,15 +61,17 @@ public final class NativeTelemetry implements CommandClientHandler {
     }
 
     private synchronized String result() throws Exception {
-        if (status == null || groups == null || outbounds == null) {
+        if (status == null || (!statusOnly && (groups == null || outbounds == null))) {
             throw new java.io.IOException(failure == null ? "Native telemetry incomplete; retry" : failure);
         }
         JSONObject result = new JSONObject();
         result.put("status", status);
-        result.put("groups", groups);
-        result.put("outbounds", outbounds);
-        result.put("logs", new JSONArray(logs));
-        result.put("truncated", truncated);
+        if (!statusOnly) {
+            result.put("groups", groups);
+            result.put("outbounds", outbounds);
+            result.put("logs", new JSONArray(logs));
+            result.put("truncated", truncated);
+        }
         result.put("rateAvailable", samples >= 2);
         if (failure != null) result.put("warning", failure);
         return result.toString();
