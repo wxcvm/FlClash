@@ -8,6 +8,9 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.SystemClock;
 import java.io.BufferedReader;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.util.concurrent.ThreadLocalRandom;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
@@ -47,6 +50,7 @@ final class ProbeVpnTraffic {
             Thread.sleep(100);
         }
         if (canceled.getAsBoolean()) throw new IOException("VPN test canceled");
+        String dnsResult = verifyDns(vpn, canceled);
         long started = SystemClock.elapsedRealtime();
         try (Socket raw = vpn.getSocketFactory().createSocket()) {
             raw.connect(new InetSocketAddress(InetAddress.getByName(TARGET), 443), 4000);
@@ -72,8 +76,32 @@ final class ProbeVpnTraffic {
                 }
                 return "PASS: VPN source " + TUN_ADDRESS + " -> " + TARGET
                     + ":443, verified TLS, " + response.substring(0, 12)
-                    + ", " + (SystemClock.elapsedRealtime() - started) + " ms";
+                    + ", " + (SystemClock.elapsedRealtime() - started) + " ms\n" + dnsResult;
             }
+        }
+    }
+
+    private static String verifyDns(Network vpn, BooleanSupplier canceled) throws Exception {
+        int id = ThreadLocalRandom.current().nextInt(65536);
+        byte[] query = ProbeDnsMessage.query(id);
+        long started = SystemClock.elapsedRealtime();
+        try (DatagramSocket socket = new DatagramSocket(null)) {
+            vpn.bindSocket(socket);
+            socket.bind(new InetSocketAddress(0));
+            socket.connect(InetAddress.getByName("172.19.0.2"), 53);
+            if (!TUN_ADDRESS.equals(socket.getLocalAddress().getHostAddress())) {
+                throw new IOException("DNS socket did not use the diagnostic TUN");
+            }
+            socket.setSoTimeout(8000);
+            if (canceled.getAsBoolean()) throw new IOException("DNS test canceled");
+            socket.send(new DatagramPacket(query, query.length));
+            byte[] bytes = new byte[4096];
+            DatagramPacket response = new DatagramPacket(bytes, bytes.length);
+            socket.receive(response);
+            if (canceled.getAsBoolean()) throw new IOException("DNS test canceled");
+            ProbeDnsMessage.verify(bytes, response.getLength(), id);
+            return "DNS PASS: example.com A via VPN DNS 172.19.0.2, "
+                + (SystemClock.elapsedRealtime() - started) + " ms";
         }
     }
 

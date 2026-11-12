@@ -25,12 +25,13 @@ public final class ProbeVpnService extends VpnService {
         0, 1, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     private static final String CONFIG = "{"
         + "\"log\":{\"level\":\"warn\"},"
+        + "\"dns\":{\"servers\":[{\"type\":\"local\",\"tag\":\"android\"}],\"final\":\"android\",\"disable_cache\":true},"
         + "\"inbounds\":[{\"type\":\"tun\",\"tag\":\"probe\","
         + "\"address\":[\"172.19.0.1/30\"],\"auto_route\":true,"
-        + "\"dns_mode\":\"disabled\",\"route_address\":[\"1.1.1.1/32\"],"
+        + "\"dns_mode\":\"hijack\",\"dns_address\":[\"172.19.0.2\"],\"route_address\":[\"1.1.1.1/32\",\"172.19.0.2/32\"],"
         + "\"include_package\":[\"org.flclash.singboxprobe\"],\"stack\":\"system\"}],"
         + "\"outbounds\":[{\"type\":\"direct\",\"tag\":\"direct\"}],"
-        + "\"route\":{\"auto_detect_interface\":true,\"final\":\"direct\"}}";
+        + "\"route\":{\"auto_detect_interface\":true,\"rules\":[{\"port\":53,\"action\":\"hijack-dns\"}],\"final\":\"direct\"}}";
 
     private boolean started;
     private final AtomicBoolean retestQueued = new AtomicBoolean();
@@ -78,7 +79,7 @@ public final class ProbeVpnService extends VpnService {
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification notification = new Notification.Builder(this, "probe-vpn")
             .setContentTitle("FlClash diagnostic VPN")
-            .setContentText("Only the diagnostic app is routed to 1.1.1.1")
+            .setContentText("Only diagnostic app: HTTPS and DNS")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .addAction(new Notification.Action.Builder(null, "Stop", stop).build())
@@ -94,7 +95,7 @@ public final class ProbeVpnService extends VpnService {
                 runtime = (AutoCloseable) type.getConstructor(VpnService.class).newInstance(this);
                 type.getMethod("start", String.class).invoke(runtime, CONFIG);
                 if (destroyed) return;
-                report("VPN started; verifying actual HTTPS traffic...");
+                report("VPN started; verifying actual HTTPS and DNS traffic...");
                 String result = ProbeVpnTraffic.verify(this, () -> destroyed);
                 if (!destroyed) report(result);
             } catch (Exception | LinkageError error) {
@@ -119,7 +120,7 @@ public final class ProbeVpnService extends VpnService {
         WORKER.execute(() -> {
             try {
                 if (destroyed || runtime == null) return;
-                report("Rechecking VPN HTTPS without restarting the core...");
+                report("Rechecking VPN HTTPS and DNS without restarting the core...");
                 String result = ProbeVpnTraffic.verify(this, () -> destroyed);
                 if (!destroyed) report(result);
             } catch (Exception | LinkageError error) {
@@ -137,8 +138,9 @@ public final class ProbeVpnService extends VpnService {
         if (active == null) return;
         try {
             active.close();
+            active.getClass().getMethod("verifyStopped").invoke(active);
             ProbeVpnTraffic.verifyRemoved(this);
-            report(status + "\nSTOP PASS: diagnostic VPN removed");
+            report(status + "\nSTOP PASS: VPN removed; TUN, command server and network monitor released");
         } catch (Exception | LinkageError error) {
             Log.e(TAG, "VPN runtime cleanup failed", error);
             report(status + "\nSTOP FAIL: " + failureMessage(error));

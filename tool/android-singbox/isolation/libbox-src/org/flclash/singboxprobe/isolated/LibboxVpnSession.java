@@ -72,6 +72,8 @@ public final class LibboxVpnSession implements AutoCloseable {
         }
     }
 
+    synchronized boolean isStopped() { return server == null && bridge.isClosed(); }
+
     public synchronized void resetNetwork() {
         if (server != null) server.resetNetwork();
     }

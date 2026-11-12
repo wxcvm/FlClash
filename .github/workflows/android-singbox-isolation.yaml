@@ -10,6 +10,7 @@ on:
     branches:
       - feat/android-singbox-isolation-probe
       - feat/android-libbox-vpn-bridge
+      - feat/android-libbox-dns-teardown
     paths:
       - 'tool/android-singbox/isolation/**'
       - '.github/workflows/android-singbox-isolation.yaml'

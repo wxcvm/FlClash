@@ -46,7 +46,7 @@ public final class ProbeVpnActivity extends Activity {
         TextView description = new TextView(this);
         description.setText("FlClash sing-box diagnostic\n\n"
             + "Stop your existing VPN before testing: Android permits one active VPN. "
-            + "This test routes only this diagnostic app's traffic to 1.1.1.1; "
+            + "This test routes only this diagnostic app's HTTPS and DNS test traffic; "
             + "it does not use your FlClash profiles or start automatically.");
         layout.addView(description);
         status = new TextView(this);
