@@ -39,6 +39,8 @@ import kotlin.coroutines.resume
 object ServiceController {
     private val lock = Mutex()
     private var binding: ManagedServiceBinding? = null
+    @Volatile internal var desiredNotification = ServiceConfig.notificationParams.value
+        private set
     @Volatile private var nativeCleanupPending = false
     internal val hasNativeOwner: Boolean get() = runtime?.nativeConfigPath != null || nativeCleanupPending
 
@@ -78,15 +80,20 @@ object ServiceController {
     }
 
     fun updateNotificationParams(params: NotificationParams) {
+        desiredNotification = params
         ServiceConfig.updateNotificationParams(params)
         GlobalState.launch {
             lock.withLock {
+                // A local start can have applied its older serialized snapshot.
+                // Keep the desired value separate from service-side state.
+                val latest = desiredNotification
+                ServiceConfig.updateNotificationParams(latest)
                 if (runtime?.nativeConfigPath != null) return@withLock
                 binding?.useService { service ->
                     // Read the latest value after acquiring the lock, so a delayed
                     // update cannot overwrite a newer notification setting.
                     if (service is MihomoManagedService) {
-                        service.updateNotification(ServiceConfig.notificationParams.value)
+                        service.updateNotification(desiredNotification)
                     }
                 }?.onFailure { GlobalState.log("Unable to update Mihomo notification: $it") }
             }
@@ -442,13 +449,19 @@ private class MihomoManagedService(private val remote: IBinder) : ManagedService
             GlobalState.application,
             remote,
             requireNotNull(ServiceConfig.vpnOptions),
-            ServiceConfig.notificationParams.value,
+            ServiceController.desiredNotification,
         )
     }
 
     override fun stop() = MihomoServiceControl.stop(remote)
     fun canHandoff(): Boolean = MihomoServiceControl.canHandoff(remote)
-    fun updateNotification(params: NotificationParams) = MihomoServiceControl.updateNotification(remote, params)
+    private val remotePid by lazy { MihomoServiceControl.pid(remote) }
+    fun updateNotification(params: NotificationParams) {
+        // Local mode already shares ServiceConfig; no redundant Binder writes.
+        if (remotePid != android.os.Process.myPid()) {
+            MihomoServiceControl.updateNotification(remote, params)
+        }
+    }
 }
 
 /** Adapter for the existing binding/controller contract; native RPCs run off the UI thread. */
