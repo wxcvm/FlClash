@@ -20,6 +20,7 @@ import 'app.dart';
 import 'config.dart';
 import 'core.dart';
 import 'database.dart';
+import 'download_speed.dart';
 
 part 'generated/state.g.dart';
 part 'state/proxies.dart';

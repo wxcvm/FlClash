@@ -460,8 +460,18 @@ class ProxiesAction extends _$ProxiesAction {
       _speedTestingGroups.remove(groupName);
       if (ref.mounted) {
         ref.read(downloadSpeedTestingGroupsProvider.notifier).stop(groupName);
+        _publishDownloadSpeedSort();
       }
     }
+  }
+
+  void _publishDownloadSpeedSort() {
+    if (_speedTestingGroups.isNotEmpty) {
+      return;
+    }
+    ref
+        .read(downloadSpeedSortSnapshotProvider.notifier)
+        .publish(ref.read(downloadSpeedResultsProvider));
   }
 
   Future<int> _measureDownloadSpeed(
@@ -513,6 +523,9 @@ class ProxiesAction extends _$ProxiesAction {
     await _speedTestPool.run(
       () => _measureDownloadSpeed(proxy.name, isCurrent),
     );
+    if (isCurrent()) {
+      _publishDownloadSpeedSort();
+    }
   }
 
   Future<void> testPageGroupMetrics(String groupName) async {

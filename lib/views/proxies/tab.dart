@@ -102,7 +102,7 @@ class ProxiesTabViewState extends ConsumerState<ProxiesTabView>
     }
     await ref
         .read(proxiesActionProvider.notifier)
-        .delayTestPageGroup(group.name);
+        .testPageGroupMetrics(group.name);
   }
 
   Group? get currentGroup {

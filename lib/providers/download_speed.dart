@@ -55,6 +55,30 @@ class DownloadSpeedResults extends Notifier<Map<String, DownloadSpeedSample>> {
   }
 }
 
+/// Freeze the sorting inputs at the end of a batch, rather than moving cards
+/// every time a measurement arrives.
+final downloadSpeedSortSnapshotProvider =
+    NotifierProvider<DownloadSpeedSortSnapshot, Map<String, int>>(
+      DownloadSpeedSortSnapshot.new,
+    );
+
+class DownloadSpeedSortSnapshot extends Notifier<Map<String, int>> {
+  @override
+  Map<String, int> build() {
+    ref.watch(currentProfileIdProvider);
+    ref.watch(coreStatusProvider);
+    ref.watch(routeTrackerProvider.select((route) => route.hostEpoch));
+    return {};
+  }
+
+  void publish(Map<String, DownloadSpeedSample> results) {
+    state = {
+      for (final entry in results.entries)
+        if (!entry.value.running) entry.key: entry.value.bytesPerSecond,
+    };
+  }
+}
+
 String formatDownloadSpeed(int bytesPerSecond) {
   if (bytesPerSecond < 1000) {
     return '$bytesPerSecond B/s';

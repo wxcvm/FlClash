@@ -60,6 +60,7 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
           ProxiesSortType.none => appLocalizations.defaultText,
           ProxiesSortType.delay => appLocalizations.delay,
           ProxiesSortType.name => appLocalizations.name,
+          ProxiesSortType.speed => '下载速度',
         },
         onSelected: (type) =>
             _updateStyle((state) => state.copyWith(sortType: type)),
