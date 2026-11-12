@@ -351,6 +351,7 @@ class ProxiesAction extends _$ProxiesAction {
     if (!_speedTestingGroups.add(groupName)) {
       return;
     }
+    ref.read(downloadSpeedTestingGroupsProvider.notifier).start(groupName);
     try {
       if (ref.read(coreStatusProvider) != CoreStatus.connected) {
         return;
@@ -456,6 +457,9 @@ class ProxiesAction extends _$ProxiesAction {
       }
     } finally {
       _speedTestingGroups.remove(groupName);
+      if (ref.mounted) {
+        ref.read(downloadSpeedTestingGroupsProvider.notifier).stop(groupName);
+      }
     }
   }
 

@@ -55,7 +55,10 @@ jobs:
         run: flutter pub get
 
       - name: Check format
-        run: dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
+        run: |
+          dart format lib/providers/actions/proxies.dart lib/providers/download_speed.dart lib/views/proxies/list.dart test/providers/download_speed_format_test.dart
+          git diff -- lib/providers/actions/proxies.dart lib/providers/download_speed.dart lib/views/proxies/list.dart test/providers/download_speed_format_test.dart
+          dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos

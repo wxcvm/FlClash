@@ -4,6 +4,24 @@ import 'app.dart';
 import 'config.dart';
 import 'route_state.dart';
 
+final downloadSpeedTestingGroupsProvider =
+    NotifierProvider<DownloadSpeedTestingGroups, Set<String>>(
+      DownloadSpeedTestingGroups.new,
+    );
+
+class DownloadSpeedTestingGroups extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => {};
+
+  void start(String name) {
+    state = {...state, name};
+  }
+
+  void stop(String name) {
+    state = {...state}..remove(name);
+  }
+}
+
 /// Missing entries are untested; zero means a completed unsuccessful test.
 typedef DownloadSpeedSample = ({bool running, int bytesPerSecond});
 
