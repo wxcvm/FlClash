@@ -28,10 +28,10 @@ class Request {
     _read = read;
   }
 
-  Request() {
+  Request({HttpClientAdapter? downloadAdapter}) {
     dio = Dio(BaseOptions(headers: {'User-Agent': browserUa}));
     _clashDio = Dio();
-    _clashDio.httpClientAdapter = IOHttpClientAdapter(
+    _clashDio.httpClientAdapter = downloadAdapter ?? IOHttpClientAdapter(
       createHttpClient: () {
         final client = HttpClient();
         client.findProxy = (Uri uri) {
@@ -89,6 +89,40 @@ class Request {
         logLevel: LogLevel.warning,
       );
       rethrow;
+    }
+  }
+
+  /// Stream subscription bytes to disk, keeping the same proxy, auth and
+  /// whole-download deadline as the buffered request.
+  Future<Headers> downloadSubscription(String url, File file) async {
+    final target = downloadTarget(url);
+    final cancelToken = CancelToken();
+    final timer = Timer(downloadTimeoutDuration, () => cancelToken.cancel());
+    try {
+      await file.parent.create(recursive: true);
+      final response = await _clashDio.downloadUri(
+        target.uri,
+        file.path,
+        options: Options(headers: target.headers),
+        cancelToken: cancelToken,
+      );
+      if (cancelToken.isCancelled) {
+        throw DioException.receiveTimeout(
+          timeout: downloadTimeoutDuration,
+          requestOptions: RequestOptions(path: url),
+        );
+      }
+      return response.headers;
+    } on DioException catch (error) {
+      if (cancelToken.isCancelled) {
+        throw DioException.receiveTimeout(
+          timeout: downloadTimeoutDuration,
+          requestOptions: error.requestOptions,
+        );
+      }
+      rethrow;
+    } finally {
+      timer.cancel();
     }
   }
 
@@ -276,6 +310,33 @@ Iterable<List<int>> _compressedChunks(Uint8List bytes) sync* {
       offset,
       end < bytes.length ? end : bytes.length,
     );
+  }
+}
+
+/// Return the original download for plain or malformed bodies, otherwise
+/// inflate into a separate temporary file without reading the whole input.
+Future<File> inflateUnlabeledFile(File source, File output) async {
+  final input = await source.open();
+  final Uint8List head;
+  try {
+    head = await input.read(2);
+  } finally {
+    await input.close();
+  }
+  final codec = _unlabeledCodec(head);
+  if (codec == null) return source;
+  try {
+    final sink = await output.open(mode: FileMode.write);
+    try {
+      await for (final chunk in codec.decoder.bind(source.openRead())) {
+        await sink.writeFrom(chunk);
+      }
+    } finally {
+      await sink.close();
+    }
+    return output;
+  } on FormatException {
+    return source;
   }
 }
 

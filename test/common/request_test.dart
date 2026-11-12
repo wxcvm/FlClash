@@ -199,6 +199,48 @@ void main() {
     });
   });
 
+  test('subscription downloads preserve bytes and response metadata', () async {
+    final dir = await Directory.systemTemp.createTemp('subscription-download');
+    addTearDown(() => dir.delete(recursive: true));
+    final bytes = gzip.encode(utf8.encode('proxies: []'));
+    final request = Request(
+      downloadAdapter: _HostAdapter({
+        'example.com': () => ResponseBody.fromBytes(
+          bytes,
+          200,
+          headers: {
+            'subscription-userinfo': ['total=123'],
+          },
+        ),
+      }),
+    );
+    final file = File('${dir.path}/profile');
+    final headers = await request.downloadSubscription(
+      'https://example.com/profile',
+      file,
+    );
+    expect(headers.value('subscription-userinfo'), 'total=123');
+    expect(await file.readAsBytes(), bytes);
+  });
+
+  test('file inflation keeps plain and malformed sources intact', () async {
+    final dir = await Directory.systemTemp.createTemp('subscription-inflate');
+    addTearDown(() => dir.delete(recursive: true));
+    final source = File('${dir.path}/source');
+    final output = File('${dir.path}/output');
+    final yaml = utf8.encode('proxies: []');
+    for (final codec in [gzip, zlib]) {
+      await source.writeAsBytes(codec.encode(yaml));
+      expect(await inflateUnlabeledFile(source, output), same(output));
+      expect(await output.readAsBytes(), yaml);
+    }
+    for (final bytes in [yaml, [0x1f, 0x8b, 1, 2, 3], <int>[]]) {
+      await source.writeAsBytes(bytes);
+      expect(await inflateUnlabeledFile(source, output), same(source));
+      expect(await source.readAsBytes(), bytes);
+    }
+  });
+
   group('downloadTarget', () {
     test('sends a URL without credentials unchanged', () {
       final target = downloadTarget('https://example.com/a.yaml?x=1');

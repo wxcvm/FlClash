@@ -184,20 +184,24 @@ extension ProfileExtension on Profile {
   }
 
   Future<Profile> update({required ValidateConfig validate}) async {
-    final response = await request.getFileResponseForUrl(url);
-    final disposition = response.headers.value('content-disposition');
-    final userinfo = response.headers.value('subscription-userinfo');
-    return copyWith(
-      label: label.takeFirstValid([
-        getFileNameForDisposition(disposition),
-        defaultLabel,
-      ]),
-      subscriptionInfo: SubscriptionInfo.formHString(userinfo),
-    ).saveFile(
-      response.data ?? Uint8List(0),
-      validate: validate,
-      decompress: true,
-    );
+    final download = File(await appPath.tempFilePath);
+    final inflated = File('${download.path}.inflated');
+    try {
+      final headers = await request.downloadSubscription(url, download);
+      final disposition = headers.value('content-disposition');
+      final userinfo = headers.value('subscription-userinfo');
+      final config = await inflateUnlabeledFile(download, inflated);
+      return await copyWith(
+        label: label.takeFirstValid([
+          getFileNameForDisposition(disposition),
+          defaultLabel,
+        ]),
+        subscriptionInfo: SubscriptionInfo.formHString(userinfo),
+      )._saveValidatedFile(config, validate);
+    } finally {
+      await inflated.safeDelete();
+      await download.safeDelete();
+    }
   }
 
   Future<Profile> saveFile(
@@ -213,14 +217,21 @@ extension ProfileExtension on Profile {
       } else {
         await tempFile.safeWriteAsBytes(bytes);
       }
-      if (await validate(path, ageSecretKey) case final issue?) {
-        throw MessageException(issue);
-      }
-      final mFile = await file;
-      await tempFile.copy(mFile.path);
-      return copyWith(lastUpdateDate: DateTime.now());
+      return await _saveValidatedFile(tempFile, validate);
     } finally {
       await tempFile.safeDelete();
     }
+  }
+
+  Future<Profile> _saveValidatedFile(
+    File tempFile,
+    ValidateConfig validate,
+  ) async {
+    if (await validate(tempFile.path, ageSecretKey) case final issue?) {
+      throw MessageException(issue);
+    }
+    final mFile = await file;
+    await tempFile.copy(mFile.path);
+    return copyWith(lastUpdateDate: DateTime.now());
   }
 }
