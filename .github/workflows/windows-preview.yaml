@@ -26,6 +26,8 @@ jobs:
     permissions:
       actions: read
       contents: read
+    outputs:
+      release_tag: ${{ steps.tag.outputs.tag }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -49,6 +51,21 @@ jobs:
             exit 1
           }
           echo "Verified main CI run $run for $GITHUB_SHA."
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Test APK certificate parsing
+        run: bash tool/ci/test-android-cert.sh
+      - name: Set shared preview tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version: \([0-9.]*\).*/\1/p' pubspec.yaml)
+          test -n "$version"
+          tag="v${version}-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   signing:
     needs: release-checks
@@ -56,11 +73,11 @@ jobs:
     secrets: inherit
 
   preview:
-    needs: signing
+    needs: [release-checks, signing]
     if: github.repository == 'wxcvm/FlClash' && github.ref == 'refs/heads/main'
     runs-on: windows-2022
-    outputs:
-      release_tag: ${{ steps.tag.outputs.tag }}
+    env:
+      FLCLASH_PREVIEW_TAG: ${{ needs.release-checks.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,7 +88,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: core/go.sum
+          cache-dependency-path: |
+            core/go.sum
+            plugins/setup/setup_hooks/lib/src/go_builder.dart
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-windows
+          workspaces: |
+            services/helper
+            plugins/rust_api/rust
+          cache-directories: .dart_tool/hooks_runner
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -85,17 +111,6 @@ jobs:
           echo "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505  $bundle" | sha256sum -c -
       - name: Install dependencies
         run: flutter pub get
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos
-      - name: Set preview tag
-        id: tag
-        shell: bash
-        run: |
-          version=$(sed -n 's/^version: \([0-9.]*\).*/\1/p' pubspec.yaml)
-          test -n "$version"
-          tag="v${version}-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
-          echo "FLCLASH_PREVIEW_TAG=$tag" >> "$GITHUB_ENV"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Build Windows preview packages
         run: dart setup.dart windows --env pre --targets exe,zip -v
       - name: Collect Windows packages
@@ -119,20 +134,20 @@ jobs:
           path: preview-assets/*
           if-no-files-found: error
   android:
-    needs: preview
+    needs: [release-checks, signing]
     uses: ./.github/workflows/android-preview.yaml
     with:
-      release_tag: ${{ needs.preview.outputs.release_tag }}
+      release_tag: ${{ needs.release-checks.outputs.release_tag }}
       source_sha: ${{ github.sha }}
     secrets: inherit
 
   publish:
     if: inputs.publish
-    needs: [preview, android]
+    needs: [release-checks, preview, android]
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ needs.preview.outputs.release_tag }}
+      RELEASE_TAG: ${{ needs.release-checks.outputs.release_tag }}
     steps:
       - uses: actions/download-artifact@v4
         with:
