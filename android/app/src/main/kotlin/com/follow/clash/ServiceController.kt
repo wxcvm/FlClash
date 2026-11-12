@@ -19,6 +19,8 @@ import com.follow.clash.service.ProxyService
 import com.follow.clash.service.ServiceConfig
 import com.follow.clash.service.SingBoxVpnControl
 import java.io.File
+import org.json.JSONObject
+import com.follow.clash.models.SharedState
 import com.follow.clash.service.VpnService
 import com.follow.clash.service.models.VpnOptions
 import com.follow.clash.service.models.NotificationParams
@@ -42,6 +44,10 @@ object ServiceController {
     @Volatile internal var desiredNotification = ServiceConfig.notificationParams.value
         private set
     @Volatile private var nativeCleanupPending = false
+    @Volatile private var latestSharedState: SharedState? = null
+    @Volatile private var restoreMihomoConfig = false
+
+    internal fun rememberSharedState(state: SharedState) { latestSharedState = state }
     internal val hasNativeOwner: Boolean get() = runtime?.nativeConfigPath != null || nativeCleanupPending
 
     @Volatile
@@ -64,7 +70,15 @@ object ServiceController {
     }
 
     fun invokeMethod(data: String, callback: (Result<ByteArray>) -> Unit): Result<Unit> = runCatching {
-        if (MihomoCoreTransport.isolated) MihomoCoreTransport.get().invoke(data, callback)
+        if (MihomoCoreTransport.isolated) {
+            if (MihomoCoreTransport.isSuspended()) {
+                val call = JSONObject(data)
+                val response = JSONObject().put("id", call.optString("id"))
+                    .put("error", JSONObject().put("code", "core_unavailable")
+                        .put("message", "Mihomo is suspended while sing-box owns the VPN"))
+                callback(Result.success(response.toString().encodeToByteArray()))
+            } else MihomoCoreTransport.get().invoke(data, callback)
+        }
         else Core.invokeMethod(data) { result -> callback(Result.success(result ?: ByteArray(0))) }
     }
 
@@ -123,6 +137,19 @@ object ServiceController {
     }
 
     private suspend fun startMihomoLocked(options: VpnOptions): Boolean {
+        if (MihomoCoreTransport.isolated && restoreMihomoConfig) {
+            val state = latestSharedState ?: GlobalState.application.sharedState
+            val setup = state.setupParams ?: return false
+            val result = quickSetup(
+                ServiceStateMachine.initParams(GlobalState.application.filesDir.path, Build.VERSION.SDK_INT),
+                setup.toString(),
+            )
+            if (result.getOrNull() != "") {
+                GlobalState.log("Unable to restore Mihomo configuration: $result")
+                return false
+            }
+            restoreMihomoConfig = false
+        }
         ServiceConfig.updateVpnOptions(options)
         val nextIntent = (if (options.enable) {
             VpnService::class.intent
@@ -246,6 +273,19 @@ object ServiceController {
                 candidate.unbind()
                 return@withContext NativeStartResult(false, false, "Existing VPN could not be stopped")
             }
+            if (MihomoCoreTransport.isolated) {
+                val retired = runCatching { withContext(Dispatchers.IO) { MihomoCoreTransport.suspendForNative() } }
+                if (retired.isFailure) {
+                    candidate.stopIfConnected()
+                    candidate.unbind()
+                    MihomoCoreTransport.resumeAfterNative()
+                    restoreMihomoConfig = true
+                    val restored = previous != null && previousOptions != null &&
+                        startMihomoLocked(previousOptions.copy(nativeConfigPath = null))
+                    return@withContext NativeStartResult(false, restored, retired.exceptionOrNull()?.message.orEmpty())
+                }
+                restoreMihomoConfig = true
+            }
             binding = candidate
             val result = candidate.useService { service -> service.start() }
             if (result.isFailure) {
@@ -255,6 +295,7 @@ object ServiceController {
                     return@withContext NativeStartResult(false, false, "Native startup and cleanup failed: ${result.exceptionOrNull()?.message}")
                 }
                 release()
+                if (MihomoCoreTransport.isolated) MihomoCoreTransport.resumeAfterNative()
                 val restored = previous != null && previousOptions != null &&
                     startMihomoLocked(previousOptions.copy(nativeConfigPath = null))
                 return@withContext NativeStartResult(false, restored, result.exceptionOrNull()?.message.orEmpty())
@@ -294,8 +335,12 @@ object ServiceController {
                 return false
             }
         }
+        val wasNative = hasNativeOwner
         release()
         stopServices()
+        // clearBinding posts its unbind to main. Drain it before retiring Core.
+        withContext(Dispatchers.Main) { }
+        if (wasNative && MihomoCoreTransport.isolated) MihomoCoreTransport.resumeAfterNative()
         return true
     }
 
@@ -345,7 +390,9 @@ object ServiceController {
                     nativeCleanupPending = true
                     return@withLock false
                 }
+                val wasNative = hasNativeOwner
                 release()
+                if (wasNative && MihomoCoreTransport.isolated) MihomoCoreTransport.resumeAfterNative()
                 true
             }
             if (wasCurrent) {

@@ -4,6 +4,8 @@ import android.app.Service
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.Parcel
 import android.os.Process
 import com.follow.clash.core.Core
@@ -12,13 +14,15 @@ import org.json.JSONObject
 /** The actual Mihomo Core, shared by VPN, proxy and RPC in the opt-in :mihomo process. */
 class MihomoCoreService : Service() {
     private val lock = Any()
+    private val main = Handler(Looper.getMainLooper())
+    @Volatile private var retiring = false
     private var owner: IBinder? = null
     private var death: IBinder.DeathRecipient? = null
     @Volatile private var events: IBinder? = null
 
     private val binder = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-            if (code !in MihomoCoreControl.ATTACH..MihomoCoreControl.LISTENER || reply == null) {
+            if (code !in MihomoCoreControl.ATTACH..MihomoCoreControl.RETIRE || reply == null) {
                 return super.onTransact(code, data, reply, flags)
             }
             data.enforceInterface(MihomoCoreControl.TOKEN)
@@ -26,6 +30,8 @@ class MihomoCoreService : Service() {
             try {
                 val token = requireNotNull(data.readStrongBinder())
                 synchronized(lock) {
+                    check(!retiring) { "Mihomo Core is retiring" }
+                    MihomoProcessLifecycle.checkAvailable()
                     if (code == MihomoCoreControl.ATTACH) {
                         check(owner == null || owner == token) { "Mihomo Core already owned" }
                         if (owner == null) {
@@ -68,6 +74,17 @@ class MihomoCoreService : Service() {
                                 }
                             })
                         }
+                        MihomoCoreControl.RETIRE -> {
+                            MihomoProcessLifecycle.retire(packageName)
+                            retiring = true
+                            events = null
+                            // Arm before touching JNI. Process death releases all native resources.
+                            main.postDelayed({ Process.killProcess(Process.myPid()) }, 3000)
+                            runCatching { Core.updateEventListener(null) }
+                            runCatching { Core.stopListener() }
+                            main.postDelayed({ Process.killProcess(Process.myPid()) }, 150)
+                            stopSelf()
+                        }
                         MihomoCoreControl.LISTENER -> {
                             if (data.readInt() != 0) Core.startListener() else Core.stopListener()
                         }
@@ -86,7 +103,7 @@ class MihomoCoreService : Service() {
     private fun detach(token: IBinder?) = synchronized(lock) {
         if (owner != token || token == null) return@synchronized
         events = null
-        Core.updateEventListener(null)
+        if (!retiring) Core.updateEventListener(null)
         death?.let { runCatching { token.unlinkToDeath(it, 0) } }
         owner = null
         death = null

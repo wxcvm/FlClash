@@ -13,7 +13,7 @@ class ProxyService : Service(), ManagedService {
 
     override fun onDestroy() {
         try {
-            cleanup()
+            MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
             super.onDestroy()
         }
@@ -37,7 +37,7 @@ class ProxyService : Service(), ManagedService {
     override fun onBind(intent: Intent): IBinder =
         if (intent.action == MihomoServiceControl.ACTION) control else binder
 
-    override fun start() {
+    override fun start() = MihomoProcessLifecycle.start(this) {
         try {
             modules.start()
         } catch (error: Exception) {
@@ -48,7 +48,7 @@ class ProxyService : Service(), ManagedService {
 
     override fun stop() {
         try {
-            cleanup()
+            MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
             stopSelf()
         }

@@ -31,10 +31,16 @@ class VpnService : SystemVpnService(), ManagedService {
     }
     private val tunnel = TunnelSession(MihomoTunnelEngine)
 
+    override fun onCreate() {
+        super.onCreate()
+        MihomoProcessLifecycle.register(this)
+    }
+
     override fun onDestroy() {
         try {
-            cleanup()
+            MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
+            MihomoProcessLifecycle.unregister(this)
             super.onDestroy()
         }
     }
@@ -250,7 +256,7 @@ class VpnService : SystemVpnService(), ManagedService {
         }
     }
 
-    override fun start() {
+    override fun start() = MihomoProcessLifecycle.start(this) {
         try {
             modules.start()
             handleStart(requireNotNull(ServiceConfig.vpnOptions) { "VPN options are missing" })
@@ -262,7 +268,7 @@ class VpnService : SystemVpnService(), ManagedService {
 
     override fun stop() {
         try {
-            cleanup()
+            MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
             stopSelf()
         }

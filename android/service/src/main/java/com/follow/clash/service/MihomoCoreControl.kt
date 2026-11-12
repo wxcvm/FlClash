@@ -7,6 +7,7 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Binder
 import android.os.IBinder
+import android.os.DeadObjectException
 import android.os.Looper
 import android.os.Parcel
 import java.util.concurrent.CountDownLatch
@@ -23,6 +24,7 @@ class MihomoCoreControl private constructor(
     val pid: Int,
 ) : AutoCloseable {
     val alive: Boolean get() = remote.isBinderAlive
+    private val bound = java.util.concurrent.atomic.AtomicBoolean(true)
 
     fun invoke(json: String, callback: (Result<ByteArray>) -> Unit) = command(INVOKE, json, callback)
     fun quickSetup(init: String, setup: String, callback: (Result<ByteArray>) -> Unit) =
@@ -68,7 +70,30 @@ class MihomoCoreControl private constructor(
     fun setListener(running: Boolean) =
         transact(remote, owner, LISTENER, { it.writeInt(if (running) 1 else 0) }) { Unit }
 
-    override fun close() { app.unbindService(connection) }
+    /** Retire only after the real VPN/proxy has stopped; confirm Binder death. */
+    fun retire() {
+        val dead = CountDownLatch(1)
+        val recipient = IBinder.DeathRecipient { dead.countDown() }
+        try {
+            try {
+                remote.linkToDeath(recipient, 0)
+                transact(remote, owner, RETIRE) { Unit }
+            } catch (_: DeadObjectException) {
+                dead.countDown()
+            }
+            // Drop AUTO_CREATE before process death so Android cannot rebind it.
+            close()
+            check(dead.await(5, TimeUnit.SECONDS) || !remote.isBinderAlive) {
+                "Mihomo process did not exit; native handoff blocked"
+            }
+        } finally {
+            runCatching { remote.unlinkToDeath(recipient, 0) }
+        }
+    }
+
+    override fun close() {
+        if (bound.compareAndSet(true, false)) app.unbindService(connection)
+    }
 
     companion object {
         internal const val TOKEN = "com.follow.clash.service.MihomoCore"
@@ -77,6 +102,7 @@ class MihomoCoreControl private constructor(
         internal const val SETUP = ATTACH + 2
         internal const val EVENTS = ATTACH + 3
         internal const val LISTENER = ATTACH + 4
+        internal const val RETIRE = ATTACH + 5
 
         @Suppress("DEPRECATION")
         fun enabled(context: Context): Boolean = runCatching {
