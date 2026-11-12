@@ -148,7 +148,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   Widget build(BuildContext context) {
     final active = nativeCoreRuntime.activeKind;
     return BaseScaffold(
-      title: '独立内核',
+      title: '内核管理',
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(
           top: context.sectionsTopPadding,
@@ -156,7 +156,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
         ),
         children: [
           generateSection(
-            title: '内核与配置',
+            title: '独立内核与配置',
             items: [
               ListItem<NativeCoreKind>.options(
                 title: const Text('内核'),
@@ -218,7 +218,9 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ListItem(
                 title: const Text('运行状态'),
                 subtitle: Text(
-                  active == null ? '未运行独立内核' : '${active.label} 正在运行',
+                  active == null
+                      ? '未运行独立内核（默认 Mihomo）'
+                      : '${active.label} 正在运行',
                 ),
               ),
               ListItem(
@@ -254,7 +256,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
             ],
             footer:
-                '启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。异常退出后恢复原 Mihomo 状态；TUN 路由状态未独立验证。',
+                '默认使用 Mihomo；独立内核需手动选择、配置和启动，不会按节点协议自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。异常退出后恢复原 Mihomo 状态；TUN 路由状态未独立验证。',
           ),
           if (_result.isNotEmpty)
             Padding(
