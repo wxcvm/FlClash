@@ -9,6 +9,18 @@
             android:exported="false"
             android:process=":singbox" />
 
+        <!-- Explicit native engine binding only; do not advertise a second always-on entry. -->
+        <service
+            android:name=".SingBoxVpnService"
+            android:exported="false"
+            android:process=":singbox"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn" />
+        </service>
+
         <service
             android:name=".VpnService"
             android:exported="false"

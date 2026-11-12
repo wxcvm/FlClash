@@ -33,3 +33,13 @@ it is not a release or an update for the signed production app.
 
 CI builds the opt-in development APK and checks the ZIP entries. Device
 tests are still required for JNI loading, startup and forwarding.
+
+The bound-only SingBoxVpnService now provides a prepared native session, explicit
+start/stop, a foreground notification, and a controller death/revocation callback.
+RemoteSingBoxEngine implements CallbackTunnelEngine and holds the binding until
+stop. It validates the same prepared config before handoff and never loads JNI
+in the caller. The existing VPN service remains the sole advertised always-on
+entry; the new service is explicit-bind only. This API is not yet called by
+Flutter or the production VPN controller. Callers must stop the previous VPN
+before start, keep the binding alive, and handle unexpected-stop callbacks.
+A failed native cleanup retains ownership rather than allowing another session.

@@ -10,9 +10,15 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
     private final VpnService service;
     private final AndroidPlatform platform;
     private final LibboxVpnSession session;
+    private final Runnable requestStop;
 
     public AndroidVpnRuntime(VpnService service) {
+        this(service, service::stopSelf);
+    }
+
+    public AndroidVpnRuntime(VpnService service, Runnable requestStop) {
         this.service = service;
+        this.requestStop = requestStop;
         AndroidTunBridge bridge = new AndroidTunBridge(service);
         platform = new AndroidPlatform(service, bridge);
         session = new LibboxVpnSession(bridge, platform, this);
@@ -32,9 +38,9 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
         }
     }
 
-    @Override public void serviceStop() { service.stopSelf(); }
+    @Override public void serviceStop() { requestStop.run(); }
     @Override public void serviceReload() throws Exception {
-        throw new IOException("Stop and restart the diagnostic VPN to reload");
+        throw new IOException("Stop and restart the native VPN to reload");
     }
     @Override public SystemProxyStatus getSystemProxyStatus() { return new SystemProxyStatus(); }
     @Override public void setSystemProxyEnabled(boolean enabled) throws Exception {
