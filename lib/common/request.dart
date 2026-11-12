@@ -28,7 +28,7 @@ class Request {
     _read = read;
   }
 
-  Request() {
+  Request({HttpClientAdapter? downloadAdapter}) {
     dio = Dio(BaseOptions(headers: {'User-Agent': browserUa}));
     _clashDio = Dio();
     _clashDio.httpClientAdapter = IOHttpClientAdapter(
@@ -41,6 +41,9 @@ class Request {
         return client;
       },
     );
+    if (downloadAdapter != null) {
+      _clashDio.httpClientAdapter = downloadAdapter;
+    }
     releaseDio = Dio(BaseOptions(headers: {'User-Agent': browserUa}));
     releaseDio.httpClientAdapter = IOHttpClientAdapter(
       createHttpClient: () {
@@ -89,6 +92,40 @@ class Request {
         logLevel: LogLevel.warning,
       );
       rethrow;
+    }
+  }
+
+  /// Stream subscription bytes to disk, keeping the same proxy, auth and
+  /// whole-download deadline as the buffered request.
+  Future<Headers> downloadSubscription(String url, File file) async {
+    final target = downloadTarget(url);
+    final cancelToken = CancelToken();
+    final timer = Timer(downloadTimeoutDuration, () => cancelToken.cancel());
+    try {
+      await file.parent.create(recursive: true);
+      final response = await _clashDio.downloadUri(
+        target.uri,
+        file.path,
+        options: Options(headers: target.headers),
+        cancelToken: cancelToken,
+      );
+      if (cancelToken.isCancelled) {
+        throw DioException.receiveTimeout(
+          timeout: downloadTimeoutDuration,
+          requestOptions: RequestOptions(path: url),
+        );
+      }
+      return response.headers;
+    } on DioException catch (error) {
+      if (cancelToken.isCancelled) {
+        throw DioException.receiveTimeout(
+          timeout: downloadTimeoutDuration,
+          requestOptions: error.requestOptions,
+        );
+      }
+      rethrow;
+    } finally {
+      timer.cancel();
     }
   }
 
@@ -222,12 +259,16 @@ final request = Request();
 
 /// Some subscription servers send a gzip or zlib body without saying so in
 /// Content-Encoding, which is the only signal dart:io decompresses on.
-Uint8List decompressUnlabeled(Uint8List bytes) {
-  final codec = switch (bytes) {
+Codec<List<int>, List<int>>? _unlabeledCodec(Uint8List bytes) {
+  return switch (bytes) {
     [0x1f, 0x8b, ...] => gzip,
     [0x78, final flags, ...] when (0x78 << 8 | flags) % 31 == 0 => zlib,
     _ => null,
   };
+}
+
+Uint8List decompressUnlabeled(Uint8List bytes) {
+  final codec = _unlabeledCodec(bytes);
   if (codec == null) {
     return bytes;
   }
@@ -235,6 +276,72 @@ Uint8List decompressUnlabeled(Uint8List bytes) {
     return Uint8List.fromList(codec.decode(bytes));
   } on FormatException {
     return bytes;
+  }
+}
+
+/// Inflate a downloaded profile directly into its temporary file. Feeding
+/// bounded chunks avoids materializing another full uncompressed byte array.
+Future<void> writeUnlabeledBody(File file, Uint8List bytes) async {
+  final codec = _unlabeledCodec(bytes);
+  if (codec == null) {
+    await file.safeWriteAsBytes(bytes);
+    return;
+  }
+  await file.parent.create(recursive: true);
+  try {
+    final output = await file.open(mode: FileMode.write);
+    try {
+      await for (final chunk in codec.decoder.bind(
+        Stream.fromIterable(_compressedChunks(bytes)),
+      )) {
+        await output.writeFrom(chunk);
+      }
+    } finally {
+      await output.close();
+    }
+  } on FormatException {
+    // Preserve the existing behavior for a plain or malformed body that
+    // happens to start with compression magic. Validation still decides.
+    await file.writeAsBytes(bytes);
+  }
+}
+
+Iterable<List<int>> _compressedChunks(Uint8List bytes) sync* {
+  const chunkSize = 64 * 1024;
+  for (var offset = 0; offset < bytes.length; offset += chunkSize) {
+    final end = offset + chunkSize;
+    yield Uint8List.sublistView(
+      bytes,
+      offset,
+      end < bytes.length ? end : bytes.length,
+    );
+  }
+}
+
+/// Return the original download for plain or malformed bodies, otherwise
+/// inflate into a separate temporary file without reading the whole input.
+Future<File> inflateUnlabeledFile(File source, File output) async {
+  final input = await source.open();
+  final Uint8List head;
+  try {
+    head = await input.read(2);
+  } finally {
+    await input.close();
+  }
+  final codec = _unlabeledCodec(head);
+  if (codec == null) return source;
+  try {
+    final sink = await output.open(mode: FileMode.write);
+    try {
+      await for (final chunk in codec.decoder.bind(source.openRead())) {
+        await sink.writeFrom(chunk);
+      }
+    } finally {
+      await sink.close();
+    }
+    return output;
+  } on FormatException {
+    return source;
   }
 }
 
