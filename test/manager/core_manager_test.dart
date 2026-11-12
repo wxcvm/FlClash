@@ -58,6 +58,18 @@ CoreEvent _geoUpdate({
   );
 }
 
+class _RouteRecordingProxiesAction extends ProxiesAction {
+  int refreshes = 0;
+
+  @override
+  void build() {}
+
+  @override
+  void updateGroupsDebounce([Duration? duration]) {
+    refreshes++;
+  }
+}
+
 class _ApplyRecordingSetupAction extends SetupAction {
   int updates = 0;
   int applies = 0;
@@ -485,6 +497,58 @@ void main() {
     expect(route.routeVersion, 42);
     expect(route.synced, isTrue);
 
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('the proxy page refreshes when the actual route changes', (
+    tester,
+  ) async {
+    final coreInterface = _coreInterface();
+    final action = _RouteRecordingProxiesAction();
+    when(() => coreInterface.watchRoute(true)).thenAnswer(
+      (_) async => const RouteSnapshot(coreEpoch: 7, routeVersion: 1),
+    );
+    when(() => coreInterface.watchRoute(false)).thenAnswer(
+      (_) async => const RouteSnapshot(coreEpoch: 7, routeVersion: 2),
+    );
+    final container = await _pumpCoreManager(
+      tester,
+      coreInterface,
+      overrides: [
+        initProvider.overrideWithBuild((_, _) => true),
+        proxiesActionProvider.overrideWith(() => action),
+      ],
+    );
+    container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
+    container.read(currentPageLabelProvider.notifier).toPage(PageLabel.proxies);
+    await tester.pump();
+    verify(() => coreInterface.watchRoute(true)).called(1);
+    final before = action.refreshes;
+    expect(before, greaterThan(0));
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.routeChanged,
+        data: {'core-epoch': 7, 'route-version': 2},
+      ),
+    );
+    await tester.pump();
+    expect(action.refreshes, before + 1);
+
+    container
+        .read(currentPageLabelProvider.notifier)
+        .toPage(PageLabel.dashboard);
+    await tester.pump();
+    verify(() => coreInterface.watchRoute(false)).called(1);
+
+    coreEventManager.sendEvent(
+      const CoreEvent(
+        type: CoreEventType.routeChanged,
+        data: {'core-epoch': 7, 'route-version': 3},
+      ),
+    );
+    await tester.pump();
+    expect(action.refreshes, before + 1);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
