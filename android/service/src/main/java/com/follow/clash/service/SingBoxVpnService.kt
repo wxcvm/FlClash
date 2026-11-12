@@ -174,6 +174,8 @@ class SingBoxVpnService : SystemVpnService() {
         return false
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
+
     override fun onRevoke() {
         requestStop("Android VPN permission revoked")
     }

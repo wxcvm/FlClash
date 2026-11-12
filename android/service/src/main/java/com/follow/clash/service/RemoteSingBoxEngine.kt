@@ -53,9 +53,10 @@ internal class RemoteSingBoxEngine private constructor(
             context: Context,
             config: File,
             onUnexpectedStop: (String) -> Unit,
-        ): RemoteSingBoxEngine = withContext(Dispatchers.IO) {
+        ): RemoteSingBoxEngine {
             val app = context.applicationContext
             check(IsolatedLibbox.isAvailable(app)) { "Optional sing-box payload unavailable" }
+            var bound = false
             val connected = CompletableDeferred<ISingBoxVpn>()
             val disconnected = AtomicBoolean()
             val events = object : ISingBoxVpnEvents.Stub() {
@@ -77,17 +78,24 @@ internal class RemoteSingBoxEngine private constructor(
                 override fun onBindingDied(name: ComponentName) = lost("Native VPN binding died")
                 override fun onNullBinding(name: ComponentName) = lost("Native VPN rejected binding")
             }
-            check(app.bindService(Intent(app, SingBoxVpnService::class.java), connection, Context.BIND_AUTO_CREATE)) {
-                "Cannot bind native VPN service"
-            }
             try {
-                val remote = withTimeout(10000) { connected.await() }
-                val version = ParcelFileDescriptor.open(config, ParcelFileDescriptor.MODE_READ_ONLY).use {
-                    remote.prepare(it, events)
+                return withContext(Dispatchers.IO) {
+                    bound = app.bindService(
+                        Intent(app, SingBoxVpnService::class.java),
+                        connection,
+                        Context.BIND_AUTO_CREATE,
+                    )
+                    check(bound) { "Cannot bind native VPN service" }
+                    val remote = withTimeout(10000) { connected.await() }
+                    val version = ParcelFileDescriptor.open(config, ParcelFileDescriptor.MODE_READ_ONLY).use {
+                        remote.prepare(it, events)
+                    }
+                    RemoteSingBoxEngine(app, connection, remote, events.asBinder(), version, disconnected)
                 }
-                RemoteSingBoxEngine(app, connection, remote, events.asBinder(), version, disconnected)
             } catch (error: Throwable) {
-                app.unbindService(connection)
+                // Also catches cancellation when withContext discards an already
+                // prepared result while returning to the caller's dispatcher.
+                if (bound) app.unbindService(connection)
                 throw error
             }
         }

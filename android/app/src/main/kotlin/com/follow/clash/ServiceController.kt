@@ -7,6 +7,7 @@ import android.content.ServiceConnection
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Build
 import com.follow.clash.common.GlobalState
 import com.follow.clash.common.intent
 import com.follow.clash.core.Core
@@ -158,7 +159,16 @@ object ServiceController {
                 // Unlike the ordinary stop path, handoff must not ignore stop errors.
                 val current = binding
                 if (current != null) {
-                    current.useService { it.stop() }.getOrThrow()
+                    current.useService {
+                        // The platform may relaunch the advertised always-on entry.
+                        // Do not move that VPN to an explicitly bound service.
+                        if (it is VpnService && Build.VERSION.SDK_INT >= 29) {
+                            check(!it.isAlwaysOn && !it.isLockdownEnabled) {
+                                "Disable Android always-on/lockdown VPN before switching cores"
+                            }
+                        }
+                        it.stop()
+                    }.getOrThrow()
                 } else {
                     check(previous == null) { "Existing VPN owner unavailable" }
                 }
