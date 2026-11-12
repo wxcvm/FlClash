@@ -7,6 +7,13 @@ import android.net.ProxyInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
+import androidx.core.app.NotificationCompat
+import com.follow.clash.common.ensureNotificationChannel
+import com.follow.clash.common.startForeground
+import com.follow.clash.common.Components
+import com.follow.clash.common.toPendingIntent
 import androidx.core.content.getSystemService
 import com.follow.clash.common.AccessControlMode
 import com.follow.clash.common.GlobalState
@@ -30,6 +37,9 @@ class VpnService : SystemVpnService(), ManagedService {
         Build.VERSION.SDK_INT < 29 || (!isAlwaysOn && !isLockdownEnabled)
     }
     private val tunnel = TunnelSession(MihomoTunnelEngine)
+    private val main = Handler(Looper.getMainLooper())
+    @Volatile private var established = false
+    private var startupTimeout: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -37,6 +47,8 @@ class VpnService : SystemVpnService(), ManagedService {
     }
 
     override fun onDestroy() {
+        startupTimeout?.let(main::removeCallbacks)
+        startupTimeout = null
         try {
             MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
@@ -122,7 +134,27 @@ class VpnService : SystemVpnService(), ManagedService {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Android starts always-on VPN through this callback instead of FlClash's bound-service
         // path. Notify the app layer so it can restore Core and fully initialize the VPN service.
-        notifyVpnStartRequested()
+        if (!established) {
+            // The system may start this process before Flutter exists. Promote
+            // immediately; the normal notification module replaces this on start.
+            ensureNotificationChannel()
+            startForeground(NotificationCompat.Builder(this, GlobalState.NOTIFICATION_CHANNEL)
+                .setSmallIcon(com.follow.clash.service.R.drawable.ic_service)
+                .setContentTitle("FlClash")
+                .setContentText("Restoring VPN configuration…")
+                .setContentIntent(Intent().setComponent(Components.mainActivity).toPendingIntent)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .build())
+            startupTimeout?.let(main::removeCallbacks)
+            startupTimeout = Runnable {
+                if (!established) {
+                    GlobalState.log("System VPN restore timed out")
+                    stopSelf(startId)
+                }
+            }.also { main.postDelayed(it, 90_000L) }
+            notifyVpnStartRequested()
+        }
         return super.onStartCommand(intent, flags, startId)
     }
 
@@ -260,6 +292,7 @@ class VpnService : SystemVpnService(), ManagedService {
         try {
             modules.start()
             handleStart(requireNotNull(ServiceConfig.vpnOptions) { "VPN options are missing" })
+            established = true
         } catch (error: Exception) {
             stop()
             throw error
@@ -275,6 +308,7 @@ class VpnService : SystemVpnService(), ManagedService {
     }
 
     private fun cleanup() {
+        established = false
         try {
             modules.stop()
         } finally {

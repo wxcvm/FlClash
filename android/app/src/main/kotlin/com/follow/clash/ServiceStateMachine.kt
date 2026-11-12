@@ -107,6 +107,45 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         startFromPreferences()
     }
 
+    /** Android's own VPN start must not route through the tile or request UI consent.
+     * The system selects the Mihomo VpnService; sing-box explicitly opts out of always-on.
+     */
+    suspend fun handleSystemVpnStart() = startPreparationLock.withLock {
+        if (isRunRequested) return@withLock
+        val request = createRequest(running = true)
+        val stored = host.loadSharedState()
+        val options = stored.vpnOptions?.copy(enable = true, nativeConfigPath = null)
+        sharedState = stored.copy(vpnOptions = options)
+        if (options == null || stored.setupParams == null) {
+            host.showToast(MISSING_CONFIG_MESSAGE)
+            abandon(request)
+            return@withLock
+        }
+        if (!host.isVpnPermissionGranted()) {
+            host.showToast(VPN_PERMISSION_MESSAGE)
+            abandon(request)
+            return@withLock
+        }
+        if (!setupCore()) {
+            abandon(request)
+            return@withLock
+        }
+        val started = try {
+            transitionLock.withLock {
+                if (!isCurrent(request)) return@withLock false
+                transitioning(RunState.STARTING) {
+                    host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            host.log("Unable to restore system VPN: $error")
+            false
+        }
+        if (!started) abandon(request)
+    }
+
     suspend fun handleStopAction() {
         if (!isRunRequested) {
             return
