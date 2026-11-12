@@ -333,9 +333,9 @@ class ProxiesAction extends _$ProxiesAction {
       final initialSelection = ref
           .read(currentProfileProvider)
           ?.selectedMap[groupName];
-      final candidates = _resolveDelayTestTargets([
-        (proxies: group.all, testUrl: group.testUrl),
-      ]).map((target) => target.proxyName).toSet();
+      // Test the actual group members, not resolved leaves of nested groups.
+      // A resolved leaf may not be a selectable member of this group.
+      final candidates = group.all.map((proxy) => proxy.name).toSet();
       if (candidates.isEmpty) {
         return;
       }
@@ -380,12 +380,14 @@ class ProxiesAction extends _$ProxiesAction {
           }),
       ]);
 
+      if (!ref.mounted) {
+        return;
+      }
       if (stable.isEmpty) {
         dialogs.showBanner('下载测速失败：没有节点完成有效的数据下载', level: BannerLevel.warning);
         return;
       }
-      if (!ref.mounted ||
-          ref.read(coreStatusProvider) != CoreStatus.connected ||
+      if (ref.read(coreStatusProvider) != CoreStatus.connected ||
           ref.read(currentProfileIdProvider) != initialProfileId ||
           ref.read(currentProfileProvider)?.selectedMap[groupName] !=
               initialSelection ||
@@ -395,6 +397,11 @@ class ProxiesAction extends _$ProxiesAction {
       final winner = stable.entries.reduce(
         (a, b) => a.value >= b.value ? a : b,
       );
+      final currentGroup = ref.read(groupsProvider).getGroup(groupName);
+      if (currentGroup == null ||
+          !currentGroup.all.any((proxy) => proxy.name == winner.key)) {
+        return;
+      }
       await changeProxy(groupName: groupName, proxyName: winner.key);
     } finally {
       _speedTestingGroups.remove(groupName);
