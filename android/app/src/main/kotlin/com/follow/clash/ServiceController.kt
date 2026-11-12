@@ -251,7 +251,7 @@ object ServiceController {
         if (Build.VERSION.SDK_INT < 29) return true
         val intent = VpnService::class.intent.apply { action = MihomoServiceControl.ACTION }
         val current = binding
-        if (current?.component == intent.component) {
+        if (current != null && current.component == intent.component) {
             return current.useService { (it as MihomoManagedService).canHandoff() }.getOrDefault(false)
         }
         val probe = ManagedServiceBinding(intent, {})
