@@ -17,9 +17,10 @@ Install the matching debug app and test APK, then:
 
 The runner checks actual core.initialized and core.memory RPC responses, two
 separate native PIDs, and Binder death on close. The service is non-exported,
-same-UID, bound-only, debug opt-in; only the two read-only diagnostics are
-allowed. Requests and responses use bounded regular-file descriptors, not
-large Binder payloads. The probe never starts a tunnel or proxy listener.
+same-UID, bound-only, debug opt-in; only diagnostic commands, log subscription and the fixed private setup fixture
+are allowed. Requests and responses use bounded regular-file descriptors, not
+large Binder payloads. The probe never starts a tunnel or proxy listener; quickSetup uses a generated
+configuration with all listener ports disabled.
 Run only when the production app is stopped to avoid extra Go memory.
 
 Next: move the real core command/event transport and quickSetup to a shared

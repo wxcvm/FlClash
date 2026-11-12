@@ -130,10 +130,11 @@ class MihomoProcessProbeService : Service() {
         try {
             start { bytes ->
                 if (completed.compareAndSet(false, true)) {
-                    try {
-                        if (!retiring) CoreProbeCallback.send(this, callback, Result.success(bytes))
-                    } finally {
-                        commandActive.set(false)
+                    // Release before notifying the caller: it may immediately issue
+                    // the next command when the one-way callback arrives.
+                    commandActive.set(false)
+                    if (!retiring) runCatching {
+                        CoreProbeCallback.send(this, callback, Result.success(bytes))
                     }
                 }
             }
