@@ -37,28 +37,38 @@ internal object MihomoTunnelEngine : TunnelEngine {
     override fun stop() = Core.stopTun()
 }
 
-/** Serializes tunnel starts and teardown, including a rejected or throwing start. */
-internal class TunnelSession(private val engine: TunnelEngine) {
-    private var running = false
+/** Serializes route establishment, engine handoff and teardown. */
+internal class TunnelSession(private val defaultEngine: TunnelEngine) {
+    private var activeEngine: TunnelEngine? = null
 
     @Synchronized
-    fun start(request: TunnelRequest) {
-        // Mihomo replaces its own previous listener on start. Preserve that
-        // behavior until an engine switch is implemented at the service level.
-        running = true
-        try {
-            check(engine.start(request)) { "Core rejected the tun file descriptor" }
-        } catch (error: Exception) {
+    fun start(engine: TunnelEngine = defaultEngine, request: () -> TunnelRequest) {
+        // Do not establish a replacement VPN until the previous engine has
+        // released its tunnel. A same-engine restart retains its existing behavior.
+        if (activeEngine != null && activeEngine !== engine) {
             stop()
+        }
+        // Establish inside the lock, before transferring descriptor ownership.
+        val next = request()
+        activeEngine = engine
+        try {
+            check(engine.start(next)) { "Core rejected the tun file descriptor" }
+        } catch (error: Throwable) {
+            try {
+                stop()
+            } catch (cleanup: Throwable) {
+                if (cleanup !== error) error.addSuppressed(cleanup)
+            }
             throw error
         }
     }
 
     @Synchronized
     fun stop() {
-        if (running) {
-            engine.stop()
-            running = false
-        }
+        val engine = activeEngine ?: return
+        // Keep the owner recorded if stopping fails, so a later stop can retry
+        // and another engine cannot take over an unclosed tunnel.
+        engine.stop()
+        activeEngine = null
     }
 }
