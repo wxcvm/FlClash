@@ -64,3 +64,29 @@ func TestDownloadProbeRequiresCompleteSample(t *testing.T) {
 		t.Fatalf("HTTP error counted as a download: %+v", rejected)
 	}
 }
+
+func TestSpeedCancellationRespectsDispatchOrder(t *testing.T) {
+	var registry speedTestRegistry
+	old, finishOld := registry.start(1)
+	defer finishOld()
+	newer, finishNew := registry.start(3)
+	defer finishNew()
+
+	registry.stop(2)
+	if old.Err() != context.Canceled {
+		t.Fatal("active old test was not cancelled")
+	}
+	if newer.Err() != nil {
+		t.Fatal("newer test was cancelled by a stale stop")
+	}
+
+	late, finishLate := registry.start(2)
+	defer finishLate()
+	if late.Err() != context.Canceled {
+		t.Fatal("late old handler was allowed to start")
+	}
+	registry.stop(4)
+	if newer.Err() != context.Canceled {
+		t.Fatal("newer test was not cancelled by the next stop")
+	}
+}

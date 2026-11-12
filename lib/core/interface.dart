@@ -208,6 +208,8 @@ abstract class CoreHandlerInterface {
     );
   }
 
+  Future<void> stopSpeedTests() => _commandUnobserved(CoreMethod.proxyStopSpeed);
+
   Future<Map<int, String>> validateProxies(List<Map<String, dynamic>> proxies) {
     return _query(
       CoreMethod.proxyValidate,

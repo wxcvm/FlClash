@@ -228,6 +228,12 @@ void main() {
     expect({for (final method in CoreMethod.values) method.wireName}, goNames);
   });
 
+  test('speed cancellation uses the dedicated core command', () async {
+    final handler = _RecordingCoreHandler();
+    await handler.stopSpeedTests();
+    expect(handler.calls, containsPair(CoreMethod.proxyStopSpeed, null));
+  });
+
   test('core interface sends structured request parameters', () async {
     final handler = _RecordingCoreHandler();
 

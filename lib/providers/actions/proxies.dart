@@ -117,7 +117,16 @@ class ProxiesAction extends _$ProxiesAction {
       _scheduleAutoSpeed();
     });
     ref.listen(isStartProvider, (_, _) => _scheduleAutoSpeed());
-    ref.listen(appVisibleProvider, (_, _) => _scheduleAutoSpeed());
+    ref.listen(appVisibleProvider, (_, visible) {
+      if (system.isAndroid && !visible) {
+        _speedTestGeneration++;
+        if (_speedTestPool.activeCount > 0 &&
+            ref.read(coreStatusProvider) == CoreStatus.connected) {
+          unawaited(_core.stopSpeedTests());
+        }
+      }
+      _scheduleAutoSpeed();
+    });
     ref.listen(suspendProvider, (_, _) => _scheduleAutoSpeed());
   }
 
@@ -639,15 +648,13 @@ class ProxiesAction extends _$ProxiesAction {
           _measureDownloadSpeed(name, isCurrent);
 
       final first = <String, int>{};
-      await Future.wait([
-        for (final name in candidates)
-          _speedTestPool.run(() async {
-            final speed = await measure(name);
-            if (speed > 0) {
-              first[name] = speed;
-            }
-          }),
-      ]);
+      for (final name in candidates) {
+        if (!isCurrent()) return;
+        final speed = await _speedTestPool.run(() => measure(name));
+        if (speed > 0) {
+          first[name] = speed;
+        }
+      }
 
       if (!selectWinner) {
         return;
@@ -663,19 +670,18 @@ class ProxiesAction extends _$ProxiesAction {
         if (first.containsKey(incumbent)) incumbent,
       };
       final stable = <String, int>{};
-      await Future.wait([
-        for (final name in finalists)
-          _speedTestPool.run(() async {
-            final second = await measure(name);
-            final initial = first[name]!;
-            if (second > 0) {
-              stable[name] = second < initial ? second : initial;
-              ref
-                  .read(downloadSpeedResultsProvider.notifier)
-                  .finish(name, stable[name]!);
-            }
-          }),
-      ]);
+      for (final name in finalists) {
+        if (!isCurrent()) return;
+        final second = await _speedTestPool.run(() => measure(name));
+        if (!isCurrent()) return;
+        final initial = first[name]!;
+        if (second > 0) {
+          stable[name] = second < initial ? second : initial;
+          ref
+              .read(downloadSpeedResultsProvider.notifier)
+              .finish(name, stable[name]!);
+        }
+      }
 
       if (!isCurrent()) {
         return;
@@ -791,7 +797,7 @@ class ProxiesAction extends _$ProxiesAction {
     String name,
     bool Function() isCurrent,
   ) async {
-    if (!isCurrent()) {
+    if (!isCurrent() || (system.isAndroid && !ref.read(appVisibleProvider))) {
       return 0;
     }
     final results = ref.read(downloadSpeedResultsProvider.notifier);
