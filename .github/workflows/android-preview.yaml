@@ -89,7 +89,10 @@ jobs:
           umask 077
           printf '%s' "$KEYSTORE" | base64 --decode > android/app/keystore.jks
           fingerprint=$(keytool -exportcert -keystore android/app/keystore.jks -alias "$KEY_ALIAS" -storepass:env STORE_PASSWORD | sha256sum | cut -d' ' -f1)
-          [[ "$fingerprint" =~ ^[0-9a-f]{64}$ ]]
+          if [[ "$fingerprint" != 'f4761e8a924713db32d2da01ed3f9864b651e8fa9c9ed1d8f6d0667b3da4acef' ]]; then
+            echo '::error::Configured key is not the pinned FlClash release signing identity.'
+            exit 1
+          fi
           echo "ANDROID_EXPECTED_CERT=$fingerprint" >> "$GITHUB_ENV"
           {
             printf 'keyAlias=%s\n' "$KEY_ALIAS"

@@ -35,6 +35,8 @@ The preview workflow fails if the shared signing secrets are absent, verifies th
 
 ## Published upgrade identity
 
+The fork's pinned release certificate SHA-256 is `f4761e8a924713db32d2da01ed3f9864b651e8fa9c9ed1d8f6d0667b3da4acef`. Both signing preflight and APK build verify this public fingerprint; a different keystore cannot silently establish a new identity even on the first unified release. The fingerprint is public certificate metadata, not a private key. Keep using the existing four secrets.
+
 Each new dual-platform release publishes `android-build.json` with the actual verified certificate SHA-256, Android versionCode, application ID, source commit and release tag. Its hash is included in SHA256SUMS. The publisher rejects a different certificate or a versionCode that does not exceed every previous published unified APK. Only the two historical .dev releases are excluded. A future stable publisher must reuse this gate and the same signing identity; the current workflow still creates previews only.
 
 Android builds are now artifact-only reusable jobs. Do not backfill or replace an existing release APK: publish a new tag with a higher versionCode instead. The original official app requires one backup/reinstall/restore if its certificate differs. A rollback must be rebuilt under a new higher versionCode; an older APK is not an in-place rollback.

@@ -45,4 +45,9 @@ jobs:
           printf '%s' "$KEYSTORE" | base64 --decode > "$tmp/release.jks"
           keytool -certreq -keystore "$tmp/release.jks" -alias "$KEY_ALIAS" -storepass:env STORE_PASSWORD -keypass:env KEY_PASSWORD -file "$tmp/request.csr"
           test -s "$tmp/request.csr"
+          fingerprint=$(keytool -exportcert -keystore "$tmp/release.jks" -alias "$KEY_ALIAS" -storepass:env STORE_PASSWORD | sha256sum | cut -d' ' -f1)
+          if [[ "$fingerprint" != 'f4761e8a924713db32d2da01ed3f9864b651e8fa9c9ed1d8f6d0667b3da4acef' ]]; then
+            echo '::error::Configured key is not the pinned FlClash release signing identity.'
+            exit 1
+          fi
           echo 'Shared Android release signing key is usable.'
