@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(() {
+  setUp(() {
     globalState.appEnv = 'stable';
   });
 
@@ -24,18 +24,24 @@ void main() {
     );
   }
 
-  testWidgets('a stable build carries no banner', (tester) async {
-    await pump(tester, safeMode: false);
+  for (final channel in ['stable', 'pre', 'dev']) {
+    testWidgets('$channel builds carry no channel banner', (tester) async {
+      globalState.appEnv = channel;
+      await pump(tester, safeMode: false);
 
-    expect(find.byKey(const Key('child')), findsOneWidget);
-    expect(find.byType(Banner), findsNothing);
-  });
+      expect(find.byKey(const Key('child')), findsOneWidget);
+      expect(find.byType(Banner), findsNothing);
+    });
+  }
 
   testWidgets('a safe mode build is bannered on any channel', (tester) async {
-    await pump(tester, safeMode: true);
+    for (final channel in ['stable', 'pre', 'dev']) {
+      globalState.appEnv = channel;
+      await pump(tester, safeMode: true);
 
-    final banner = tester.widget<Banner>(find.byType(Banner));
-    expect(banner.message, 'SAFE MODE');
-    expect(find.byKey(const Key('child')), findsOneWidget);
+      final banner = tester.widget<Banner>(find.byType(Banner));
+      expect(banner.message, 'SAFE MODE');
+      expect(find.byKey(const Key('child')), findsOneWidget);
+    }
   });
 }
