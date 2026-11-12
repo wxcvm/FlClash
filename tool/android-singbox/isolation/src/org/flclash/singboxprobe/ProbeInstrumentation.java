@@ -9,8 +9,11 @@ import android.content.ServiceConnection;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Parcel;
+import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import com.follow.clash.core.mobile.Mobile;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -19,6 +22,34 @@ public final class ProbeInstrumentation extends Instrumentation {
     public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         start();
+    }
+
+    private static void verifyDescriptorTransfer(IBinder remote) throws Exception {
+        ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try (ParcelFileDescriptor readEnd = pipe[0];
+             DataOutputStream output = new DataOutputStream(
+                 new ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]))) {
+            output.writeInt(ProbeService.FD_CHALLENGE);
+            output.flush();
+            data.writeInterfaceToken(ProbeService.DESCRIPTOR);
+            readEnd.writeToParcel(data, 0);
+            if (!remote.transact(ProbeService.TRANSFER_FD, data, reply, 0)) {
+                throw new IllegalStateException("Descriptor transaction was rejected");
+            }
+            reply.readException();
+            try (ParcelFileDescriptor returned = ParcelFileDescriptor.CREATOR.createFromParcel(reply);
+                 DataInputStream input = new DataInputStream(
+                     new ParcelFileDescriptor.AutoCloseInputStream(returned))) {
+                if (input.readInt() != ProbeService.FD_RESPONSE) {
+                    throw new IllegalStateException("Invalid returned descriptor response");
+                }
+            }
+        } finally {
+            data.recycle();
+            reply.recycle();
+        }
     }
 
     @Override
@@ -72,6 +103,7 @@ public final class ProbeInstrumentation extends Instrumentation {
                     reply.recycle();
                 }
             }
+            verifyDescriptorTransfer(remote[0]);
             Mobile.forceGC();
             result.putString("stream", "PASS: real Mihomo + isolated libbox " + firstVersion
                 + ", remote PID " + firstPid + ", 2/2 Binder calls\n");

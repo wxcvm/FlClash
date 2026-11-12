@@ -81,7 +81,12 @@ jobs:
           ./gradlew :core:bindCore -Ptarget-platform=android-arm64
       - name: Build standalone instrumentation APK
         run: |
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          sdkmanager_path="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          test -x "$sdkmanager_path"
+          "$sdkmanager_path" 'platforms;android-35' 'build-tools;35.0.0'
           bash tool/android-singbox/isolation/build.sh "$LIBBOX_AAR" probe-apk \
             build/core/gomobile/classes.jar build/core/gomobile/core.aar
       - uses: actions/upload-artifact@v4

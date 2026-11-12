@@ -24,7 +24,10 @@ Uninstall only org.flclash.singboxprobe before installing a newer diagnostic APK
 Never uninstall production FlClash.
 
 PASS requires actual Mihomo JNI calls before and after two successful libbox
-calls in the same separate process. This verifies runtime coexistence and
-classloader isolation, not VPN traffic, DNS, engine switching or memory release.
+calls in the same separate process. A bidirectional Binder pipe descriptor
+transfer additionally checks real OS handle duplication and closure semantics,
+not just integer serialization. This verifies runtime coexistence and
+classloader isolation, not VPN traffic, actual TUN descriptor ownership, VpnService.protect, DNS,
+engine switching or memory release.
 The diagnostic has its own package ID and does not modify production FlClash.
 Next: libbox platform callbacks, single VPN owner, rollback and device memory tests.
