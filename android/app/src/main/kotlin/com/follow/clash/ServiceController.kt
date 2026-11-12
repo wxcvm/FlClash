@@ -71,13 +71,13 @@ object ServiceController {
 
     fun invokeMethod(data: String, callback: (Result<ByteArray>) -> Unit): Result<Unit> = runCatching {
         if (MihomoCoreTransport.isolated) {
-            if (MihomoCoreTransport.isSuspended()) {
+            if (!MihomoCoreTransport.invoke(data, callback)) {
                 val call = JSONObject(data)
                 val response = JSONObject().put("id", call.optString("id"))
                     .put("error", JSONObject().put("code", "core_unavailable")
                         .put("message", "Mihomo is suspended while sing-box owns the VPN"))
                 callback(Result.success(response.toString().encodeToByteArray()))
-            } else MihomoCoreTransport.get().invoke(data, callback)
+            }
         }
         else Core.invokeMethod(data) { result -> callback(Result.success(result ?: ByteArray(0))) }
     }
@@ -137,6 +137,7 @@ object ServiceController {
     }
 
     private suspend fun startMihomoLocked(options: VpnOptions): Boolean {
+        if (MihomoCoreTransport.isolated && !MihomoCoreTransport.resumeAfterNative()) return false
         if (MihomoCoreTransport.isolated && restoreMihomoConfig) {
             val state = latestSharedState ?: GlobalState.application.sharedState
             val setup = state.setupParams ?: return false
@@ -268,6 +269,13 @@ object ServiceController {
             return NativeStartResult(false, false, preflight.exceptionOrNull()?.message.orEmpty())
         }
         return withContext(NonCancellable) {
+            if (MihomoCoreTransport.isolated && !runCatching {
+                    withContext(Dispatchers.IO) { MihomoCoreTransport.canSuspend() }
+                }.getOrDefault(false)) {
+                candidate.stopIfConnected()
+                candidate.unbind()
+                return@withContext NativeStartResult(false, false, "Mihomo cannot hand off; check always-on/lockdown VPN")
+            }
             if (!stopForHandoff()) {
                 candidate.stopIfConnected()
                 candidate.unbind()
@@ -278,9 +286,9 @@ object ServiceController {
                 if (retired.isFailure) {
                     candidate.stopIfConnected()
                     candidate.unbind()
-                    MihomoCoreTransport.resumeAfterNative()
+                    val resumed = MihomoCoreTransport.resumeAfterNative()
                     restoreMihomoConfig = true
-                    val restored = previous != null && previousOptions != null &&
+                    val restored = resumed && previous != null && previousOptions != null &&
                         startMihomoLocked(previousOptions.copy(nativeConfigPath = null))
                     return@withContext NativeStartResult(false, restored, retired.exceptionOrNull()?.message.orEmpty())
                 }

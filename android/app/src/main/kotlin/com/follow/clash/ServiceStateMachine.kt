@@ -164,6 +164,33 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         }
     }
 
+    /** Explicit switch, unlike ordinary start which preserves a manual native run. */
+    fun requestMihomoStart(): Deferred<Boolean> {
+        val request = createRequest(running = true)
+        return host.scope.async {
+            val result = startPreparationLock.withLock preparation@ {
+                val options = sharedState.vpnOptions?.copy(nativeConfigPath = null)
+                    ?: return@preparation false
+                if (!isCurrent(request) || !prepareVpn(options)) return@preparation false
+                transitionLock.withLock transition@ {
+                    if (!isCurrent(request)) return@transition false
+                    transitioning(RunState.STARTING) {
+                        val started = host.startService(withLocalNetworkFallback(options))
+                        if (started) manualNativePath = null
+                        started
+                    }
+                }
+            }
+            transitionLock.withLock {
+                if (isCurrent(request) && !result && host.runtime == null && !host.hasNativeOwner) {
+                    arbiter.resetToStopped(request)
+                }
+                publish()
+            }
+            result
+        }
+    }
+
     fun requestStop(): Deferred<Boolean> {
         val request = createRequest(running = false)
         return host.scope.async { stop(request) }

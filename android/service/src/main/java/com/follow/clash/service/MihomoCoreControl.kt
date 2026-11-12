@@ -25,6 +25,7 @@ class MihomoCoreControl private constructor(
 ) : AutoCloseable {
     val alive: Boolean get() = remote.isBinderAlive
     private val bound = java.util.concurrent.atomic.AtomicBoolean(true)
+    val connected: Boolean get() = bound.get()
 
     fun invoke(json: String, callback: (Result<ByteArray>) -> Unit) = command(INVOKE, json, callback)
     fun quickSetup(init: String, setup: String, callback: (Result<ByteArray>) -> Unit) =
@@ -71,6 +72,8 @@ class MihomoCoreControl private constructor(
         transact(remote, owner, LISTENER, { it.writeInt(if (running) 1 else 0) }) { Unit }
 
     /** Retire only after the real VPN/proxy has stopped; confirm Binder death. */
+    fun canSuspend(): Boolean = transact(remote, owner, CAN_SUSPEND) { it.readInt() != 0 }
+
     fun retire() {
         val dead = CountDownLatch(1)
         val recipient = IBinder.DeathRecipient { dead.countDown() }
@@ -103,6 +106,7 @@ class MihomoCoreControl private constructor(
         internal const val EVENTS = ATTACH + 3
         internal const val LISTENER = ATTACH + 4
         internal const val RETIRE = ATTACH + 5
+        internal const val CAN_SUSPEND = ATTACH + 6
 
         @Suppress("DEPRECATION")
         fun enabled(context: Context): Boolean = runCatching {

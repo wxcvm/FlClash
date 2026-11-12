@@ -22,7 +22,7 @@ class MihomoCoreService : Service() {
 
     private val binder = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-            if (code !in MihomoCoreControl.ATTACH..MihomoCoreControl.RETIRE || reply == null) {
+            if (code !in MihomoCoreControl.ATTACH..MihomoCoreControl.CAN_SUSPEND || reply == null) {
                 return super.onTransact(code, data, reply, flags)
             }
             data.enforceInterface(MihomoCoreControl.TOKEN)
@@ -73,6 +73,11 @@ class MihomoCoreService : Service() {
                                     }
                                 }
                             })
+                        }
+                        MihomoCoreControl.CAN_SUSPEND -> {
+                            reply.writeNoException()
+                            reply.writeInt(if (MihomoProcessLifecycle.canSuspend()) 1 else 0)
+                            return true
                         }
                         MihomoCoreControl.RETIRE -> {
                             MihomoProcessLifecycle.retire(packageName)

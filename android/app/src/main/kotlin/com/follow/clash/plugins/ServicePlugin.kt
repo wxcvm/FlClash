@@ -98,6 +98,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "validateNativeCore" -> validateNativeCore(call, result)
             "startNativeCore" -> startNativeCore(call, result)
             "stopNativeCore" -> stopNativeCore(call, result)
+            "startMihomoCore" -> startMihomoCore(call, result)
             else -> result.notImplemented()
         }
     }
@@ -209,6 +210,16 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     ))
                 }
                 .onFailure { result.error("NATIVE_START", it.message, null) }
+        }
+    }
+
+    private fun startMihomoCore(call: MethodCall, result: MethodChannel.Result) {
+        commandRevision = call.argument<Int>("revision") ?: commandRevision
+        val request = ServiceState.requestMihomoStart()
+        scope.launch {
+            runCatching { request.await() }
+                .onSuccess { result.success(it) }
+                .onFailure { result.error("MIHOMO_START", it.message, null) }
         }
     }
 

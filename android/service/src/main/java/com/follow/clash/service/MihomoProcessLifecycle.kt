@@ -28,6 +28,10 @@ internal object MihomoProcessLifecycle {
         Unit
     }
 
+    fun canSuspend(): Boolean = synchronized(lock) {
+        !retiring && (Build.VERSION.SDK_INT < 29 || vpn?.let { !it.isAlwaysOn && !it.isLockdownEnabled } != false)
+    }
+
     fun retire(packageName: String) = synchronized(lock) {
         check(Build.VERSION.SDK_INT >= 28 && Application.getProcessName() == "$packageName:mihomo") {
             "Refusing to retire non-Mihomo process"

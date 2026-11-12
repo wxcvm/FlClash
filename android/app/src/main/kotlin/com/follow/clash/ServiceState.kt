@@ -33,9 +33,14 @@ object ServiceState {
 
     internal fun requestNativeStart(config: File): Deferred<NativeStartResult> = machine.requestNativeStart(config)
 
+    internal fun requestMihomoStart(): Deferred<Boolean> = machine.requestMihomoStart()
+
     fun requestStop(): Deferred<Boolean> = machine.requestStop()
 
-    fun syncSharedState(state: SharedState) = machine.syncSharedState(state)
+    fun syncSharedState(state: SharedState) {
+        ServiceController.rememberSharedState(state)
+        machine.syncSharedState(state)
+    }
 
     internal fun captureRequestToken(): RunRequest = machine.captureRequestToken()
 
