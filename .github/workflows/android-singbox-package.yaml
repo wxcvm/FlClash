@@ -47,9 +47,18 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: nttld/setup-ndk@v1
+        id: ndk
         with:
           ndk-version: r28c
           link-to-sdk: true
+      - name: Pin Flutter native-assets compiler to project NDK
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          test -n "$ANDROID_NDK_HOME"
+          grep -E 'Pkg.Revision *= *28\.2\.13676358' "$ANDROID_NDK_HOME/source.properties"
+          find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" -maxdepth 2 -name 'libclang.so*' -print -quit | grep .
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
       - uses: gradle/actions/setup-gradle@v6
       - name: Test network epoch state transitions
         run: |
