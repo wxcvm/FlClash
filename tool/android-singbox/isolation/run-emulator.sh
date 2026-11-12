@@ -12,7 +12,7 @@ adb install "${1:?diagnostic APK required}"
 adb shell cmd appops set "$PACKAGE" ACTIVATE_VPN allow
 run_probe() {
   local klass="$1" expected="$2"
-  timeout 120 adb shell am instrument -w "$PACKAGE/.$klass" | tee "probe-results/$klass.txt"
+  timeout 120 adb shell am instrument -w -r "$PACKAGE/.$klass" | tee "probe-results/$klass.txt"
   grep -F "$expected" "probe-results/$klass.txt"
   grep -F 'INSTRUMENTATION_CODE: -1' "probe-results/$klass.txt"
 }
