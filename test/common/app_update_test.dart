@@ -57,6 +57,31 @@ void main() {
     );
   });
 
+  test('preview updates compare numeric version, run and attempt', () {
+    expect(isPreviewReleaseTag('v0.9.3-preview.1.1'), isTrue);
+    expect(isPreviewReleaseTag('v0.9.3'), isFalse);
+    expect(
+      isNewerPreviewTag('v0.9.3-preview.10.1', 'v0.9.3-preview.9.1'),
+      isTrue,
+    );
+    expect(
+      isNewerPreviewTag('v0.9.3-preview.1.2', 'v0.9.3-preview.1.1'),
+      isTrue,
+    );
+    expect(
+      isNewerPreviewTag('v0.9.3-preview.1.1', 'v0.9.3-preview.1.1'),
+      isFalse,
+    );
+    expect(
+      isNewerPreviewTag('v0.9.4-preview.1.1', 'v0.9.3-preview.99.1'),
+      isTrue,
+    );
+    expect(
+      isNewerPreviewTag('v0.9.3-preview.99.1', 'v0.9.4-preview.1.1'),
+      isFalse,
+    );
+  });
+
   group('releaseChecksum', () {
     const digest =
         'ff6a953c0f5c12e6bdc97b49428b565b64c4a62d85e50081823ba297407529b1';

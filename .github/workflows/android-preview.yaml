@@ -1,10 +1,11 @@
 name: Android preview
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/android-preview.yaml'
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       release_tag:
@@ -23,7 +24,7 @@ env:
   FLUTTER_VERSION: '3.47.6'
   GO_VERSION: '1.27.1'
   NDK_VERSION: r28c
-  RELEASE_TAG: ${{ inputs.release_tag || 'v0.9.3-preview.1.1' }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
   android:

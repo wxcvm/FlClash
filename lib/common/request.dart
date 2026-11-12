@@ -109,13 +109,46 @@ class Request {
     final release = await latestRelease();
     final remoteVersion = release['tag_name'] as String;
     final version = globalState.packageInfo.version;
-    final hasUpdate =
-        compareVersions(remoteVersion.replaceAll('v', ''), version) > 0;
+    final hasUpdate = previewTag.isNotEmpty
+        ? isNewerPreviewTag(remoteVersion, previewTag)
+        : compareVersions(remoteVersion.replaceAll('v', ''), version) > 0;
     return hasUpdate ? release : null;
   }
 
   /// The release page redirect still answers once the hourly API quota is spent.
   Future<Map<String, dynamic>> latestRelease() async {
+    if (previewTag.isNotEmpty) {
+      final response = await releaseDio.get<List<dynamic>>(
+        'https://api.github.com/repos/$repository/releases?per_page=30',
+      );
+      final releases = response.data ?? const [];
+      Map<String, dynamic>? latest;
+      for (final release in releases.whereType<Map<String, dynamic>>()) {
+        final tag = release['tag_name'];
+        if (release['draft'] == true ||
+            tag is! String ||
+            !isPreviewReleaseTag(tag)) {
+          continue;
+        }
+        final suffix = selfUpdateSuffix;
+        if (suffix != null) {
+          final assets = release['assets'];
+          final name = releaseAssetName(tag, suffix);
+          if (assets is! List ||
+              !assets.any((asset) => asset is Map && asset['name'] == name)) {
+            continue;
+          }
+        }
+        if (latest == null ||
+            isNewerPreviewTag(tag, latest['tag_name'] as String)) {
+          latest = release;
+        }
+      }
+      if (latest == null) {
+        throw const FormatException('No published preview for this platform');
+      }
+      return latest;
+    }
     try {
       final response = await dio.get<Map<String, dynamic>>(
         'https://api.github.com/repos/$repository/releases/latest',

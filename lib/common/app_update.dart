@@ -13,6 +13,24 @@ import 'package:path/path.dart';
 
 const releaseChecksumsName = 'SHA256SUMS';
 
+final _previewTagPattern = RegExp(
+  r'^v(\d+)\.(\d+)\.(\d+)-preview\.(\d+)\.(\d+)$',
+);
+
+bool isPreviewReleaseTag(String tag) => _previewTagPattern.hasMatch(tag);
+
+bool isNewerPreviewTag(String candidate, String current) {
+  final next = _previewTagPattern.firstMatch(candidate);
+  final previous = _previewTagPattern.firstMatch(current);
+  if (next == null || previous == null) return false;
+  for (var i = 1; i <= 5; i++) {
+    final a = int.parse(next.group(i)!);
+    final b = int.parse(previous.group(i)!);
+    if (a != b) return a > b;
+  }
+  return false;
+}
+
 sealed class UpdateDownload {
   const UpdateDownload(this.tag);
 
