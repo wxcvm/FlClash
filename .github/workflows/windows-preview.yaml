@@ -1,10 +1,6 @@
 name: Windows and Android preview
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/windows-preview.yaml'
   workflow_dispatch:
 
 permissions:
