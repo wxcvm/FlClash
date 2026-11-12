@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/desktop/native_config_kind.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_installer.dart';
 import 'package:fl_clash/providers/native_core.dart';
@@ -87,6 +89,26 @@ class _NativeCoreViewState extends State<NativeCoreView> {
     setState(() => _configPath = file!.path!);
   }
 
+  Future<String> _detectConfig() async {
+    final file = await picker.pickerFile();
+    final path = file?.path;
+    if (!mounted || path == null) return '未选择配置';
+    final kind = detectNativeCoreKind(await File(path).readAsString());
+    if (!mounted) return '';
+    if (kind == null) {
+      return '无法唯一识别独立内核，请手动选择；Clash 订阅仍由 Mihomo 处理';
+    }
+    _configPaths[_kind] = _configPath;
+    _executablePaths[_kind] = _executable;
+    setState(() {
+      _kind = kind;
+      _configPath = path;
+      _executable = _executablePaths[kind] ?? kind.executableName;
+    });
+    await _loadInstalledExecutable(kind);
+    return '已识别 ${kind.label}，请检查配置后启动';
+  }
+
   Future<void> _editExecutable() async {
     final value = await dialogs.showCommonDialog<String>(
       child: InputDialog(
@@ -158,12 +180,20 @@ class _NativeCoreViewState extends State<NativeCoreView> {
           generateSection(
             title: '独立内核与配置',
             items: [
+              ListItem(
+                title: const Text('自动识别内核配置'),
+                subtitle: const Text('导入原生配置，自动选择对应内核'),
+                onTap: _busy || active != null
+                    ? null
+                    : () => _perform(_detectConfig),
+              ),
               ListItem<NativeCoreKind>.options(
                 title: const Text('内核'),
                 options: NativeCoreKind.values,
                 value: _kind,
                 textBuilder: (kind) => kind.label,
                 onChanged: (kind) {
+                  if (_busy || active != null) return;
                   _configPaths[_kind] = _configPath;
                   _executablePaths[_kind] = _executable;
                   setState(() {
@@ -256,7 +286,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
             ],
             footer:
-                '默认使用 Mihomo；独立内核需手动选择、配置和启动，不会按节点协议自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。异常退出后恢复原 Mihomo 状态；TUN 路由状态未独立验证。',
+                '默认使用 Mihomo；独立内核支持导入配置自动识别，启动需手动确认，不会按节点协议自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。异常退出后恢复原 Mihomo 状态；TUN 路由状态未独立验证。',
           ),
           if (_result.isNotEmpty)
             Padding(
