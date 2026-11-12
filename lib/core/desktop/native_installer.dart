@@ -105,11 +105,12 @@ final class NativeCoreRelease {
     final rawTag = metadata['tag_name'];
     // Hysteria releases use app/v2.x.y tags. Keep the full upstream tag
     // for downloads, but use a path-safe version for local installation.
-    final tag = kind == NativeCoreKind.hysteria2 &&
-            rawTag is String &&
-            rawTag.startsWith('app/')
-        ? rawTag.substring(4)
-        : rawTag;
+    var tag = rawTag;
+    if (kind == NativeCoreKind.hysteria2 &&
+        rawTag is String &&
+        rawTag.startsWith('app/')) {
+      tag = rawTag.substring(4);
+    }
     if (tag is! String || !_validTag(tag)) {
       throw const FormatException('Invalid upstream release version');
     }
@@ -276,9 +277,8 @@ final class NativeCoreInstaller {
             if (bytes == null) {
               throw const FormatException('Archive entry has no content');
             }
-            await File(
-              p.join(stage.path, name),
-            ).writeAsBytes(bytes, flush: true);
+            final file = File(p.join(stage.path, name));
+            await file.writeAsBytes(bytes, flush: true);
             if (name == filename) foundExecutable = true;
           }
           if (!foundExecutable) {

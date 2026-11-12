@@ -28,9 +28,8 @@ void main() {
       '-config',
       'config.json',
     ]);
-    expect(NativeCoreKind.hysteria2.checkArguments('config.yaml'), [
-      'version',
-    ]);
+    final hysteriaCheck = NativeCoreKind.hysteria2.checkArguments('config.yaml');
+    expect(hysteriaCheck, ['version']);
     expect(NativeCoreKind.hysteria2.runArguments('config.yaml'), [
       'client',
       '-c',
