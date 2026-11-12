@@ -18,6 +18,20 @@ void main() {
     expect(health.record('A', -1, now), NodeHealthDecision.wait);
   });
 
+  test('network changes reset health but keep download budget', () {
+    final health = NodeHealthHistory();
+    final now = DateTime(2026);
+    health.markOptimization(now);
+    health.record('A', -1, now);
+    health.reset(keepOptimizationBudget: true);
+    expect(health.samples, isEmpty);
+    expect(health.record('A', 30, now), NodeHealthDecision.wait);
+    expect(
+      health.record('A', 30, now.add(const Duration(minutes: 30))),
+      NodeHealthDecision.optimize,
+    );
+  });
+
   test('health success clears failures and optimization is rate limited', () {
     final health = NodeHealthHistory();
     final now = DateTime(2026);

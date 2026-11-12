@@ -118,10 +118,10 @@ class NodeHealthHistory {
   Map<String, ({int successes, int failures})> get samples =>
       Map.unmodifiable(_samples);
 
-  void reset() {
+  void reset({bool keepOptimizationBudget = false}) {
     _node = null;
     _failures = 0;
-    _lastOptimization = null;
+    if (!keepOptimizationBudget) _lastOptimization = null;
     _samples.clear();
   }
 

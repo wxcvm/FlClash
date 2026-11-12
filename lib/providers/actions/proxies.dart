@@ -140,7 +140,7 @@ class ProxiesAction extends _$ProxiesAction {
 
   void onAutoSpeedNetworkChange(bool online) {
     _autoSpeedOnline = online;
-    _nodeHealth.reset();
+    _nodeHealth.reset(keepOptimizationBudget: true);
     _scheduleAutoSpeed();
   }
 
@@ -187,36 +187,80 @@ class ProxiesAction extends _$ProxiesAction {
       if (incumbent.isEmpty || reservedCustomProxyNames.contains(incumbent)) {
         return;
       }
-      int? delay;
-      try {
-        final result = await _core.testDelay(
-          TestDelayParams(
-            proxyName: incumbent,
-            testUrl: ref.read(realTestUrlProvider(group.testUrl)),
-            timeout: ref.read(appSettingProvider).delayTestTimeout,
-          ),
-        );
-        delay = result.value;
-      } catch (error) {
-        commonPrint.log(
-          'Automatic node health check failed: $error',
-          logLevel: coreFailureLogLevel(error),
-        );
-      }
+      final delay = await _probeAutoNode(group, incumbent);
       if (!isCurrent()) return;
       final decision = _nodeHealth.record(incumbent, delay, DateTime.now());
       if (decision == NodeHealthDecision.wait) return;
       _nodeHealth.markOptimization(DateTime.now());
-      await selectByDownloadSpeed(
-        group.name,
-        automatic: true,
-        confirmedFailure: decision == NodeHealthDecision.failover,
-      );
+      if (decision == NodeHealthDecision.failover) {
+        await _recoverAutoNode(group, incumbent, isCurrent);
+      } else {
+        await selectByDownloadSpeed(group.name, automatic: true);
+      }
     } finally {
       _autoSpeedRunning = false;
       if (ref.mounted && _autoSpeedTimer?.isActive != true) {
         _scheduleAutoSpeed(delay: const Duration(seconds: 30));
       }
+    }
+  }
+
+  Future<int?> _probeAutoNode(Group group, String name) async {
+    try {
+      final result = await _core.testDelay(
+        TestDelayParams(
+          proxyName: name,
+          testUrl: ref.read(realTestUrlProvider(group.testUrl)),
+          timeout: ref.read(appSettingProvider).delayTestTimeout,
+        ),
+      );
+      return result.value;
+    } catch (error) {
+      commonPrint.log(
+        'Automatic node health check failed: $error',
+        logLevel: coreFailureLogLevel(error),
+      );
+      return null;
+    }
+  }
+
+  // Recovery does not depend on the throughput endpoint. Prefer known fast
+  // alternatives, but require two successful lightweight probes.
+  Future<void> _recoverAutoNode(
+    Group group,
+    String incumbent,
+    bool Function() isCurrent,
+  ) async {
+    final names = group.all
+        .map((proxy) => proxy.name)
+        .where((name) => !reservedCustomProxyNames.contains(name))
+        .toSet()
+        .toList();
+    final candidates = automaticSpeedCandidates(
+      names,
+      incumbent,
+      ref.read(downloadSpeedSortSnapshotProvider),
+      _autoSpeedCursor++,
+    ).where((name) => name != incumbent);
+    for (final name in candidates) {
+      if (!isCurrent()) return;
+      final first = await _probeAutoNode(group, name);
+      if (!isCurrent()) return;
+      if (first == null || first <= 0) continue;
+      final second = await _probeAutoNode(group, name);
+      if (!isCurrent()) return;
+      if (second == null || second <= 0) continue;
+      final recovered = await _probeAutoNode(group, incumbent);
+      if (!isCurrent() || recovered == null || recovered == 0) return;
+      if (recovered > 0) return;
+      final current = ref.read(groupsProvider).getGroup(group.name);
+      if (current == null ||
+          !current.all.any((proxy) => proxy.name == name)) {
+        return;
+      }
+      await changeProxy(groupName: group.name, proxyName: name);
+      if (ref.mounted) await updateGroups();
+      return;
     }
   }
 
@@ -488,7 +532,6 @@ class ProxiesAction extends _$ProxiesAction {
     bool selectWinner = true,
     bool matchSearch = false,
     bool automatic = false,
-    bool confirmedFailure = false,
   }) async {
     if (!_speedTestingGroups.add(groupName)) {
       return;
@@ -607,7 +650,7 @@ class ProxiesAction extends _$ProxiesAction {
       );
       // A failed throughput sample alone is not proof that a working node
       // is dead. Only the health monitor can authorize that failover.
-      if (automatic && !confirmedFailure && !stable.containsKey(current)) {
+      if (automatic && !stable.containsKey(current)) {
         return;
       }
       final winner = chooseDownloadSpeedWinner(stable, current);
