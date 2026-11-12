@@ -56,8 +56,7 @@ func TestProxyOnlyTrafficLeavesOutADirectProxyOfAnyName(t *testing.T) {
 	statistic.DefaultManager.ResetStatistic()
 }
 
-// Desktop connectivity events already bump the host's probe epoch; the Core
-// only needs to release resolver connections tied to the previous interface.
+// A DNS-only refresh must not invalidate the Core route or rebuild outbounds.
 func TestNetworkChangeResetsResolverWithoutMovingRoute(t *testing.T) {
 	previous := resetNetworkResolver
 	called := 0
