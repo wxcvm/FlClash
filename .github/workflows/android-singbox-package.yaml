@@ -79,6 +79,8 @@ jobs:
           if grep -E '^(go/Seq|io/nekohasekai/libbox/)' service-classes.txt; then
             echo 'libbox classes leaked into the host classpath' >&2; exit 1
           fi
+      - name: Test native quality ranking
+        run: flutter test test/native_quality_ranking_test.dart
       - name: Compile and test actual Android app with native runtime
         run: |
           cd android
