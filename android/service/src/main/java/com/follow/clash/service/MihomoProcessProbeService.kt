@@ -164,7 +164,7 @@ class MihomoProcessProbeService : Service() {
     override fun onBind(intent: Intent): IBinder = control
 
     companion object {
-        internal const val PROBE_CONFIG = "mixed-port: 0\\nport: 0\\nsocks-port: 0\\nmode: rule\\nlog-level: info\\ndns:\\n  enable: false\\ntun:\\n  enable: false\\nproxies: []\\nproxy-groups: []\\nrules:\\n  - MATCH,DIRECT\\n"
+        internal const val PROBE_CONFIG = "mixed-port: 0\nport: 0\nsocks-port: 0\nmode: rule\nlog-level: info\ndns:\n  enable: false\ntun:\n  enable: false\nproxies: []\nproxy-groups: []\nrules:\n  - MATCH,DIRECT\n"
     }
     override fun onUnbind(intent: Intent): Boolean {
         retire()

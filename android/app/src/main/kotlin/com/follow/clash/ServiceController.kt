@@ -58,23 +58,32 @@ object ServiceController {
         clearBinding()
         runtime = null
         nativeCleanupPending = false
-        Core.stopListener()
+        if (MihomoCoreTransport.isolated) {
+            runCatching { MihomoCoreTransport.stopListener() }.onFailure { GlobalState.log("Mihomo stop listener: $it") }
+        } else Core.stopListener()
     }
 
-    fun invokeMethod(data: String, callback: (ByteArray) -> Unit): Result<Unit> = runCatching {
-        Core.invokeMethod(data) { result ->
-            callback(result ?: ByteArray(0))
-        }
+    fun invokeMethod(data: String, callback: (Result<ByteArray>) -> Unit): Result<Unit> = runCatching {
+        if (MihomoCoreTransport.isolated) MihomoCoreTransport.get().invoke(data, callback)
+        else Core.invokeMethod(data) { result -> callback(Result.success(result ?: ByteArray(0))) }
     }
 
     suspend fun quickSetup(
         initParams: String,
         setupParams: String,
     ): Result<String> = runCatching {
-        NetworkObserver.start()
-        suspendCancellableCoroutine { continuation ->
-            Core.quickSetup(initParams, setupParams) { result ->
-                continuation.resume(result.orEmpty())
+        if (MihomoCoreTransport.isolated) withContext(Dispatchers.IO) {
+            withTimeout(60_000) {
+                suspendCancellableCoroutine<String> { continuation ->
+                    MihomoCoreTransport.get().quickSetup(initParams, setupParams) { result ->
+                        continuation.resumeWith(result.map { it.decodeToString() })
+                    }
+                }
+            }
+        } else {
+            NetworkObserver.start()
+            suspendCancellableCoroutine { continuation ->
+                Core.quickSetup(initParams, setupParams) { result -> continuation.resume(result.orEmpty()) }
             }
         }
     }
@@ -101,7 +110,8 @@ object ServiceController {
     }
 
     fun setEventListener(callback: ((ByteArray) -> Unit)?): Result<Unit> = runCatching {
-        Core.updateEventListener(callback)
+        if (MihomoCoreTransport.isolated) MihomoCoreTransport.setEvents(callback)
+        else Core.updateEventListener(callback)
     }
 
     suspend fun start(options: VpnOptions): Boolean = lock.withLock {
@@ -148,7 +158,14 @@ object ServiceController {
             return false
         }
 
-        Core.startListener()
+        if (MihomoCoreTransport.isolated) {
+            val listener = runCatching { withContext(Dispatchers.IO) { MihomoCoreTransport.get().setListener(true) } }
+            if (listener.isFailure) {
+                currentBinding.stopIfConnected()
+                release()
+                return false
+            }
+        } else Core.startListener()
         runtime = ServiceRuntime(
             vpn = options.enable,
             startedAtMillis = runtime?.startedAtMillis ?: System.currentTimeMillis(),

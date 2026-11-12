@@ -29,6 +29,9 @@ android {
     }
 
     sourceSets {
+        if (providers.gradleProperty("flclashMihomoIsolated").orNull == "true") {
+            getByName("debug").manifest.srcFile("src/mihomoIsolated/AndroidManifest.xml")
+        }
         // Unit tests live under android/tests/ instead of each module's src/test.
         getByName("test").java.setSrcDirs(listOf("../tests/service"))
     }

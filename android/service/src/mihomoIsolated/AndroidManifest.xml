@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <service android:name=".MihomoCoreService" android:enabled="true"
+            tools:replace="android:enabled" />
+        <service android:name=".VpnService" android:process=":mihomo" />
+        <service android:name=".ProxyService" android:process=":mihomo" />
+    </application>
+</manifest>

@@ -1,6 +1,7 @@
 package com.follow.clash.plugins
 
 import com.follow.clash.ServiceController
+import com.follow.clash.MihomoCoreTransport
 import com.follow.clash.ServiceState
 import com.follow.clash.common.Components
 import com.follow.clash.common.GlobalState
@@ -20,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collect
 
 class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
@@ -34,7 +36,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         // The main thread is also Flutter's UI thread, where "init" would load it.
         scope.launch {
-            runCatching { Core.load() }
+            runCatching { if (!MihomoCoreTransport.isolated) Core.load() }
                 .onFailure { error -> GlobalState.log("Unable to load the Core: $error") }
         }
         messenger = binding.binaryMessenger
@@ -59,7 +61,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         channel.setMethodCallHandler(null)
         coreChannel.setMethodCallHandler(null)
         scope.cancel()
-        ServiceController.setEventListener(null)
+        GlobalState.launch(Dispatchers.IO) { ServiceController.setEventListener(null) }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -108,15 +110,20 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     private fun initialize(result: MethodChannel.Result) {
-        NetworkObserver.start()
-        ServiceController.setEventListener(::sendEvent)
-            .onSuccess { result.success("") }
-            .onFailure { error -> result.success(error.message.orEmpty()) }
+        scope.launch(Dispatchers.IO) {
+            if (!MihomoCoreTransport.isolated) NetworkObserver.start()
+            ServiceController.setEventListener(::sendEvent)
+                .onSuccess { result.success("") }
+                .onFailure { error -> result.success(error.message.orEmpty()) }
+        }
     }
 
     private fun shutdown(result: MethodChannel.Result) {
-        ServiceController.setEventListener(null)
-        result.success(true)
+        scope.launch(Dispatchers.IO) {
+            ServiceController.setEventListener(null)
+                .onSuccess { result.success(true) }
+                .onFailure { result.error("CORE_ERROR", it.message, null) }
+        }
     }
 
     private fun invokeMethod(call: MethodCall, result: MethodChannel.Result) {
@@ -126,7 +133,8 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             return
         }
         ServiceController.invokeMethod(data) { response ->
-            result.success(response)
+            response.onSuccess { result.success(it) }
+                .onFailure { result.error("CORE_ERROR", it.message, null) }
         }.onFailure { error ->
             result.error("CORE_ERROR", error.message, null)
         }
