@@ -130,13 +130,22 @@ class Request {
             !isPreviewReleaseTag(tag)) {
           continue;
         }
+        final suffix = selfUpdateSuffix;
+        if (suffix != null) {
+          final assets = release['assets'];
+          final name = releaseAssetName(tag, suffix);
+          if (assets is! List ||
+              !assets.any((asset) => asset is Map && asset['name'] == name)) {
+            continue;
+          }
+        }
         if (latest == null ||
             isNewerPreviewTag(tag, latest['tag_name'] as String)) {
           latest = release;
         }
       }
       if (latest == null) {
-        throw const FormatException('No published Windows preview');
+        throw const FormatException('No published preview for this platform');
       }
       return latest;
     }

@@ -181,9 +181,7 @@ class CommonAction extends _$CommonAction {
   }
 
   void _openReleasePage() {
-    unawaited(
-      launchUrl(Uri.parse('https://github.com/$repository/releases')),
-    );
+    unawaited(launchUrl(Uri.parse('https://github.com/$repository/releases')));
   }
 
   /// Downloads the latest release for this build even when it is not newer.

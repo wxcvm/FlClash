@@ -1,4 +1,4 @@
-name: Windows preview
+name: Windows and Android preview
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: windows-preview
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   FLUTTER_VERSION: '3.47.6'
@@ -22,6 +22,8 @@ jobs:
   preview:
     if: github.repository == 'wxcvm/FlClash' && github.ref == 'refs/heads/main'
     runs-on: windows-2022
+    outputs:
+      release_tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,11 +51,14 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos
       - name: Set preview tag
+        id: tag
         shell: bash
         run: |
           version=$(sed -n 's/^version: \([0-9.]*\).*/\1/p' pubspec.yaml)
           test -n "$version"
-          echo "FLCLASH_PREVIEW_TAG=v${version}-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          tag="v${version}-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          echo "FLCLASH_PREVIEW_TAG=$tag" >> "$GITHUB_ENV"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Build Windows preview packages
         run: dart setup.dart windows --env pre --targets exe,zip -v
       - name: Verify and hash packages
@@ -87,13 +92,20 @@ jobs:
           set -euo pipefail
           tag="$FLCLASH_PREVIEW_TAG"
           cat > preview-notes.md <<'NOTES'
-          Windows x64 preview of wxcvm/FlClash.
+          Windows x64 and Android ARM64 preview of wxcvm/FlClash.
 
           Includes merged network reconnect, DNS socket recovery, Windows TUN bootstrap, REALITY X25519-MLKEM768 support and native core management changes, including occupied HTTP port rollback.
 
           Install using the EXE or extract the portable ZIP. SHA256SUMS contains file integrity hashes.
 
-          Preview: live Windows connectivity, sleep/resume and actual node throughput still require real-device validation. The pending real-download-speed selection and native Hysteria 2 PRs are not included unless merged into this build's source.
+          Includes real download-speed selection. Live connectivity, sleep/resume and throughput still require real-device validation.
           NOTES
           printf '\nSource: %s\n' "$GITHUB_SHA" >> preview-notes.md
-          gh release create "$tag" preview-assets/* --target "$GITHUB_SHA" --prerelease --title "FlClash Windows $tag" --notes-file preview-notes.md
+          gh release create "$tag" preview-assets/* --target "$GITHUB_SHA" --prerelease --title "FlClash $tag" --notes-file preview-notes.md
+
+  android:
+    needs: preview
+    uses: ./.github/workflows/android-preview.yaml
+    with:
+      release_tag: ${{ needs.preview.outputs.release_tag }}
+    secrets: inherit

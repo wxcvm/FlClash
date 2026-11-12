@@ -641,6 +641,11 @@ class ListHeader extends ConsumerWidget {
                     .read(proxiesActionProvider.notifier)
                     .delayTestPageGroup(groupName);
               },
+              onSpeedSelect: () {
+                ref
+                    .read(proxiesActionProvider.notifier)
+                    .selectByDownloadSpeed(groupName);
+              },
               onToggle: () {
                 onChange(groupName);
               },
@@ -808,6 +813,7 @@ class _GroupActions extends StatelessWidget {
     required this.groupType,
     required this.onScrollToSelected,
     required this.onDelayTest,
+    required this.onSpeedSelect,
     required this.onToggle,
   });
 
@@ -816,6 +822,7 @@ class _GroupActions extends StatelessWidget {
   final String groupType;
   final VoidCallback onScrollToSelected;
   final VoidCallback onDelayTest;
+  final VoidCallback onSpeedSelect;
   final VoidCallback onToggle;
 
   @override
@@ -840,6 +847,11 @@ class _GroupActions extends StatelessWidget {
                   icon: isDelayTesting
                       ? const ActivityIndicator(size: 24)
                       : const GlyphIcon(AppGlyphs.bolt),
+                ),
+                IconButton(
+                  tooltip: '按真实下载速度选最快节点（消耗测试流量）',
+                  onPressed: onSpeedSelect,
+                  icon: const GlyphIcon(AppGlyphs.speed),
                 ),
               ],
             )

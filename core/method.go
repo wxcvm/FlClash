@@ -202,6 +202,7 @@ var methodHandlers = map[CoreMethod]methodHandler{
 	proxySelectMethod:     withArguments(handleChangeProxy),
 	proxyDefinitionMethod: withFallible(handleGetProxyDefinition),
 	proxyTestDelayMethod:  withArguments(handleTestDelay),
+	proxyTestSpeedMethod:  withArguments(handleTestSpeed),
 	proxyValidateMethod:   withArguments(handleValidateProxies),
 	proxyConvertMethod:    withFallible(handleConvertProxies),
 	shareLinkEncodeMethod: withArguments(handleEncodeShareLinks),
