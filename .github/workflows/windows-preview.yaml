@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: windows-preview
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   FLUTTER_VERSION: '3.47.6'
@@ -76,11 +76,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="v0.9.3-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          version=$(sed -n 's/^version: \([0-9.]*\).*/\1/p' pubspec.yaml)
+          test -n "$version"
+          tag="v${version}-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           cat > preview-notes.md <<'NOTES'
           Windows x64 preview of wxcvm/FlClash.
 
-          Includes merged network reconnect, DNS socket recovery, Windows TUN bootstrap, REALITY X25519-MLKEM768 support and native core management changes.
+          Includes merged network reconnect, DNS socket recovery, Windows TUN bootstrap, REALITY X25519-MLKEM768 support and native core management changes, including occupied HTTP port rollback.
 
           Install using the EXE or extract the portable ZIP. SHA256SUMS contains file integrity hashes.
 
