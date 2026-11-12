@@ -29,16 +29,17 @@ class SingBoxVpnService : VpnService() {
 
     private val control = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-            if (code !in SingBoxVpnControl.VALIDATE..SingBoxVpnControl.URL_TEST || reply == null) {
+            if (code !in SingBoxVpnControl.VALIDATE..SingBoxVpnControl.QUALITY_CANCEL || reply == null) {
                 return super.onTransact(code, data, reply, flags)
             }
             data.enforceInterface(SingBoxVpnControl.TOKEN)
             if (Binder.getCallingUid() != Process.myUid()) throw SecurityException("Private VPN control")
             try {
-                if (code == SingBoxVpnControl.SNAPSHOT) {
+                if (code == SingBoxVpnControl.SNAPSHOT || code == SingBoxVpnControl.QUALITY_STATUS) {
                     val snapshot = synchronized(lifecycle) {
                         check(running && !destroyed) { "sing-box VPN is not running" }
-                        requireNotNull(session).snapshot()
+                        if (code == SingBoxVpnControl.SNAPSHOT) requireNotNull(session).snapshot()
+                        else requireNotNull(session).qualitySnapshot()
                     }
                     check(snapshot.length <= 220_000) { "Native snapshot exceeds Binder budget" }
                     reply.writeNoException()
@@ -75,6 +76,15 @@ class SingBoxVpnService : VpnService() {
                         SingBoxVpnControl.URL_TEST -> {
                             check(running) { "sing-box VPN is not running" }
                             requireNotNull(session).testOutbound(requireNotNull(data.readString()))
+                            0
+                        }
+                        SingBoxVpnControl.QUALITY_START -> {
+                            check(running) { "sing-box VPN is not running" }
+                            requireNotNull(session).startQuality(requireNotNull(data.readString()))
+                            0
+                        }
+                        SingBoxVpnControl.QUALITY_CANCEL -> {
+                            session?.cancelQuality()
                             0
                         }
                         else -> if (running) 1 else 0

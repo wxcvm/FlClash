@@ -71,6 +71,15 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "start" -> start(call, result)
             "stop" -> stop(call, result)
             "nativeCoreStatus" -> result.success(nativeStatus())
+            "startNativeQuality" -> nativeOperation(result) {
+                ServiceController.startNativeQuality(requireNotNull(call.argument<String>("tag")))
+                true
+            }
+            "nativeQualitySnapshot" -> nativeOperation(result) { ServiceController.nativeQualitySnapshot() }
+            "cancelNativeQuality" -> nativeOperation(result) {
+                ServiceController.cancelNativeQuality()
+                true
+            }
             "nativeSnapshot" -> nativeOperation(result) { ServiceController.nativeSnapshot() }
             "selectNativeOutbound" -> nativeOperation(result) {
                 ServiceController.selectNativeOutbound(requireNotNull(call.argument<String>("group")), requireNotNull(call.argument<String>("tag")))

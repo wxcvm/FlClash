@@ -61,6 +61,16 @@ internal object IsolatedSingBoxRuntime {
             invoke { runtime.javaClass.getMethod("start", String::class.java).invoke(runtime, config) }
         }
 
+        fun startQuality(tag: String) {
+            invoke { runtime.javaClass.getMethod("startQuality", String::class.java).invoke(runtime, tag) }
+        }
+        fun qualitySnapshot(): String = invoke {
+            runtime.javaClass.getMethod("qualitySnapshot").invoke(runtime) as String
+        }
+        fun cancelQuality() {
+            invoke { runtime.javaClass.getMethod("cancelQuality").invoke(runtime) }
+        }
+
         fun snapshot(): String = invoke {
             runtime.javaClass.getMethod("snapshot").invoke(runtime) as String
         }

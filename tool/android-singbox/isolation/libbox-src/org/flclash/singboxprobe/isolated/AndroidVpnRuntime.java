@@ -10,6 +10,7 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
     private final VpnService service;
     private final AndroidPlatform platform;
     private final LibboxVpnSession session;
+    private final NativeQuality quality = new NativeQuality();
 
     public AndroidVpnRuntime(VpnService service) {
         this.service = service;
@@ -22,6 +23,10 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
         session.start(service, config);
     }
 
+    public void startQuality(String tag) throws Exception { quality.start(tag); }
+    public String qualitySnapshot() throws Exception { return quality.snapshot(); }
+    public void cancelQuality() throws Exception { quality.cancel(); }
+
     public String snapshot() throws Exception { return NativeTelemetry.snapshot(); }
     public void selectOutbound(String group, String tag) throws Exception { NativeTelemetry.select(group, tag); }
     public void testOutbound(String tag) throws Exception { NativeTelemetry.test(tag); }
@@ -30,7 +35,7 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
 
     @Override public void close() throws Exception {
         try {
-            session.close();
+            try { quality.cancel(); } finally { session.close(); }
         } finally {
             platform.close();
         }

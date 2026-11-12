@@ -137,6 +137,10 @@ object ServiceController {
         requireNotNull(binding).useService { block(it as NativeManagedService) }.getOrThrow()
     }
 
+    internal suspend fun startNativeQuality(tag: String) = nativeCommand { it.startQuality(tag) }
+    internal suspend fun nativeQualitySnapshot(): String = nativeCommand { it.qualitySnapshot() }
+    internal suspend fun cancelNativeQuality() = nativeCommand { it.cancelQuality() }
+
     internal suspend fun nativeSnapshot(): String = nativeCommand { it.snapshot() }
     internal suspend fun selectNativeOutbound(group: String, tag: String) =
         nativeCommand { it.selectOutbound(group, tag) }
@@ -386,6 +390,9 @@ private class NativeManagedService(
     private val remote: IBinder,
     private val profile: File,
 ) : ManagedService {
+    fun startQuality(tag: String) = SingBoxVpnControl.startQuality(remote, tag)
+    fun qualitySnapshot(): String = SingBoxVpnControl.qualitySnapshot(remote)
+    fun cancelQuality() = SingBoxVpnControl.cancelQuality(remote)
     fun snapshot(): String = SingBoxVpnControl.snapshot(remote)
     fun selectOutbound(group: String, tag: String) = SingBoxVpnControl.selectOutbound(remote, group, tag)
     fun testOutbound(tag: String) = SingBoxVpnControl.testOutbound(remote, tag)
