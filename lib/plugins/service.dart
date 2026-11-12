@@ -44,6 +44,8 @@ class Service {
   final ObserverList<ServiceListener> _listeners =
       ObserverList<ServiceListener>();
 
+  final nativeStatus = ValueNotifier<AndroidNativeStatus?>(null);
+
   int _commandRevision = 0;
   bool _startRequested = false;
 
@@ -68,6 +70,11 @@ class Service {
               (listener) => listener.onServiceEvent(event),
             );
           }
+          break;
+        case 'nativeCoreStatusChanged':
+          nativeStatus.value = AndroidNativeStatus.fromMap(
+            Map<Object?, Object?>.from(call.arguments as Map),
+          );
           break;
         case 'stopped':
           // A report stamped before the newest command no longer describes it.
@@ -109,6 +116,59 @@ class Service {
           'Unable to dispatch Android $label: $error',
           logLevel: LogLevel.error,
         );
+      }
+    }
+  }
+
+  Future<AndroidNativeStatus> getNativeStatus() async {
+    final data = await methodChannel.invokeMapMethod<Object?, Object?>(
+      'nativeCoreStatus',
+    );
+    final status = AndroidNativeStatus.fromMap(data ?? const {});
+    nativeStatus.value = status;
+    return status;
+  }
+
+  Future<String> validateNativeCore(String path) async =>
+      await methodChannel.invokeMethod<String>('validateNativeCore', {
+        'path': path,
+      }) ??
+      '';
+
+  Future<AndroidNativeStartResult> startNativeCore(String path) async {
+    final revision = ++_commandRevision;
+    _startRequested = true;
+    try {
+      final data = await methodChannel.invokeMapMethod<Object?, Object?>(
+        'startNativeCore',
+        {'path': path, 'revision': revision},
+      );
+      return AndroidNativeStartResult.fromMap(data ?? const {});
+    } finally {
+      if (revision == _commandRevision) {
+        final status = await getNativeStatus();
+        if (revision == _commandRevision) {
+          _startRequested = status.engine != 'idle' || status.nativeOwner;
+        }
+      }
+    }
+  }
+
+  Future<bool> stopNativeCore() async {
+    final revision = ++_commandRevision;
+    _startRequested = false;
+    try {
+      return await methodChannel.invokeMethod<bool>(
+            'stopNativeCore',
+            {'revision': revision},
+          ) ??
+          false;
+    } finally {
+      if (revision == _commandRevision) {
+        final status = await getNativeStatus();
+        if (revision == _commandRevision) {
+          _startRequested = status.engine != 'idle' || status.nativeOwner;
+        }
       }
     }
   }
@@ -163,6 +223,47 @@ class Service {
   void removeListener(ServiceListener listener) {
     _listeners.remove(listener);
   }
+}
+
+class AndroidNativeStatus {
+  const AndroidNativeStatus({
+    required this.available,
+    required this.engine,
+    required this.nativeOwner,
+    required this.state,
+  });
+
+  factory AndroidNativeStatus.fromMap(Map<Object?, Object?> data) =>
+      AndroidNativeStatus(
+        available: data['available'] == true,
+        engine: data['engine'] as String? ?? 'idle',
+        nativeOwner: data['nativeOwner'] == true,
+        state: data['state'] as String? ?? 'STOPPED',
+      );
+
+  final bool available;
+  final String engine;
+  final bool nativeOwner;
+  final String state;
+}
+
+class AndroidNativeStartResult {
+  const AndroidNativeStartResult({
+    required this.started,
+    required this.restoredMihomo,
+    required this.error,
+  });
+
+  factory AndroidNativeStartResult.fromMap(Map<Object?, Object?> data) =>
+      AndroidNativeStartResult(
+        started: data['started'] == true,
+        restoredMihomo: data['restoredMihomo'] == true,
+        error: data['error'] as String? ?? '',
+      );
+
+  final bool started;
+  final bool restoredMihomo;
+  final String error;
 }
 
 Service? get service => system.isAndroid ? Service() : null;
