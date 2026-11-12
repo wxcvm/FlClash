@@ -17,6 +17,7 @@ val releaseStoreFile = file("keystore.jks")
 val releaseStorePassword = localProperties.getProperty("storePassword")
 val releaseKeyAlias = localProperties.getProperty("keyAlias")
 val releaseKeyPassword = localProperties.getProperty("keyPassword")
+val isPreviewPackage = System.getenv("FLCLASH_PREVIEW_PACKAGE") == "true"
 val hasReleaseSigning = releaseStoreFile.exists() &&
     releaseStorePassword != null &&
     releaseKeyAlias != null &&
@@ -70,6 +71,8 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             } else {
                 signingConfig = signingConfigs.getByName("debug")
+            }
+            if (isPreviewPackage || !hasReleaseSigning) {
                 applicationIdSuffix = ".dev"
             }
 
