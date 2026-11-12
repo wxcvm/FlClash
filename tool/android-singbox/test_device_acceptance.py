@@ -58,10 +58,13 @@ class AcceptanceReportTest(unittest.TestCase):
     def test_soak_requires_measurements(self):
         report = fixture()
         report.insert(2, {"phase": "singbox-soak", "durationSeconds": 60,
-                          "checks": [{"tlsMs": 100, "dnsMs": 10}]})
+                          "checks": [{"tlsMs": 100, "dnsMs": 10}, {"tlsMs": 120, "dnsMs": 12}]})
         self.assertEqual(len(summarize(report, soak_seconds=60)), 7)
         with self.assertRaises(ValueError):
             summarize(report, soak_seconds=120)
+        report[2]["checks"].pop()
+        with self.assertRaises(ValueError):
+            summarize(report, soak_seconds=60)
 
     def test_single_outbound_validation(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -69,7 +72,7 @@ class AcceptanceReportTest(unittest.TestCase):
             good = {"type": "vless", "server": "example.com", "server_port": 443}
             path.write_text(json.dumps(good))
             self.assertEqual(json.loads(load_outbound(path)), good)
-            for value in [{"type": "direct"}, {**good, "detour": "other"},
+            for value in [{"type": "direct"}, {**good, "type": []}, {**good, "detour": "other"},
                           {**good, "server_port": True}, {"outbounds": [good]}]:
                 path.write_text(json.dumps(value))
                 with self.assertRaises(ValueError):

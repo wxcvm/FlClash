@@ -179,13 +179,15 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
     private suspend fun verifySoak() {
         val deadline = SystemClock.elapsedRealtime() + soakSeconds * 1000L
         val samples = JSONArray()
-        do {
+        while (true) {
+            val started = SystemClock.elapsedRealtime()
             val network = requireNotNull(vpn("172.19.0.1"))
             samples.put(JSONObject().put("tlsMs", https(network, "172.19.0.1"))
                 .put("dnsMs", dns(network)))
+            if (samples.length() >= 2 && started >= deadline) break
             val remaining = deadline - SystemClock.elapsedRealtime()
             if (remaining > 0) kotlinx.coroutines.delay(minOf(10_000L, remaining))
-        } while (SystemClock.elapsedRealtime() < deadline)
+        }
         val report = JSONObject().put("phase", "singbox-soak").put("durationSeconds", soakSeconds)
             .put("checks", samples)
         reports.put(report)
@@ -208,7 +210,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
                     val network = requireNotNull(vpn("172.19.0.1"))
                     val tls = https(network, "172.19.0.1")
                     dnsLatency = dns(network)
-                    latency = tls
+                    if (SystemClock.elapsedRealtime() <= deadline) latency = tls
                 }
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error

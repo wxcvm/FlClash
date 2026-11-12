@@ -27,7 +27,7 @@ def load_outbound(path):
         value = json.loads(raw)
     except (ValueError, UnicodeError):
         raise ValueError("invalid outbound JSON") from None
-    if not isinstance(value, dict) or value.get("type") not in OUTBOUND_TYPES:
+    if not isinstance(value, dict) or not isinstance(value.get("type"), str) or value["type"] not in OUTBOUND_TYPES:
         raise ValueError("provide a single supported remote outbound, not a subscription or group")
     if not isinstance(value.get("server"), str) or not value["server"].strip():
         raise ValueError("outbound needs a remote server")
@@ -37,6 +37,10 @@ def load_outbound(path):
     if "detour" in value or "outbounds" in value:
         raise ValueError("chained and group outbounds are not supported")
     return raw
+
+
+def measured(value):
+    return type(value) in (int, float) and 0 <= value < float("inf")
 
 
 def summarize(report, *, proxy=False, handover=False, soak_seconds=0):
@@ -52,18 +56,20 @@ def summarize(report, *, proxy=False, handover=False, soak_seconds=0):
     output = []
     for phase in report:
         name = phase["phase"]
+        if name in EXPECTED[:-1] and not measured(phase.get("tlsMs")):
+            raise ValueError("missing HTTPS measurement")
         if name in ("singbox-1", "singbox-2"):
             if phase.get("egress") != ("proxy" if proxy else "direct"):
                 raise ValueError("wrong native egress mode")
-            if not isinstance(phase.get("dnsMs"), (int, float)) or phase["dnsMs"] < 0:
+            if not measured(phase.get("dnsMs")):
                 raise ValueError("missing native DNS measurement")
         if name == "singbox-network-handover":
             if phase.get("beforeGeneration") == phase.get("afterGeneration") or not isinstance(phase.get("dnsMs"), (int, float)) or phase["dnsMs"] < 0:
                 raise ValueError("missing DNS or network-generation recovery")
         if name == "singbox-soak":
             checks = phase.get("checks", [])
-            if phase.get("durationSeconds") != soak_seconds or not checks or any(
-                any(not isinstance(check.get(key), (int, float)) or check[key] < 0 for key in ("tlsMs", "dnsMs"))
+            if phase.get("durationSeconds") != soak_seconds or len(checks) < 2 or any(
+                any(not measured(check.get(key)) for key in ("tlsMs", "dnsMs"))
                 for check in checks
             ):
                 raise ValueError("incomplete soak measurements")
