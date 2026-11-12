@@ -4,6 +4,7 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/core/native_quality_ranking.dart';
 import 'package:fl_clash/widgets/widgets.dart';
+import 'package:flutter/material.dart' show SelectableText;
 import 'package:flutter/widgets.dart';
 
 /// On-demand native snapshots: no background polling or Mihomo counters.
@@ -120,9 +121,10 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
           if (sample.tag != tag) {
             throw StateError('测速返回了其他节点的结果');
           }
-          final changed = _acceptGeneration(result['networkGeneration']);
+          final changed = _acceptGeneration(result['currentNetworkGeneration']);
           setState(() => _quality = result);
-          if (changed || sample.state == 'canceled') {
+          if (changed || sample.state == 'canceled' ||
+              result['networkGeneration'] != result['currentNetworkGeneration']) {
             _cancelRequested = true;
             return '网络已变化或测速已取消，请在新网络重新测试';
           }

@@ -33,7 +33,8 @@ final class NativeQuality {
     synchronized String snapshot() throws Exception {
         Sample sample = current;
         if (sample != null && sample.networkChanged() && session != null) cancel();
-        return sample == null ? new JSONObject().put("state", "idle").toString() : sample.json();
+        JSONObject result = sample == null ? new JSONObject().put("state", "idle") : new JSONObject(sample.json());
+        return result.put("currentNetworkGeneration", networkGeneration.getAsLong()).toString();
     }
 
     synchronized void cancel() throws Exception {

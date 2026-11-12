@@ -230,6 +230,7 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
             NetworkCapabilities caps = manager.getNetworkCapabilities(network);
             if (link == null || caps == null || link.getInterfaceName() == null
                 || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) continue;
+            try {
             java.net.NetworkInterface nic = java.net.NetworkInterface.getByName(link.getInterfaceName());
             if (nic == null) continue;
             io.nekohasekai.libbox.NetworkInterface item = new io.nekohasekai.libbox.NetworkInterface();
@@ -264,6 +265,11 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
             item.setDNSServer(strings(dns));
             item.setGateway(strings(gateways));
             result.add(item);
+            } catch (java.net.SocketException disappearing) {
+                // One interface can vanish while Wi-Fi/cellular handover is in flight.
+                // Keep the remaining valid interfaces available to libbox.
+                android.util.Log.d("FlClashLibbox", "Skipping disappearing network interface", disappearing);
+            }
         }
         return new NetworkInterfaceIterator() {
             private int index;
