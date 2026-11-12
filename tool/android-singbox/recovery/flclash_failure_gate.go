@@ -52,6 +52,12 @@ func (g *flclashFailureGate) finish() {
 	g.running = false
 }
 
+func (g *flclashFailureGate) reset() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	clear(g.streak)
+}
+
 func (g *flclashFailureGate) close() {
 	g.mu.Lock()
 	defer g.mu.Unlock()

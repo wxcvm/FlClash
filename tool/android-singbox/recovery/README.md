@@ -25,3 +25,12 @@ The package CI applies the patch only on the dedicated recovery branch,
 runs the Go gate tests with the race detector and compiles the real group
 package before building an ARM64 AAR and APK. The upstream license remains
 applicable; the patch and its source are distributed here.
+
+The 1.14.4 router resolves groups to the leaf before dialing. The patch also
+observes the original OutboundChain in ConnectionManager after TCP dial or
+initial remote write handshake, UDP connect/listen, and successful setup.
+This preserves the real leaf's optional interfaces and existing routing logic.
+Ordinary post-establishment copy errors, application responses and arbitrary
+connection closes are not treated as node failures. Network interface changes
+clear the old failure streak, and canceled recovery cannot update selection.
+A route observer test verifies chain attribution and cancellation separately.

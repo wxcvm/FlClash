@@ -34,6 +34,18 @@ func TestFlClashFailureGate(t *testing.T) {
 	if g.observe("udp", "b", true, now.Add(time.Hour)) { t.Fatal("closed gate") }
 }
 
+func TestFlClashNetworkReset(t *testing.T) {
+	var g flclashFailureGate
+	now := time.Unix(100, 0)
+	g.observe("tcp", "a", true, now)
+	g.observe("tcp", "a", true, now)
+	g.reset()
+	if g.observe("tcp", "a", true, now) || g.observe("tcp", "a", true, now) {
+		t.Fatal("old network failures leaked into new network")
+	}
+	if !g.observe("tcp", "a", true, now) { t.Fatal("new network streak did not trigger") }
+}
+
 func TestFlClashConcurrentFailureGate(t *testing.T) {
 	var g flclashFailureGate
 	now := time.Unix(100, 0)

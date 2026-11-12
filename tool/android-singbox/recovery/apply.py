@@ -92,7 +92,76 @@ func (g *URLTestGroup) observeDial(ctx context.Context, network, tag string, fai
 }
 
 func (g *URLTestGroup) CheckOutbounds(ctx context.Context, force bool) {''')
+replace('''	if group == nil {
+		return
+	}
+	if group.pause.IsDevicePaused()''', '''	if group == nil {
+		return
+	}
+	// Never combine failures collected on different underlying networks.
+	group.recovery.reset()
+	if group.pause.IsDevicePaused()''')
+replace('func (g *URLTestGroup) observeDial(ctx context.Context, network, tag string, failed bool) {', '''// The actual router unwraps groups before dialing. Its connection manager
+// calls this hook on the original chain, rather than changing routing.
+func (s *URLTest) ObserveFlClashDial(ctx context.Context, network, tag string, failed bool) {
+	s.group.observeDial(ctx, network, tag, failed)
+}
+
+func (g *URLTestGroup) observeDial(ctx context.Context, network, tag string, failed bool) {''')
+replace('''	result := URLTestOutbounds(ctx, g.outbound, g.history, g.logger, g.outbounds, g.link, g.interval, force)
+	g.performUpdateCheck()''', '''	result := URLTestOutbounds(ctx, g.outbound, g.history, g.logger, g.outbounds, g.link, g.interval, force)
+	if g.recoveryCtx == nil || (g.recoveryCtx.Err() == nil && ctx.Err() == nil) {
+		g.performUpdateCheck()
+	}''')
 source.write_text(text)
 for name in ("flclash_failure_gate.go", "flclash_failure_gate_test.go"):
     shutil.copyfile(here / name, source.parent / name)
-print("Applied FlClash failure recovery to pinned sing-box")
+# In 1.14.4, route.resolveOutbound unwraps groups before the real dial.
+# Observe completed attempts in ConnectionManager without wrapping the leaf,
+# which would change optional dialer interfaces and the routing fast path.
+source = root / "route/conn.go"
+text = source.read_text()
+replace('''		m.deleteURLTestHistory(metadata.OutboundChain)
+		N.CloseOnHandshakeFailure(conn, onClose, err)''', '''		m.deleteURLTestHistory(metadata.OutboundChain)
+		observeFlClashRoute(ctx, metadata.OutboundChain, N.NetworkTCP, true)
+		N.CloseOnHandshakeFailure(conn, onClose, err)''')
+replace('''			err = E.Cause(err, "open packet connection to ", remoteString, dialerString)
+			m.deleteURLTestHistory(metadata.OutboundChain)''', '''			err = E.Cause(err, "open packet connection to ", remoteString, dialerString)
+			m.deleteURLTestHistory(metadata.OutboundChain)
+			observeFlClashRoute(ctx, metadata.OutboundChain, N.NetworkUDP, true)''')
+replace('''			err = E.Cause(err, "listen packet connection using ", dialerString)
+			m.deleteURLTestHistory(metadata.OutboundChain)''', '''			err = E.Cause(err, "listen packet connection using ", dialerString)
+			m.deleteURLTestHistory(metadata.OutboundChain)
+			observeFlClashRoute(ctx, metadata.OutboundChain, N.NetworkUDP, true)''')
+replace('''	if m.kickWriteHandshake(ctx, conn, remoteConn, serverFirst, false, &done, onClose) {
+		return
+	}''', '''	if m.kickWriteHandshake(ctx, conn, remoteConn, serverFirst, false, &done, onClose) {
+		observeFlClashRoute(ctx, metadata.OutboundChain, N.NetworkTCP, true)
+		return
+	}''')
+replace('''	go m.connectionCopy(ctx, conn, remoteConn, false, &done, onClose)''', '''	observeFlClashRoute(ctx, metadata.OutboundChain, N.NetworkTCP, false)
+	go m.connectionCopy(ctx, conn, remoteConn, false, &done, onClose)''')
+replace('''	if destinationAddress.IsValid() {
+		var originDestination M.Socksaddr''', '''	observeFlClashRoute(ctx, metadata.OutboundChain, N.NetworkUDP, false)
+	if destinationAddress.IsValid() {
+		var originDestination M.Socksaddr''')
+replace('func (m *ConnectionManager) deleteURLTestHistory(chain []adapter.Outbound) {', '''// One outcome per completed routed connection attempt. The original group
+// chain is retained by the router even when the leaf is dialed directly.
+func observeFlClashRoute(ctx context.Context, chain []adapter.Outbound, network string, failed bool) {
+	if len(chain) < 2 || ctx.Err() != nil {
+		return
+	}
+	tag := chain[len(chain)-1].Tag()
+	for _, outbound := range chain[:len(chain)-1] {
+		if observer, ok := outbound.(interface {
+			ObserveFlClashDial(context.Context, string, string, bool)
+		}); ok {
+			observer.ObserveFlClashDial(ctx, network, tag, failed)
+		}
+	}
+}
+
+func (m *ConnectionManager) deleteURLTestHistory(chain []adapter.Outbound) {''')
+source.write_text(text)
+shutil.copyfile(here / "flclash_route_observer_test.go", source.parent / "flclash_route_observer_test.go")
+print("Applied FlClash failure recovery to pinned sing-box group and routed connections")

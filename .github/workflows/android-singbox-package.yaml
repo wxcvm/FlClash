@@ -91,9 +91,133 @@ jobs:
         run: |
           python3 tool/android-singbox/recovery/apply.py upstream-sing-box
           cd upstream-sing-box
-          gofmt -w protocol/group/urltest.go protocol/group/flclash_failure_gate*.go
+          gofmt -w protocol/group/urltest.go protocol/group/flclash_failure_gate*.go route/conn.go route/flclash_route_observer_test.go
           go test -race protocol/group/flclash_failure_gate.go protocol/group/flclash_failure_gate_test.go
           go test ./protocol/group
+          go test ./route -run '^TestFlClashRouteObserver          # Build the real CLI with protocol tags and validate synthetic profiles without dialing.
+          go run -tags 'with_quic,with_utls' ./cmd/sing-box check -c ../tool/android-singbox/recovery/protocol-fixture.json
+          git tag -f v1.14.4
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/arm64
+          unzip -t libbox.aar
+          echo "LIBBOX_AAR=$(realpath libbox.aar)" >> "$GITHUB_ENV"
+          sha256sum libbox.aar > libbox.sha256
+      - uses: actions/setup-go@v5
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: core/go.sum
+      - name: Obtain verified official ARM64 AAR
+        if: github.ref_name != 'feat/android-singbox-failure-recovery' && github.head_ref != 'feat/android-singbox-failure-recovery'
+        run: |
+          gh run download 43219145718 --repo "$GITHUB_REPOSITORY" --name sing-box-v1.14.4-arm64-probe --dir libbox-input
+          aar="$(find libbox-input -name libbox.aar -print -quit)"
+          hash_file="$(find libbox-input -name sha256.txt -print -quit)"
+          test -n "$aar" && test -n "$hash_file"
+          test "$(sha256sum "$aar" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$hash_file")"
+          echo "LIBBOX_AAR=$(realpath "$aar")" >> "$GITHUB_ENV"
+      - name: Install adapter compilation SDK
+        run: |
+          sdkmanager_path="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$sdkmanager_path" 'platforms;android-35'
+      - name: Build optional production service module
+        run: |
+          flutter pub get
+          cd android
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_ROOT" "$ANDROID_HOME" > local.properties
+          wrapper="$FLUTTER_ROOT/bin/cache/artifacts/gradle_wrapper"
+          test -d "$wrapper" || flutter precache
+          cp -R "$wrapper/." .
+          chmod +x gradlew
+          ./gradlew :service:assembleDebug -Ptarget-platform=android-arm64 -PflclashSingBoxAar="$LIBBOX_AAR"
+      - name: Verify service artifact has isolated runtime
+        run: |
+          aar=$(find build/service/outputs/aar -name '*.aar' -print -quit)
+          test -n "$aar"
+          unzip -l "$aar" | tee service-aar.txt
+          grep -F 'assets/singbox/libbox.dex' service-aar.txt
+          grep -F 'jni/arm64-v8a/libbox.so' service-aar.txt
+          unzip -p "$aar" classes.jar > service-classes.jar
+          jar tf service-classes.jar > service-classes.txt
+          if grep -E '^(go/Seq|io/nekohasekai/libbox/)' service-classes.txt; then
+            echo 'libbox classes leaked into the host classpath' >&2; exit 1
+          fi
+      - name: Test native quality ranking
+        run: flutter test test/native_quality_ranking_test.dart test/native_auto_recovery_test.dart test/plugins/service_test.dart
+      - name: Compile and test actual Android app with native runtime
+        run: |
+          cd android
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest :service:testDebugUnitTest -Ptarget-platform=android-arm64 -PflclashSingBoxAar="$LIBBOX_AAR"
+      - name: Verify and upload optional app APK
+        run: |
+          apk=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
+          test -n "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              files = set(apk.namelist())
+              for name in ('assets/singbox/libbox.dex', 'lib/arm64-v8a/libbox.so', 'lib/arm64-v8a/libclash.so'):
+                  assert name in files, f'missing {name}'
+          PY
+          mkdir -p native-app-apk
+          cp "$apk" native-app-apk/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flclash-android-singbox-dev
+          path: native-app-apk/*.apk
+          retention-days: 7
+      - name: Build isolated Mihomo device test APK
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
+        run: |
+          cd android
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Ptarget-platform=android-arm64 -PflclashMihomoProcessProbe=true -PflclashMihomoIsolated=true -PflclashSingBoxAar="$LIBBOX_AAR"
+          cd ..
+          mkdir -p mihomo-process-test
+          app=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
+          test_apk=$(find build/app/outputs/apk/androidTest/debug -name '*.apk' -print -quit)
+          test -n "$app" && test -n "$test_apk"
+          aapt2=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -1)
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$app" > mihomo-process-test/manifest.txt
+          python3 - <<'PY'
+          import re
+          text = open('mihomo-process-test/manifest.txt').read()
+          for name in ('MihomoCoreService', 'VpnService', 'ProxyService'):
+              matches = [block for block in re.split(r'\n\s*E: service', text) if re.search(r'com\.follow\.clash\.service\.' + name + r'"', block)]
+              assert len(matches) == 1 and ':mihomo"' in matches[0], (name, matches)
+          PY
+          cp "$app" mihomo-process-test/app.apk
+          cp "$test_apk" mihomo-process-test/test.apk
+      - uses: actions/upload-artifact@v4
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
+        with:
+          name: mihomo-process-device-test
+          path: mihomo-process-test/
+          retention-days: 7
+      - name: Verify default build omits runtime
+        run: |
+          cd android
+          ./gradlew :service:assembleDebug -Ptarget-platform=android-arm64
+          cd ..
+          aar=$(find build/service/outputs/aar -name '*.aar' -print -quit)
+          unzip -l "$aar" > service-default-aar.txt
+          python3 - "$aar" <<'PY'
+          import sys, zipfile, xml.etree.ElementTree as ET
+          ns = '{http://schemas.android.com/apk/res/android}'
+          with zipfile.ZipFile(sys.argv[1]) as aar:
+              root = ET.fromstring(aar.read('AndroidManifest.xml'))
+          services = {s.attrib[ns+'name'].rsplit('.', 1)[-1]: s for s in root.findall('./application/service')}
+          for name in ('VpnService', 'ProxyService'):
+              assert ns+'process' not in services[name].attrib, name
+          assert services['MihomoCoreService'].attrib[ns+'enabled'] == 'false'
+          PY
+          if grep -E 'assets/singbox/libbox.dex|jni/.*/libbox.so' service-default-aar.txt; then
+            echo 'Optional native runtime leaked into default build' >&2; exit 1
+          fi
+
           # Build the real CLI with protocol tags and validate synthetic profiles without dialing.
           go run -tags 'with_quic,with_utls' ./cmd/sing-box check -c ../tool/android-singbox/recovery/protocol-fixture.json
           git tag -f v1.14.4
