@@ -165,6 +165,16 @@ jobs:
           cd ..
           aar=$(find build/service/outputs/aar -name '*.aar' -print -quit)
           unzip -l "$aar" > service-default-aar.txt
+          python3 - "$aar" <<'PY'
+          import sys, zipfile, xml.etree.ElementTree as ET
+          ns = '{http://schemas.android.com/apk/res/android}'
+          with zipfile.ZipFile(sys.argv[1]) as aar:
+              root = ET.fromstring(aar.read('AndroidManifest.xml'))
+          services = {s.attrib[ns+'name'].rsplit('.', 1)[-1]: s for s in root.findall('./application/service')}
+          for name in ('VpnService', 'ProxyService'):
+              assert ns+'process' not in services[name].attrib, name
+          assert services['MihomoCoreService'].attrib[ns+'enabled'] == 'false'
+          PY
           if grep -E 'assets/singbox/libbox.dex|jni/.*/libbox.so' service-default-aar.txt; then
             echo 'Optional native runtime leaked into default build' >&2; exit 1
           fi

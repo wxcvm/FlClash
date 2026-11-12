@@ -14,7 +14,6 @@ import com.follow.clash.service.MihomoCoreControl
 import com.follow.clash.service.VpnService
 import com.follow.clash.service.MihomoServiceControl
 import com.follow.clash.service.ProxyService
-import com.follow.clash.service.ServiceConfig
 import com.follow.clash.service.models.NotificationParams
 import com.follow.clash.service.models.VpnOptions
 import com.follow.clash.service.models.AccessControlProps
@@ -98,9 +97,14 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
                         core.invoke("""{"id":"production","method":"core.initialized"}""", callback)
                     }
                     check(JSONObject(response.decodeToString()).getString("id") == "production")
+                    // Same actual command, with padding to exercise descriptor fallback.
+                    val largeRequest = JSONObject().put("id", "large").put("method", "core.initialized")
+                        .put("arguments", JSONObject().put("padding", "x".repeat(64 * 1024)))
+                    val largeResponse = awaitCore { core.invoke(largeRequest.toString(), it) }
+                    check(JSONObject(largeResponse.decodeToString()).getString("id") == "large")
                     val home = File(targetContext.cacheDir, "mihomo-production-test").apply { mkdirs() }
                     val profile = File(home, "probe.yaml").apply {
-                        writeText("mixed-port: 0\\nport: 0\\nsocks-port: 0\\nmode: rule\\ndns:\\n  enable: false\\ntun:\\n  enable: false\\nproxies: []\\nproxy-groups: []\\nrules:\\n  - MATCH,DIRECT\\n")
+                        writeText("mixed-port: 0\nport: 0\nsocks-port: 0\nmode: rule\ndns:\n  enable: false\ntun:\n  enable: false\nproxies: []\nproxy-groups: []\nrules:\n  - MATCH,DIRECT\n")
                     }
                     val init = JSONObject().put("home-dir", home.path).put("version", 1)
                     val setup = JSONObject().put("base", JSONObject().put("path", profile.path).put("overlay", ""))

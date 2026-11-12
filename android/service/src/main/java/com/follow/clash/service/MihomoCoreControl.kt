@@ -39,12 +39,18 @@ class MihomoCoreControl private constructor(
         }
         death = IBinder.DeathRecipient { finish(Result.failure(IllegalStateException("Mihomo process died"))) }
         val receiver = CoreProbeCallback.receiver(finish)
-        remote.linkToDeath(death, 0)
         try {
-            CoreProbePayload.open(app, json.encodeToByteArray()).use { fd ->
+            remote.linkToDeath(death, 0)
+            val bytes = json.encodeToByteArray()
+            if (CoreProbePayload.inline(bytes)) {
                 transact(remote, owner, code, {
                     it.writeStrongBinder(receiver)
-                    fd.writeToParcel(it, 0)
+                    CoreProbePayload.writeInline(it, bytes)
+                }) { Unit }
+            } else CoreProbePayload.open(app, bytes).use { fd ->
+                transact(remote, owner, code, {
+                    it.writeStrongBinder(receiver)
+                    CoreProbePayload.writeDescriptor(it, fd)
                 }) { Unit }
             }
         } catch (error: Exception) {

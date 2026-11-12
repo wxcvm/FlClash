@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
-import android.os.ParcelFileDescriptor
 import android.os.Process
 import com.follow.clash.core.Core
 import org.json.JSONObject
@@ -45,9 +44,7 @@ class MihomoCoreService : Service() {
                     when (code) {
                         MihomoCoreControl.INVOKE, MihomoCoreControl.SETUP -> {
                             val callback = requireNotNull(data.readStrongBinder())
-                            val request = CoreProbePayload.read(
-                                ParcelFileDescriptor.CREATOR.createFromParcel(data),
-                            ).decodeToString()
+                            val request = CoreProbePayload.readParcel(data).decodeToString()
                             val deliver: (ByteArray) -> Unit = { bytes ->
                                 runCatching { CoreProbeCallback.send(this@MihomoCoreService, callback, Result.success(bytes)) }
                             }
