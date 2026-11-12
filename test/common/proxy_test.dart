@@ -121,9 +121,11 @@ void main() {
 
       await queue.apply(_state(isStart: true));
       expect(await queue.activateNative(8090, const []), isTrue);
+      expect(queue.nativeHttpPort, 8090);
       await queue.apply(_state(isStart: false));
       await queue.apply(_state(isStart: true));
       await queue.releaseNative();
+      expect(queue.nativeHttpPort, isNull);
       await queue.apply(_state(isStart: true));
 
       expect(proxy.calls, ['start 7890', 'start 8090', 'stop', 'start 7890']);
@@ -138,6 +140,7 @@ void main() {
       proxy.held = Future.value(false);
 
       expect(await queue.activateNative(8090, const []), isFalse);
+      expect(queue.nativeHttpPort, isNull);
       await queue.apply(_state(isStart: true));
       expect(proxy.calls, ['start 8090', 'stop', 'start 7890']);
     },
@@ -148,7 +151,9 @@ void main() {
     final queue = SystemProxyQueue(proxy);
 
     expect(await queue.activateNative(8090, const []), isTrue);
+    expect(queue.nativeHttpPort, 8090);
     await queue.close();
+    expect(queue.nativeHttpPort, isNull);
     expect(proxy.calls, ['start 8090', 'stop']);
   });
 
