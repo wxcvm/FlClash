@@ -20,7 +20,12 @@ env:
   GO_VERSION: '1.27.1'
 
 jobs:
+  signing:
+    uses: ./.github/workflows/android-signing-check.yaml
+    secrets: inherit
+
   preview:
+    needs: signing
     if: github.repository == 'wxcvm/FlClash' && github.ref == 'refs/heads/main'
     runs-on: windows-2022
     outputs:

@@ -1,0 +1,42 @@
+name: Android release signing check
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-signing-check.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  signing:
+    if: github.repository == 'wxcvm/FlClash' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify shared release signing key
+        shell: bash
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KEYSTORE" || -z "$KEY_ALIAS" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
+            echo '::error::Configure KEYSTORE, KEY_ALIAS, STORE_PASSWORD and KEY_PASSWORD in repository Actions secrets.'
+            exit 1
+          fi
+          umask 077
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          printf '%s' "$KEYSTORE" | base64 --decode > "$tmp/release.jks"
+          keytool -certreq -keystore "$tmp/release.jks" -alias "$KEY_ALIAS" -storepass:env STORE_PASSWORD -keypass:env KEY_PASSWORD -file "$tmp/request.csr"
+          test -s "$tmp/request.csr"
+          echo 'Shared Android release signing key is usable.'
