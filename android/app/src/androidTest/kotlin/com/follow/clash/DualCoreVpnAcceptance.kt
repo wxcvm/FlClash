@@ -27,12 +27,11 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.resume
 import org.json.JSONArray
 import org.json.JSONObject
 
 /** Explicitly opt-in, app-only, real forwarding test of the production controller. */
-internal class DualCoreVpnAcceptance(private val runner: Instrumentation) {
+internal class DualCoreVpnAcceptance(private val runner: Instrumentation, private val handover: Boolean) {
     private val context = runner.targetContext
     private val cm = context.getSystemService(ConnectivityManager::class.java)
     private val am = context.getSystemService(ActivityManager::class.java)
@@ -90,11 +89,11 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation) {
             .put("selected-map", JSONObject()).put("options", JSONObject())
         try {
             runBlocking {
-                withTimeout(180_000) {
+                withTimeout(300_000) {
                     val state = SharedState(vpnOptions = options, setupParams = JsonParser.parseString(setup.toString()).asJsonObject)
                     ServiceState.syncSharedState(state)
                     check(ServiceController.quickSetup(
-                        ServiceStateMachine.initParams(home.path, Build.VERSION.SDK_INT), setup.toString(),
+                        ServiceStateMachine.initParams(context.filesDir.path, Build.VERSION.SDK_INT), setup.toString(),
                     ).getOrThrow().isEmpty()) { "Initial Mihomo setup failed" }
                     check(ServiceState.requestStart().await()) { "Initial Mihomo VPN failed" }
                     phase("mihomo-initial", "198.18.0.1", ":mihomo", ":singbox")
@@ -105,6 +104,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation) {
                         val blocked = JSONObject(rpc("""{"id":"blocked","method":"core.initialized"}"""))
                         check(blocked.getJSONObject("error").getString("code") == "core_unavailable")
                         phase("singbox-${round + 1}", "172.19.0.1", ":singbox", ":mihomo")
+                        if (handover && round == 0) verifyHandover()
                         check(ServiceState.requestMihomoStart().await()) { "Mihomo restore failed" }
                         phase("mihomo-restored-${round + 1}", "198.18.0.1", ":mihomo", ":singbox")
                     }
@@ -124,6 +124,31 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation) {
                 home.deleteRecursively()
             }
         }
+    }
+
+    private suspend fun verifyHandover() {
+        val before = JSONObject(ServiceController.nativeStatusSnapshot()).getLong("networkGeneration")
+        runner.sendStatus(1, Bundle().apply {
+            putString("checkpoint", "Switch Wi-Fi to mobile data (or vice versa) now. Restore internet within 60 seconds.")
+        })
+        val deadline = SystemClock.elapsedRealtime() + 60_000
+        var generation = before
+        var latency: Long? = null
+        while (SystemClock.elapsedRealtime() < deadline && latency == null) {
+            try {
+                generation = JSONObject(ServiceController.nativeStatusSnapshot()).getLong("networkGeneration")
+                if (generation != before) latency = https(requireNotNull(vpn("172.19.0.1")), "172.19.0.1")
+            } catch (_: Exception) {
+                // The transition can temporarily have no underlying network.
+            }
+            if (latency == null) kotlinx.coroutines.delay(1000)
+        }
+        check(latency != null && generation != before) { "No successful native network handover within 60 seconds" }
+        check(ServiceController.mihomoSuspended)
+        val report = JSONObject().put("phase", "singbox-network-handover")
+            .put("beforeGeneration", before).put("afterGeneration", generation).put("tlsMs", latency)
+        reports.put(report)
+        runner.sendStatus(0, Bundle().apply { putString("phase", report.toString()) })
     }
 
     private suspend fun rpc(request: String): String = withTimeout(10_000) {
@@ -190,7 +215,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation) {
                 tls.sslParameters = tls.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
                 tls.soTimeout = 5000
                 tls.startHandshake()
-                tls.outputStream.write("HEAD / HTTP/1.1\\r\\nHost: cloudflare-dns.com\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+                tls.outputStream.write("HEAD / HTTP/1.1\r\nHost: cloudflare-dns.com\r\nConnection: close\r\n\r\n".toByteArray())
                 tls.outputStream.flush()
                 val line = tls.inputStream.bufferedReader().readLine()
                 check(line != null && Regex("HTTP/1\\.[01] [1-5][0-9]{2}.*").matches(line)) { "Invalid HTTPS response" }

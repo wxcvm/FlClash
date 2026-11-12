@@ -27,8 +27,10 @@ import java.io.File
 /** ARM64 device test. Does not start a VPN or load Mihomo in the test process. */
 class MihomoProcessProbeInstrumentation : Instrumentation() {
     private var live = false
+    private var handover = false
     override fun onCreate(arguments: Bundle?) {
         live = arguments?.getString("liveVpn") == "true"
+        handover = arguments?.getString("handover") == "true"
         super.onCreate(arguments)
         start()
     }
@@ -90,7 +92,7 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
         val result = Bundle()
         try {
             if (live) {
-                DualCoreVpnAcceptance(this).run(result)
+                DualCoreVpnAcceptance(this, handover).run(result)
                 result.putString("stream", "PASS: live dual-core VPN acceptance\\n")
                 finish(Activity.RESULT_OK, result)
                 return

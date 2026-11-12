@@ -77,3 +77,12 @@ poll, and full node/log snapshots remain on demand. Stale status and session
 responses are discarded. Explicit stop/switch-back restores the ordinary home;
 no automatic change of the original dashboard customization is saved. Flutter
 service tests cover ownership, concurrent replies and the status-only command.
+
+Stage 7: opt-in live VPN instrumentation (`-e liveVpn true`) uses the real
+ServiceState/ServiceController with an app-only DIRECT fixture. It checks two
+round trips, expected TUN source addresses and verified TLS, process topology,
+blocked Mihomo RPCs, and final VPN removal. Three same-UID Android PSS samples
+per phase are recorded (Android may cache memory samples; they are not power
+measurements). Optional `-e handover true` asks the operator to change the
+underlying network, verifies a changed native network generation and real HTTPS
+recovery without restarting the VPN. A host runner is documented below.
