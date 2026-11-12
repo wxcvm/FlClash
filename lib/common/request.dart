@@ -31,18 +31,19 @@ class Request {
   Request({HttpClientAdapter? downloadAdapter}) {
     dio = Dio(BaseOptions(headers: {'User-Agent': browserUa}));
     _clashDio = Dio();
-    _clashDio.httpClientAdapter =
-        downloadAdapter ??
-        IOHttpClientAdapter(
-          createHttpClient: () {
-            final client = HttpClient();
-            client.findProxy = (Uri uri) {
-              client.userAgent = globalState.ua;
-              return _findProxy(uri);
-            };
-            return client;
-          },
-        );
+    _clashDio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () {
+        final client = HttpClient();
+        client.findProxy = (Uri uri) {
+          client.userAgent = globalState.ua;
+          return _findProxy(uri);
+        };
+        return client;
+      },
+    );
+    if (downloadAdapter != null) {
+      _clashDio.httpClientAdapter = downloadAdapter;
+    }
     releaseDio = Dio(BaseOptions(headers: {'User-Agent': browserUa}));
     releaseDio.httpClientAdapter = IOHttpClientAdapter(
       createHttpClient: () {
@@ -258,11 +259,13 @@ final request = Request();
 
 /// Some subscription servers send a gzip or zlib body without saying so in
 /// Content-Encoding, which is the only signal dart:io decompresses on.
-Codec<List<int>, List<int>>? _unlabeledCodec(Uint8List bytes) => switch (bytes) {
-  [0x1f, 0x8b, ...] => gzip,
-  [0x78, final flags, ...] when (0x78 << 8 | flags) % 31 == 0 => zlib,
-  _ => null,
-};
+Codec<List<int>, List<int>>? _unlabeledCodec(Uint8List bytes) {
+  return switch (bytes) {
+    [0x1f, 0x8b, ...] => gzip,
+    [0x78, final flags, ...] when (0x78 << 8 | flags) % 31 == 0 => zlib,
+    _ => null,
+  };
+}
 
 Uint8List decompressUnlabeled(Uint8List bytes) {
   final codec = _unlabeledCodec(bytes);

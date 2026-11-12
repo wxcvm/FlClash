@@ -234,7 +234,8 @@ void main() {
       expect(await inflateUnlabeledFile(source, output), same(output));
       expect(await output.readAsBytes(), yaml);
     }
-    for (final bytes in [yaml, [0x1f, 0x8b, 1, 2, 3], <int>[]]) {
+    final malformed = [0x1f, 0x8b, 1, 2, 3];
+    for (final bytes in [yaml, malformed, <int>[]]) {
       await source.writeAsBytes(bytes);
       expect(await inflateUnlabeledFile(source, output), same(source));
       expect(await source.readAsBytes(), bytes);
