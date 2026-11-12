@@ -9,6 +9,16 @@ void main() {
     );
   });
 
+  test('explicit fastest selection does not apply automatic hysteresis', () {
+    expect(
+      chooseDownloadSpeedWinner({
+        'current': 100,
+        'other': 119,
+      }, 'current', automatic: false),
+      'other',
+    );
+  });
+
   test('a 20 percent gain warrants a switch', () {
     expect(
       chooseDownloadSpeedWinner({'current': 100, 'other': 120}, 'current'),

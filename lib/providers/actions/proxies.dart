@@ -1,8 +1,13 @@
 part of '../action.dart';
 
-/// Keep a working incumbent unless the contender is at least 20% faster.
+/// Automatic selection keeps a working incumbent unless the contender is
+/// at least 20% faster. An explicit fastest-node request uses the top rate.
 /// Rates are conservative lower-of-two samples in bytes per second.
-String? chooseDownloadSpeedWinner(Map<String, int> rates, String incumbent) {
+String? chooseDownloadSpeedWinner(
+  Map<String, int> rates,
+  String incumbent, {
+  bool automatic = true,
+}) {
   String? winner;
   var best = 0;
   for (final entry in rates.entries) {
@@ -15,7 +20,7 @@ String? chooseDownloadSpeedWinner(Map<String, int> rates, String incumbent) {
     return null;
   }
   final current = rates[incumbent] ?? 0;
-  if (current > 0 && best * 5 < current * 6) {
+  if (automatic && current > 0 && best * 5 < current * 6) {
     return incumbent;
   }
   return winner;
@@ -171,7 +176,11 @@ class ProxiesAction extends _$ProxiesAction {
     }
     final name = ref.read(downloadSpeedAutoGroupProvider);
     final group = ref.read(groupsProvider).getGroup(name ?? '');
-    if (group == null || group.type != GroupType.URLTest) {
+    if (group == null) {
+      _scheduleAutoSpeed(delay: const Duration(seconds: 15));
+      return;
+    }
+    if (group.type != GroupType.URLTest) {
       return;
     }
     _autoSpeedRunning = true;
@@ -722,7 +731,11 @@ class ProxiesAction extends _$ProxiesAction {
           if (stable.containsKey(proxy.name)) proxy.name: stable[proxy.name]!,
       };
       while (remaining.isNotEmpty && isCurrent()) {
-        final winner = chooseDownloadSpeedWinner(remaining, current);
+        final winner = chooseDownloadSpeedWinner(
+          remaining,
+          current,
+          automatic: automatic,
+        );
         if (winner == null || (automatic && winner == current)) {
           return;
         }
