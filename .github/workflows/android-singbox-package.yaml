@@ -135,19 +135,28 @@ jobs:
         if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
         run: |
           cd android
-          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Ptarget-platform=android-arm64 -PflclashMihomoProcessProbe=true
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Ptarget-platform=android-arm64 -PflclashMihomoProcessProbe=true -PflclashMihomoIsolated=true -PflclashSingBoxAar="$LIBBOX_AAR"
           cd ..
           mkdir -p mihomo-process-test
           app=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
           test_apk=$(find build/app/outputs/apk/androidTest/debug -name '*.apk' -print -quit)
           test -n "$app" && test -n "$test_apk"
+          aapt2=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -1)
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$app" > mihomo-process-test/manifest.txt
+          python3 - <<'PY'
+          import re
+          text = open('mihomo-process-test/manifest.txt').read()
+          for name in ('MihomoCoreService', 'VpnService', 'ProxyService'):
+              matches = [block for block in re.split(r'\n\s*E: service', text) if re.search(r'com\.follow\.clash\.service\.' + name + r'"', block)]
+              assert len(matches) == 1 and ':mihomo"' in matches[0], (name, matches)
+          PY
           cp "$app" mihomo-process-test/app.apk
           cp "$test_apk" mihomo-process-test/test.apk
       - uses: actions/upload-artifact@v4
         if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
         with:
           name: mihomo-process-device-test
-          path: mihomo-process-test/*.apk
+          path: mihomo-process-test/
           retention-days: 7
       - name: Verify default build omits runtime
         run: |

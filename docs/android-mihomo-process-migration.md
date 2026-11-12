@@ -44,3 +44,15 @@ the real ProxyService and checks mode rejection and notification transfer withou
 starting native listeners. Production services still run in the app process;
 Core RPC, network observer, listener ownership and services must move together
 before enabling a dedicated production process.
+
+Stage 4: the debug-only `-PflclashMihomoIsolated=true` manifest overlay moves
+MihomoCoreService, VpnService and ProxyService into :mihomo. The actual Flutter
+Core channel and ServiceController QuickSetup/listener calls use MihomoCoreControl;
+NetworkObserver starts in the Core owner process. Default/release manifests
+retain the original process placement. CI builds both the normal optional APK
+and an isolated dual-core debug APK plus instrumentation, checking the merged
+manifest. Device instrumentation checks real Core RPC/setup and equal Core/VPN/
+Proxy PIDs (different from the UI PID), without establishing a VPN. The shared
+Core process remains connected for stopped-state profile operations; full exit
+on switching to sing-box, always-on recovery, traffic and measured PSS still
+require runtime validation and additional lifecycle work.

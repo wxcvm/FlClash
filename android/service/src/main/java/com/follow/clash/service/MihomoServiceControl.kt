@@ -23,6 +23,7 @@ object MihomoServiceControl {
     private const val CAN_HANDOFF = START + 2
     private const val NOTIFICATION = START + 3
     private const val PID = START + 4
+    private const val GET_NOTIFICATION = START + 5
     private val gson = Gson()
 
     fun start(context: Context, remote: IBinder, options: VpnOptions, notification: NotificationParams) {
@@ -37,6 +38,9 @@ object MihomoServiceControl {
     fun stop(remote: IBinder) = transact(remote, STOP) { Unit }
     fun canHandoff(remote: IBinder): Boolean = transact(remote, CAN_HANDOFF) { it.readInt() != 0 }
     fun pid(remote: IBinder): Int = transact(remote, PID) { it.readInt() }
+    fun notification(remote: IBinder): NotificationParams = transact(remote, GET_NOTIFICATION) {
+        gson.fromJson(requireNotNull(it.readString()), NotificationParams::class.java)
+    }
     fun updateNotification(remote: IBinder, params: NotificationParams) =
         transact(remote, NOTIFICATION, { it.writeString(gson.toJson(params)) }) { Unit }
 
@@ -65,7 +69,7 @@ object MihomoServiceControl {
         private val lifecycle = Any()
 
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-            if (code !in START..PID || reply == null) return super.onTransact(code, data, reply, flags)
+            if (code !in START..GET_NOTIFICATION || reply == null) return super.onTransact(code, data, reply, flags)
             data.enforceInterface(TOKEN)
             if (Binder.getCallingUid() != Process.myUid()) throw SecurityException("Private Mihomo service")
             try {
@@ -99,6 +103,10 @@ object MihomoServiceControl {
                                 gson.fromJson(requireNotNull(data.readString()), NotificationParams::class.java),
                             )
                             reply.writeNoException()
+                        }
+                        GET_NOTIFICATION -> {
+                            reply.writeNoException()
+                            reply.writeString(gson.toJson(ServiceConfig.notificationParams.value))
                         }
                         PID -> {
                             reply.writeNoException()

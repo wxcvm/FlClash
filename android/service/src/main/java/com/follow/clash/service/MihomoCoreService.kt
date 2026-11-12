@@ -96,6 +96,10 @@ class MihomoCoreService : Service() {
     }
 
     override fun onBind(intent: Intent): IBinder = binder
+    override fun onUnbind(intent: Intent): Boolean {
+        detach(owner)
+        return false
+    }
     override fun onDestroy() {
         detach(owner)
         super.onDestroy()
