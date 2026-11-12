@@ -12,7 +12,7 @@ internal object MihomoCoreTransport {
     val isolated: Boolean by lazy { MihomoCoreControl.enabled(GlobalState.application) }
     private var client: MihomoCoreControl? = null
     private var events: ((ByteArray) -> Unit)? = null
-    private var suspendedForNative = false
+    @Volatile private var suspendedForNative = false
     private var needsInit = false
 
     @Synchronized
@@ -81,7 +81,7 @@ internal object MihomoCoreTransport {
         return true
     }
 
-    @Synchronized
+    // UI status must not wait for the monitor held during process retirement.
     fun isSuspended(): Boolean = suspendedForNative
 
     @Synchronized

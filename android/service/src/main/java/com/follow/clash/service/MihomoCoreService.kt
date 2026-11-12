@@ -84,7 +84,9 @@ class MihomoCoreService : Service() {
                             retiring = true
                             events = null
                             // Arm before touching JNI. Process death releases all native resources.
-                            main.postDelayed({ Process.killProcess(Process.myPid()) }, 3000)
+                            Thread({
+                                try { Thread.sleep(3000) } finally { Process.killProcess(Process.myPid()) }
+                            }, "mihomo-retirement-watchdog").apply { isDaemon = true; start() }
                             runCatching { Core.updateEventListener(null) }
                             runCatching { Core.stopListener() }
                             main.postDelayed({ Process.killProcess(Process.myPid()) }, 150)
