@@ -11,6 +11,8 @@ import android.net.RouteInfo;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.CancellationSignal;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.system.OsConstants;
 import io.nekohasekai.libbox.*;
 import java.io.IOException;
@@ -24,13 +26,14 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-/** Platform callbacks for the isolated Android VPN. No polling or extra worker thread. */
+/** Platform callbacks for the isolated Android VPN. No polling; a callback thread exists only during monitoring. */
 public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
     private final VpnService service;
     private final AndroidTunBridge tun;
     private final ConnectivityManager connectivity;
     private volatile Network underlying;
     private volatile ConnectivityManager.NetworkCallback callback;
+    private HandlerThread monitorThread;
 
     public AndroidPlatform(VpnService service, AndroidTunBridge tun) {
         this.service = service;
@@ -87,16 +90,21 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
             }
         };
         callback = next;
+        monitorThread = new HandlerThread("flclash-libbox-network");
+        monitorThread.start();
+        Handler handler = new Handler(monitorThread.getLooper());
         try {
             if (Build.VERSION.SDK_INT >= 31) {
                 connectivity.registerBestMatchingNetworkCallback(request, next,
-                    new android.os.Handler(android.os.Looper.getMainLooper()));
+                    handler);
             } else {
-                connectivity.requestNetwork(request, next);
+                connectivity.requestNetwork(request, next, handler);
             }
         } catch (RuntimeException error) {
             callback = null;
             underlying = null;
+            monitorThread.quitSafely();
+            monitorThread = null;
             throw error;
         }
     }
@@ -122,7 +130,12 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
         ConnectivityManager.NetworkCallback active = callback;
         callback = null;
         underlying = null;
-        if (active != null) connectivity.unregisterNetworkCallback(active);
+        try {
+            if (active != null) connectivity.unregisterNetworkCallback(active);
+        } finally {
+            if (monitorThread != null) monitorThread.quitSafely();
+            monitorThread = null;
+        }
     }
 
     @Override public NetworkInterfaceIterator getInterfaces() throws Exception {

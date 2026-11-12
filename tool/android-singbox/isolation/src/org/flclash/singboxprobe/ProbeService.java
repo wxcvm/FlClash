@@ -2,6 +2,7 @@ package org.flclash.singboxprobe;
 
 import android.app.Service;
 import android.content.Intent;
+import android.content.Context;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.Parcel;
@@ -25,10 +26,10 @@ public final class ProbeService extends Service {
     // Keep the JNI-owning loader alive across service instances in this process.
     private static ClassLoader isolatedLoader;
 
-    private Class<?> loadApi() throws Exception {
+    static Class<?> loadApi(Context context) throws Exception {
         synchronized (ProbeService.class) {
             if (isolatedLoader == null) {
-                isolatedLoader = createIsolatedLoader();
+                isolatedLoader = createIsolatedLoader(context);
             }
             Class<?> api = Class.forName("io.nekohasekai.libbox.Libbox", true, isolatedLoader);
             if (api.getClassLoader() != isolatedLoader) {
@@ -38,9 +39,9 @@ public final class ProbeService extends Service {
         }
     }
 
-    private ClassLoader createIsolatedLoader() throws Exception {
+    private static ClassLoader createIsolatedLoader(Context context) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (InputStream in = getAssets().open("libbox.dex")) {
+        try (InputStream in = context.getAssets().open("libbox.dex")) {
             byte[] buffer = new byte[16384];
             for (int n; (n = in.read(buffer)) != -1;) {
                 bytes.write(buffer, 0, n);
@@ -48,10 +49,10 @@ public final class ProbeService extends Service {
         }
         // Do not delegate to the APK classloader, which owns the host Mihomo go.Seq.
         // The platform parent still exposes android.* and java.*.
-        ClassLoader host = getClassLoader();
+        ClassLoader host = context.getClassLoader();
         ClassLoader isolated = new InMemoryDexClassLoader(
             new ByteBuffer[] { ByteBuffer.wrap(bytes.toByteArray()) },
-            getApplicationInfo().nativeLibraryDir,
+            context.getApplicationInfo().nativeLibraryDir,
             host.getParent()
         );
         Class<?> bridge = Class.forName("go.Seq", false, isolated);
@@ -62,7 +63,7 @@ public final class ProbeService extends Service {
     }
 
     private String probe() throws Exception {
-        Class<?> api = loadApi();
+        Class<?> api = loadApi(this);
         String version = (String) api.getMethod("version").invoke(null);
         if (!"1.14.4".equals(version) && !"v1.14.4".equals(version)) {
             throw new IllegalStateException("Unexpected libbox version: " + version);

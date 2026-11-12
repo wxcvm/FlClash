@@ -51,3 +51,13 @@ Android UID/package ownership, non-VPN network selection and change callbacks,
 interface metadata, and raw Android DNS queries bound to the underlying network.
 The smoke test enumerates real interfaces; it does not create a VPN or test
 DNS traffic. Optional root/SSH/bridge/neighbor features are unsupported.
+
+Manual VPN experiment: open the diagnostic launcher, stop any existing VPN,
+and press Authorize and start. The foreground service uses the isolated
+AndroidVpnRuntime with the real platform callbacks and command server. Its
+fixed config allows only the diagnostic package and a single IPv4 test route
+(1.1.1.1/32), with direct outbound and DNS takeover disabled. Stop from the
+launcher or foreground notification. Inspect adb logcat -s FlClashVpnProbe
+for startup/cleanup. This is not a confirmed traffic test, not an alternative
+production VPN, and does not verify proxy protocols or DNS yet. Android allows
+one active VPN per user, so consent can replace an existing VPN.

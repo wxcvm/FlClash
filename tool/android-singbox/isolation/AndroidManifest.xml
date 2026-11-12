@@ -4,8 +4,21 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <application android:label="FlClash libbox isolation probe"
         android:extractNativeLibs="true" android:allowBackup="false">
+        <activity android:name=".ProbeVpnActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service android:name=".ProbeVpnService" android:process=":singbox"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="systemExempted" android:exported="false">
+            <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
+        </service>
         <service android:name=".ProbeService" android:process=":singbox"
             android:exported="false" />
     </application>
