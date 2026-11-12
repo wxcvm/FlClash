@@ -17,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 private fun vpnOptions(enable: Boolean = true, stack: String = "gvisor") = VpnOptions(
     enable = enable,
@@ -94,6 +95,9 @@ private class FakeHost(override val scope: CoroutineScope) : ServiceStateHost {
     var storedSharedState = configuredState()
     var setupResult: Result<String> = Result.success("")
     var startSucceeds = true
+    var nativeStartResult = NativeStartResult(true, false, "")
+    var nativeStartCalls = 0
+    override var hasNativeOwner = false
     var vpnPermissionGranted = true
     var localNetworkPermissionGranted = true
     var runsAsVpn: Boolean? = null
@@ -162,14 +166,77 @@ private class FakeHost(override val scope: CoroutineScope) : ServiceStateHost {
         return true
     }
 
+    override suspend fun startNativeService(options: VpnOptions): NativeStartResult {
+        nativeStartCalls++
+        if (nativeStartResult.started) {
+            runtime = ServiceRuntime(true, STARTED_AT, options.nativeConfigPath)
+            hasNativeOwner = true
+        }
+        return nativeStartResult
+    }
+
     override suspend fun stopService() {
         stopCalls++
         runtime = null
+        hasNativeOwner = false
     }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServiceStateMachineTest {
+
+    @Test
+    fun `manual native run is not replaced by ordinary start`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState(enable = false))
+        assertTrue(machine.requestNativeStart(File("native.json")).await().started)
+        assertEquals("native.json", host.runtime?.nativeConfigPath)
+        assertEquals(RunState.STARTED, machine.runState.value)
+        assertTrue(machine.requestStart().await())
+        assertEquals(0, host.startCalls)
+        assertTrue(machine.requestStop().await())
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
+
+    @Test
+    fun `manual native rejection preserves Mihomo`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestStart().await())
+        host.nativeStartResult = NativeStartResult(false, false, "invalid")
+        assertFalse(machine.requestNativeStart(File("bad.json")).await().started)
+        assertEquals(null, host.runtime?.nativeConfigPath)
+        assertEquals(RunState.STARTED, machine.runState.value)
+        assertEquals(0, host.stopCalls)
+    }
+
+    @Test
+    fun `manual native refusal from idle settles stopped`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        host.vpnPermissionGranted = false
+        assertFalse(machine.requestNativeStart(File("native.json")).await().started)
+        assertEquals(0, host.nativeStartCalls)
+        assertFalse(machine.isRunRequested)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
+
+    @Test
+    fun `manual native pending cleanup is stoppable`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        host.hasNativeOwner = true
+        host.nativeStartResult = NativeStartResult(false, false, "cleanup pending")
+        assertFalse(machine.requestNativeStart(File("native.json")).await().started)
+        assertEquals(RunState.STOPPING, machine.runState.value)
+        assertTrue(machine.requestStop().await())
+        assertFalse(host.hasNativeOwner)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
 
     @Test
     fun `initParams spells the keys the Go wrapper expects`() {

@@ -52,6 +52,8 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     @Volatile
     private var sharedState = SharedState()
 
+    @Volatile private var manualNativePath: String? = null
+
     @Volatile
     private var pendingVpnPreparation: (() -> Unit)? = null
 
@@ -141,7 +143,9 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
                     if (!isCurrent(request)) return@transition NativeStartResult(false, false, "Superseded")
                     transitioning(RunState.STARTING) {
                         try {
-                            host.startNativeService(options)
+                            host.startNativeService(options).also { outcome ->
+                                if (outcome.started) manualNativePath = config.path
+                            }
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Exception) {
@@ -173,7 +177,11 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     // No new request for a settled run: one refused at a prompt would take the service down.
     private fun isStartedAs(options: VpnOptions?): Boolean =
         runState.value == RunState.STARTED &&
-            (host.runtime?.nativeConfigPath != null || host.runtime?.matches(options) == true)
+            (isManualNativeRun(options) || host.runtime?.matches(options) == true)
+
+    private fun isManualNativeRun(options: VpnOptions?): Boolean =
+        manualNativePath != null && host.runtime?.nativeConfigPath == manualNativePath &&
+            options?.nativeConfigPath == null
 
     // The intent is claimed before the Core is set up, so a second action that lands meanwhile
     // toggles this start off instead of racing a second setup against it.
@@ -291,7 +299,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return transitionLock.withLock {
             when {
                 !isCurrent(request) -> false
-                host.runtime?.nativeConfigPath != null || host.runtime?.matches(options) == true -> true
+                isManualNativeRun(options) || host.runtime?.matches(options) == true -> true
                 else -> transitioning(RunState.STARTING) {
                     host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
                 }
@@ -331,7 +339,9 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         if (host.runtime != null || host.hasNativeOwner) {
             stopLocked()
         }
-        isCurrent(request) && host.runtime == null && !host.hasNativeOwner
+        (isCurrent(request) && host.runtime == null && !host.hasNativeOwner).also { stopped ->
+            if (stopped) manualNativePath = null
+        }
     }
 
     private suspend fun stopLocked() = transitioning(RunState.STOPPING) { stopService() }
