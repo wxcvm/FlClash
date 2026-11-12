@@ -19,7 +19,6 @@ import android.system.OsConstants
 import java.io.ByteArrayOutputStream
 import android.util.Log
 import androidx.annotation.RequiresApi
-import java.util.concurrent.Executors
 
 /**
  * Optional, same-package VPN owner in :singbox. The UI must preflight, stop
@@ -153,12 +152,11 @@ class SingBoxVpnService : VpnService() {
             running = true
             promote("sing-box VPN is running")
         } catch (error: Throwable) {
+            // Arm the process-exit watchdog before any potentially blocking JNI close.
             try {
-                stopLocked()
+                retireLocked()
             } catch (cleanup: Throwable) {
                 if (cleanup !== error) error.addSuppressed(cleanup)
-            } finally {
-                retireLocked()
             }
             throw error
         }
@@ -258,7 +256,10 @@ class SingBoxVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private val cleanup = Executors.newSingleThreadExecutor()
+    private val cleanup = java.util.concurrent.ThreadPoolExecutor(
+        0, 1, 10, java.util.concurrent.TimeUnit.SECONDS,
+        java.util.concurrent.LinkedBlockingQueue(),
+    )
 
     private companion object {
         @Volatile private var processRetiring = false

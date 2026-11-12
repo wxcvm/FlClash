@@ -230,6 +230,10 @@ object ServiceController {
     // Unlike general shutdown, handoff must not ignore an old owner's stop error.
     private suspend fun stopForHandoff(): Boolean {
         val current = binding
+        if (current == null && (runtime != null || hasNativeOwner)) {
+            GlobalState.log("VPN handoff blocked: active owner has no binding")
+            return false
+        }
         if (current != null) {
             val stopped = if (hasNativeOwner) current.stopIfConnected() else current.useService { service ->
                 if (service is VpnService && Build.VERSION.SDK_INT >= 29) {
