@@ -77,6 +77,22 @@ object ServiceController {
         }
     }
 
+    fun updateNotificationParams(params: NotificationParams) {
+        ServiceConfig.updateNotificationParams(params)
+        GlobalState.launch {
+            lock.withLock {
+                if (runtime?.nativeConfigPath != null) return@withLock
+                binding?.useService { service ->
+                    // Read the latest value after acquiring the lock, so a delayed
+                    // update cannot overwrite a newer notification setting.
+                    if (service is MihomoManagedService) {
+                        service.updateNotification(ServiceConfig.notificationParams.value)
+                    }
+                }?.onFailure { GlobalState.log("Unable to update Mihomo notification: $it") }
+            }
+        }
+    }
+
     fun setEventListener(callback: ((ByteArray) -> Unit)?): Result<Unit> = runCatching {
         Core.updateEventListener(callback)
     }
@@ -423,6 +439,7 @@ private class ManagedServiceBinding(
 private class MihomoManagedService(private val remote: IBinder) : ManagedService {
     override fun start() {
         MihomoServiceControl.start(
+            GlobalState.application,
             remote,
             requireNotNull(ServiceConfig.vpnOptions),
             ServiceConfig.notificationParams.value,
@@ -431,6 +448,7 @@ private class MihomoManagedService(private val remote: IBinder) : ManagedService
 
     override fun stop() = MihomoServiceControl.stop(remote)
     fun canHandoff(): Boolean = MihomoServiceControl.canHandoff(remote)
+    fun updateNotification(params: NotificationParams) = MihomoServiceControl.updateNotification(remote, params)
 }
 
 /** Adapter for the existing binding/controller contract; native RPCs run off the UI thread. */

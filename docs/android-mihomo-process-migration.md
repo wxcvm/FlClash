@@ -34,3 +34,13 @@ quickSetup and native events. Only diagnostics, log subscription and a fixed
 listener-free private fixture are exposed in the debug probe. The device test
 now initializes the isolated Go state and checks core.initialized after setup.
 Production Flutter and VPN callers are still not switched to this transport.
+
+Stage 3 moves the production VPN and Proxy lifecycle to an explicit private
+MihomoServiceControl Binder action (start/stop, mode guard, handoff permission,
+notification settings and PID). Start options use the same bounded descriptor
+transport, and live notification changes are forwarded under the service lock.
+The existing Android VPN system bind is unchanged. The device test also binds
+the real ProxyService and checks mode rejection and notification transfer without
+starting native listeners. Production services still run in the app process;
+Core RPC, network observer, listener ownership and services must move together
+before enabling a dedicated production process.

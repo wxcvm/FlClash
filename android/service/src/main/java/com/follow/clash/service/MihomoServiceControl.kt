@@ -1,12 +1,15 @@
 package com.follow.clash.service
 
+import android.content.Context
 import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
+import android.os.ParcelFileDescriptor
 import android.os.Process
 import com.follow.clash.service.models.NotificationParams
 import com.follow.clash.service.models.VpnOptions
 import com.google.gson.Gson
+import org.json.JSONObject
 
 /**
  * Process-neutral private lifecycle protocol. The actual VPN and Core still
@@ -22,12 +25,13 @@ object MihomoServiceControl {
     private const val PID = START + 4
     private val gson = Gson()
 
-    fun start(remote: IBinder, options: VpnOptions, notification: NotificationParams) {
+    fun start(context: Context, remote: IBinder, options: VpnOptions, notification: NotificationParams) {
         require(options.nativeConfigPath == null) { "Mihomo cannot consume a native profile" }
-        transact(remote, START, {
-            it.writeString(gson.toJson(options))
-            it.writeString(gson.toJson(notification))
-        }) { Unit }
+        val payload = JSONObject().put("options", JSONObject(gson.toJson(options)))
+            .put("notification", JSONObject(gson.toJson(notification)))
+        CoreProbePayload.open(context, payload.toString().encodeToByteArray()).use { fd ->
+            transact(remote, START, { fd.writeToParcel(it, 0) }) { Unit }
+        }
     }
 
     fun stop(remote: IBinder) = transact(remote, STOP) { Unit }
@@ -68,8 +72,11 @@ object MihomoServiceControl {
                 synchronized(lifecycle) {
                     when (code) {
                         START -> {
-                            val options = gson.fromJson(requireNotNull(data.readString()), VpnOptions::class.java)
-                            val notification = gson.fromJson(requireNotNull(data.readString()), NotificationParams::class.java)
+                            val payload = JSONObject(CoreProbePayload.read(
+                                ParcelFileDescriptor.CREATOR.createFromParcel(data),
+                            ).decodeToString())
+                            val options = gson.fromJson(payload.getJSONObject("options").toString(), VpnOptions::class.java)
+                            val notification = gson.fromJson(payload.getJSONObject("notification").toString(), NotificationParams::class.java)
                             require(options.enable == vpn && options.nativeConfigPath == null) {
                                 "Mihomo service mode does not match the requested options"
                             }
