@@ -75,6 +75,20 @@ public final class ProbeService extends Service {
             // A JNI/linkage error is a failed probe, not a rejected config.
             if (!(expected.getCause() instanceof Exception)) throw expected;
         }
+        Class<?> tunBridge = Class.forName(
+            "org.flclash.singboxprobe.isolated.AndroidTunBridge", true, api.getClassLoader());
+        if (tunBridge.getClassLoader() != api.getClassLoader()) {
+            throw new IllegalStateException("TUN bridge escaped its classloader");
+        }
+        tunBridge.getMethod("verifyDescriptorOwnership").invoke(null);
+        Class<?> session = Class.forName(
+            "org.flclash.singboxprobe.isolated.LibboxVpnSession", false, api.getClassLoader());
+        if (session.getClassLoader() != api.getClassLoader()) {
+            throw new IllegalStateException("VPN session escaped its classloader");
+        }
+        Class<?> platform = Class.forName(
+            "org.flclash.singboxprobe.isolated.AndroidPlatform", true, api.getClassLoader());
+        platform.getMethod("verifyNetworkSnapshot", android.content.Context.class).invoke(null, this);
         return version;
     }
 

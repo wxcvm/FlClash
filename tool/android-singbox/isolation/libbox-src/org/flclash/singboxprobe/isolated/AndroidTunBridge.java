@@ -2,6 +2,7 @@ package org.flclash.singboxprobe.isolated;
 
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
+import io.nekohasekai.libbox.Libbox;
 import io.nekohasekai.libbox.RoutePrefix;
 import io.nekohasekai.libbox.RoutePrefixIterator;
 import io.nekohasekai.libbox.StringIterator;
@@ -19,6 +20,7 @@ import java.io.OutputStream;
 public final class AndroidTunBridge implements Closeable {
     private final VpnService service;
     private ParcelFileDescriptor tun;
+    private final java.util.concurrent.atomic.AtomicInteger protectedSockets = new java.util.concurrent.atomic.AtomicInteger();
 
     public AndroidTunBridge(VpnService service) {
         this.service = service;
@@ -41,7 +43,7 @@ public final class AndroidTunBridge implements Closeable {
             addRoutes(builder, options.getInet4RouteRange());
             addRoutes(builder, options.getInet6RouteRange());
         }
-        if (options.getAutoRoute() && !"disabled".equals(options.getDNSMode().getValue())) {
+        if (options.getAutoRoute() && !Libbox.DNSModeDisabled.equals(options.getDNSMode().getValue())) {
             StringIterator dns = options.getDNSServerAddress();
             while (dns != null && dns.hasNext()) builder.addDnsServer(dns.next());
         }
@@ -66,7 +68,10 @@ public final class AndroidTunBridge implements Closeable {
 
     public void autoDetectInterfaceControl(int fd) throws IOException {
         if (!service.protect(fd)) throw new IOException("VPN socket protection failed");
+        protectedSockets.incrementAndGet();
     }
+
+    public int protectCount() { return protectedSockets.get(); }
 
     private static void addAddresses(VpnService.Builder builder, RoutePrefixIterator prefixes) {
         while (prefixes.hasNext()) {

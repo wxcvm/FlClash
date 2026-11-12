@@ -29,7 +29,7 @@ public final class VpnProbeInstrumentation extends Instrumentation {
     private static int call(IBinder remote, int code, int arg) throws Exception {
         Parcel data = Parcel.obtain(), reply = Parcel.obtain();
         try {
-            data.writeInterfaceToken(ProbeVpnService.TOKEN);
+            data.writeInterfaceToken(LocalVpnProbeService.TOKEN);
             data.writeInt(arg);
             if (!remote.transact(code, data, reply, 0)) throw new IllegalStateException("Rejected RPC");
             reply.readException();
@@ -66,11 +66,11 @@ public final class VpnProbeInstrumentation extends Instrumentation {
             Thread thread = new Thread(server, "local-echo");
             thread.setDaemon(true);
             thread.start();
-            Intent intent = new Intent(context, ProbeVpnService.class).setAction(ProbeVpnService.ACTION);
+            Intent intent = new Intent(context, LocalVpnProbeService.class).setAction(LocalVpnProbeService.ACTION);
             bound = context.bindService(intent, connection, Context.BIND_AUTO_CREATE);
             if (!bound || !connected.await(15, TimeUnit.SECONDS))
                 throw new IllegalStateException("VPN service connection failed");
-            call(remote[0], ProbeVpnService.START, echo.getLocalPort());
+            call(remote[0], LocalVpnProbeService.START, echo.getLocalPort());
             try (Socket client = new Socket()) {
                 client.connect(new InetSocketAddress("198.18.0.9", 23456), 8000);
                 client.setSoTimeout(8000);
@@ -80,9 +80,9 @@ public final class VpnProbeInstrumentation extends Instrumentation {
                     throw new IllegalStateException("Wrong response from TUN");
             }
             server.get(10, TimeUnit.SECONDS);
-            int protectedSockets = call(remote[0], ProbeVpnService.PROTECT_COUNT, 0);
+            int protectedSockets = call(remote[0], LocalVpnProbeService.PROTECT_COUNT, 0);
             if (protectedSockets < 1) throw new IllegalStateException("No native protect callback");
-            call(remote[0], ProbeVpnService.STOP, 0);
+            call(remote[0], LocalVpnProbeService.STOP, 0);
             result.putString("stream", "PASS: real sing-box TUN, local TCP echo, protected sockets="
                 + protectedSockets + "\n");
             code = Activity.RESULT_OK;
@@ -90,7 +90,7 @@ public final class VpnProbeInstrumentation extends Instrumentation {
             result.putString("stream", "FAIL: " + error + "\n");
         } finally {
             if (remote[0] != null) {
-                try { call(remote[0], ProbeVpnService.STOP, 0); }
+                try { call(remote[0], LocalVpnProbeService.STOP, 0); }
                 catch (Exception error) {
                     result.putString("stream", "FAIL: VPN cleanup: " + error + "\n");
                     code = Activity.RESULT_CANCELED;

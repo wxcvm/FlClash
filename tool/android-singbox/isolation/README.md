@@ -1,6 +1,7 @@
 # Android dual-runtime isolation experiment
 
-Standalone ARM64 diagnostic APK, not FlClash and not a VPN.
+Standalone ARM64 diagnostic APK, not production FlClash. It includes an
+isolation instrumentation test and an opt-in, app-only VPN traffic test.
 The host loads the real FlClash Mihomo bridge and libclash.so before and after
 two Binder calls to official sing-box in a separate :singbox process and
 classloader. Both calls verify the same remote PID, version and invalid JSON rejection.
@@ -30,32 +31,60 @@ not just integer serialization. This verifies runtime coexistence and
 classloader isolation, not VPN traffic, actual TUN descriptor ownership, VpnService.protect, DNS,
 engine switching or memory release.
 The diagnostic has its own package ID and does not modify production FlClash.
-Next: libbox platform callbacks, single VPN owner, rollback and device memory tests.
+The isolated DEX now includes AndroidTunBridge, compiled against the actual
+pinned libbox API. It maps TUN addresses, computed routes, MTU, DNS and package
+filters to VpnService.Builder, retains the original descriptor (libbox duplicates
+it), and rejects a failed socket protect call. Its descriptor duplication smoke
+check runs through the isolated loader. OpenTun/protect are not yet invoked by a
+real VPN: the full PlatformInterface, consent and command-server lifecycle must
+be connected before testing traffic. Close the bridge only after native service
+stop; HTTP proxy options are explicitly rejected until supported.
+LibboxVpnSession adds the typed command server setup/start/reset/stop path,
+using a private Unix socket and app-private directories. It validates the
+native config before starting and closes the command server before releasing
+Java's TUN descriptor. It is compiled and classloader-checked by this probe,
+not started by the current instrumentation. A complete PlatformInterface
+implementation and VPN consent are still required.
+Next: full platform callbacks, single VPN owner, rollback and device memory tests.
 
-## Optional real VPN smoke test
+AndroidPlatform implements the pinned libbox platform callbacks: TUN/protect,
+Android UID/package ownership, non-VPN network selection and change callbacks,
+interface metadata, and raw Android DNS queries bound to the underlying network.
+The smoke test enumerates real interfaces; it does not create a VPN or test
+DNS traffic. Optional root/SSH/bridge/neighbor features are unsupported.
 
-This requires Android VPN consent and temporarily replaces any existing VPN on
-the test device (including FlClash or AdGuard). Use a spare device/emulator or
-stop the other VPN first. The diagnostic VPN routes only this APK and only
-198.18.0.9/32; no internet server or user proxy configuration is used.
+Manual VPN experiment: open the diagnostic launcher, stop any existing VPN,
+and press Authorize and start. The foreground service uses the isolated
+AndroidVpnRuntime with the real platform callbacks and command server. Its
+fixed config allows only the diagnostic package and a single IPv4 test route
+(1.1.1.1/32), with direct outbound and DNS takeover disabled. Stop from the
+launcher or foreground notification. Inspect adb logcat -s FlClashVpnProbe
+for startup/cleanup. The diagnostic now checks real HTTPS through the VPN, but has not yet been
+executed on a device. It does not verify proxy protocols or DNS yet. Android allows
+one active VPN per user, so consent can replace an existing VPN.
 
-    adb shell am start -n org.flclash.singboxprobe/.VpnConsentActivity
-    # Confirm the Android VPN prompt, then:
-    adb shell am instrument -w org.flclash.singboxprobe/.VpnProbeInstrumentation
+Traffic validation: after startup, locate the Android VPN network with the
+expected TUN address, bind a socket to that network, require the TUN source
+address, and connect to 1.1.1.1:443. Verify the TLS hostname cloudflare-dns.com
+with the platform trust store and require a valid HTTP response. No physical
+network fallback is allowed. The launcher displays the result and logs retain
+it; failure stops the diagnostic. On stop, check that the diagnostic VPN
+network disappears. These are bounded one-shot checks, not periodic polling.
+A successful HTTPS result is evidence of direct forwarding, not DNS, node
+protocols, handover or production integration.
 
-The host opens a local echo server and connects to the synthetic destination.
-The isolated libbox runtime opens a real Android TUN, rewrites the destination
-to the loopback server, and must return the challenge response. The test also
-requires a successful native socket-protection callback and stops the tunnel
-on exit. A successful build alone does not establish that the test passes.
-This narrow IPv4 probe does not validate arbitrary profiles, DNS, IPv6,
-physical network changes, production VPN handoff or memory/power behavior.
+For handover validation, leave the diagnostic running, switch Wi-Fi/mobile data,
+then press Retest traffic after network change. Retest uses the same VPN and
+native session, not a restart or a physical-network fallback. A failed retest
+leaves the VPN running so recovery can be tested. Repeated taps are coalesced;
+pressing Retest when stopped never starts the VPN. The endpoint may be blocked
+on some networks: an HTTPS failure alone is not a diagnosis of a core bug.
 
-## Automated emulator test
+## Offline emulator TCP smoke test
 
-The x86_64 workflow builds both official native libraries for the emulator ABI,
-then runs the existing isolation test and two full VPN TCP echo start/stop cycles.
-VPN consent is granted only on the disposable CI emulator using its shell appop.
-No ARM translation is assumed. Instrumentation output must contain the expected
-PASS marker and Android success result; logcat and APK are uploaded on failure.
-This does not replace ARM64/ColorOS device verification.
+The separate LocalVpnProbeService uses the same typed AndroidVpnRuntime as the
+manual HTTPS diagnostic. It routes only the test package and a synthetic /32
+through libbox to a local TCP echo server. It requires VPN consent and verifies
+socket protection callbacks. The CI emulator grants consent on its disposable
+instance, runs isolation instrumentation and two VPN cycles using raw Android
+instrumentation results. No internet endpoint is needed by this local test.

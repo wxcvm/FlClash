@@ -3,11 +3,22 @@ package com.follow.clash.service
 import com.follow.clash.core.Core
 import java.net.InetSocketAddress
 
+internal interface TunnelOwner {
+    fun stop()
+}
+
 /** The VPN service owns routes; a single engine consumes its detached TUN descriptor. */
-internal interface TunnelEngine {
+internal interface TunnelEngine : TunnelOwner {
     /** Takes ownership of fd, including on rejected startup. */
     fun start(request: TunnelRequest): Boolean
-    fun stop()
+}
+
+/** Native cores such as libbox request their own TUN through platform callbacks. */
+internal interface CallbackTunnelEngine : TunnelOwner {
+    /** Must not establish routes or interrupt the active engine. */
+    fun validate()
+    /** Returns only after native startup and TUN establishment have succeeded. */
+    fun start()
 }
 
 internal data class TunnelRequest(
@@ -39,7 +50,7 @@ internal object MihomoTunnelEngine : TunnelEngine {
 
 /** Serializes route establishment, engine handoff and teardown. */
 internal class TunnelSession(private val defaultEngine: TunnelEngine) {
-    private var activeEngine: TunnelEngine? = null
+    private var activeEngine: TunnelOwner? = null
 
     @Synchronized
     fun start(engine: TunnelEngine = defaultEngine, request: () -> TunnelRequest) {
@@ -50,9 +61,25 @@ internal class TunnelSession(private val defaultEngine: TunnelEngine) {
         }
         // Establish inside the lock, before transferring descriptor ownership.
         val next = request()
+        startOwned(engine) {
+            check(engine.start(next)) { "Core rejected the tun file descriptor" }
+        }
+    }
+
+    @Synchronized
+    fun start(engine: CallbackTunnelEngine) {
+        // Preflight before disrupting a working VPN. Callback-based engines
+        // own their descriptor and cannot use the Mihomo request factory.
+        engine.validate()
+        // Native sessions must close before opening another TUN, even on restart.
+        stop()
+        startOwned(engine) { engine.start() }
+    }
+
+    private fun startOwned(engine: TunnelOwner, start: () -> Unit) {
         activeEngine = engine
         try {
-            check(engine.start(next)) { "Core rejected the tun file descriptor" }
+            start()
         } catch (error: Throwable) {
             try {
                 stop()
