@@ -190,7 +190,9 @@ class _AboutHero extends StatelessWidget {
             alignment: WrapAlignment.center,
             children: [
               _Pill(
-                label: 'v${globalState.packageInfo.version}',
+                label: previewTag.isNotEmpty
+                    ? previewTag
+                    : 'v${globalState.packageInfo.version}',
                 color: colorScheme.primary,
                 foregroundColor: colorScheme.onPrimary,
               ),
