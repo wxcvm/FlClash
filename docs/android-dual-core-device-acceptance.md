@@ -41,3 +41,11 @@ traffic before opening Flutter. Try switching to sing-box: it must refuse
 without taking down Mihomo. Repeat with lockdown enabled only on a spare test
 device; confirm no bypass. Disable always-on afterwards. This manual check is
 not part of the live fixture; the isolated layout stays opt-in until it passes.
+
+The system start broadcast now uses a dedicated saved-profile recovery path:
+no quick-settings tile or Flutter permission dialog, Mihomo VPN mode even if
+saved options describe proxy-only mode, early foreground notification, and a
+bounded startup timeout. Native handoff queries the actual Android VPN service
+for always-on/lockdown even when the UI has no active runtime. The new tests
+cover state-machine logic only; reboot and lockdown forwarding still require
+the manual device checks above.

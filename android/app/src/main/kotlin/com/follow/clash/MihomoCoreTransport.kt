@@ -20,6 +20,7 @@ internal object MihomoCoreTransport {
         check(!suspendedForNative) { "Mihomo is suspended while sing-box owns the VPN" }
         client?.takeIf { it.alive && it.connected }?.let { return it }
         check(client?.alive != true) { "Previous Mihomo process has not exited" }
+        if (client != null) needsInit = true // Unexpected process loss also invalidates Go initialization.
         client?.close()
         client = null
         return MihomoCoreControl.connect(GlobalState.application).also {

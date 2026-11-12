@@ -244,6 +244,33 @@ object ServiceController {
         }
     }
 
+    // Always-on is a property of the system VPN service, not the Core binder.
+    // Even when the UI thinks it is idle (or is running only a proxy), ask
+    // the actual Android VpnService before preflight can touch either owner.
+    private suspend fun canSwitchToNative(): Boolean {
+        if (Build.VERSION.SDK_INT < 29) return true
+        val intent = VpnService::class.intent.apply { action = MihomoServiceControl.ACTION }
+        val current = binding
+        if (current?.component == intent.component) {
+            return current.useService { (it as MihomoManagedService).canHandoff() }.getOrDefault(false)
+        }
+        val probe = ManagedServiceBinding(intent, {})
+        return try {
+            probe.bind().getOrThrow()
+            probe.useService { (it as MihomoManagedService).canHandoff() }.getOrThrow()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            GlobalState.log("Unable to check Android VPN handoff: $error")
+            false
+        } finally {
+            withContext(NonCancellable) {
+                probe.unbind()
+                withContext(Dispatchers.Main) { }
+            }
+        }
+    }
+
     private suspend fun startNative(options: VpnOptions): NativeStartResult {
         val app = GlobalState.application
         val path = options.nativeConfigPath ?: return NativeStartResult(false, false, "Native profile is missing")
@@ -255,6 +282,9 @@ object ServiceController {
         }
         val profile = File(path)
         if (!profile.isFile) return NativeStartResult(false, false, "Native profile is missing")
+        if (!canSwitchToNative()) {
+            return NativeStartResult(false, false, "Disable always-on/lockdown VPN before switching to sing-box")
+        }
         val previous = runtime
         val previousOptions = ServiceConfig.vpnOptions
         lateinit var candidate: ManagedServiceBinding

@@ -40,6 +40,7 @@ class VpnService : SystemVpnService(), ManagedService {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var established = false
     private var startupTimeout: Runnable? = null
+    private var startupRetry: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -48,7 +49,9 @@ class VpnService : SystemVpnService(), ManagedService {
 
     override fun onDestroy() {
         startupTimeout?.let(main::removeCallbacks)
+        startupRetry?.let(main::removeCallbacks)
         startupTimeout = null
+        startupRetry = null
         try {
             MihomoProcessLifecycle.stop(this) { cleanup() }
         } finally {
@@ -154,6 +157,15 @@ class VpnService : SystemVpnService(), ManagedService {
                 }
             }.also { main.postDelayed(it, 90_000L) }
             notifyVpnStartRequested()
+            // A replacement service may report before the controller has
+            // processed old Binder death. One delayed notification closes
+            // that window; the state machine deduplicates pending starts.
+            startupRetry?.let(main::removeCallbacks)
+            startupRetry = Runnable {
+                if (!established && Build.VERSION.SDK_INT >= 29 && isAlwaysOn) {
+                    notifyVpnStartRequested()
+                }
+            }.also { main.postDelayed(it, 5_000L) }
         }
         return super.onStartCommand(intent, flags, startId)
     }
@@ -293,6 +305,8 @@ class VpnService : SystemVpnService(), ManagedService {
             modules.start()
             handleStart(requireNotNull(ServiceConfig.vpnOptions) { "VPN options are missing" })
             established = true
+            startupRetry?.let(main::removeCallbacks)
+            startupTimeout?.let(main::removeCallbacks)
         } catch (error: Exception) {
             stop()
             throw error
