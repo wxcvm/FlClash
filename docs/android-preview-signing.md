@@ -1,23 +1,34 @@
-# Android preview signing
+# Android release and preview signing
 
-The Windows and Android preview workflow publishes the Android ARM64 APK as a separate app (`com.follow.clash.dev`) so it does not replace the official app. The first preview used a temporary CI debug key. To enable reliable in-place upgrades, configure a dedicated long-lived signing key once. Do not commit the private key or its passwords.
+Android release and preview APKs use the same application ID: `com.follow.clash`. All published fork builds must use the same long-lived signing key. Never publish an APK signed with a temporary debug key.
 
-## Create and configure the key
+## Configure the shared key once
 
-On a trusted computer with a JDK and authenticated GitHub CLI:
+If a release key already exists, reuse it. Do not generate a new one for an existing installation. Configure the four repository Actions secrets used by the release build:
+
+- `KEYSTORE`: base64-encoded keystore
+- `KEY_ALIAS`
+- `STORE_PASSWORD`
+- `KEY_PASSWORD`
+
+If no release key exists, generate one on a trusted computer with a JDK and store it securely:
 
 ```bash
-keytool -genkeypair -keystore flclash-preview.jks -storetype PKCS12 -alias flclash-preview -keyalg RSA -keysize 3072 -validity 10000
-base64 -w0 flclash-preview.jks | gh secret set PREVIEW_KEYSTORE --repo wxcvm/FlClash
-gh secret set PREVIEW_KEY_ALIAS --repo wxcvm/FlClash --body flclash-preview
-gh secret set PREVIEW_STORE_PASSWORD --repo wxcvm/FlClash
-gh secret set PREVIEW_KEY_PASSWORD --repo wxcvm/FlClash
-````
+keytool -genkeypair -keystore flclash-release.jks -storetype PKCS12 -alias flclash-release -keyalg RSA -keysize 3072 -validity 10000
+base64 -w0 flclash-release.jks | gh secret set KEYSTORE --repo wxcvm/FlClash
+gh secret set KEY_ALIAS --repo wxcvm/FlClash --body flclash-release
+gh secret set STORE_PASSWORD --repo wxcvm/FlClash
+gh secret set KEY_PASSWORD --repo wxcvm/FlClash
+```
 
-For PKCS12, use the same store and key password. On Windows PowerShell, replace the base64 command with `[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path 'flclash-preview.jks'))) | gh secret set PREVIEW_KEYSTORE --repo wxcvm/FlClash`.
+For PKCS12, use the same store and key password. On Windows PowerShell, replace the base64 command with `[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path 'flclash-release.jks'))) | gh secret set KEYSTORE --repo wxcvm/FlClash`.
 
-Back up the keystore and password separately in a safe place. Never paste either into an issue, pull request, or public chat. The four Actions secrets may also be entered through repository Settings → Secrets and variables → Actions.
+If a dedicated preview key was previously configured, reuse it as the shared release key only if it is the intended long-term signing identity. Do not rotate the key between releases. Keep a secure backup; do not commit the keystore or passwords.
 
-After the signing key is first used, export profiles/settings from any earlier debug-signed preview before uninstalling it once, then install the new signed APK and restore them. Future APKs signed with the same key and increasing preview version codes can update it in place. The official app remains separate.
+## Updating without migration
 
-If the secrets are absent, the workflow still publishes an explicitly marked debug-signed preview, which is suitable for temporary testing only. Do not assume it can update a previous installation.
+- An existing official upstream installation can be updated in place only if its signing certificate matches the fork APK. The upstream signing key is not assumed to be available.
+- Export profiles and settings from an old `com.follow.clash.dev` preview, install the new `com.follow.clash` build, and restore once. If an existing `com.follow.clash` installation has a different certificate, back up before replacing it.
+- Future fork preview and stable APKs with the same package and certificate can update in place when their Android version code is not lower than the installed code. Preview codes are derived from the pubspec build number and the release run/attempt. A future stable release must use a build number greater than the highest published preview code; do not reset the build number when switching channels.
+
+The preview workflow fails if the shared signing secrets are absent, verifies the APK signature, application ID and version, and records the certificate fingerprint in the release notes. Historical separate-package builds must not be overwritten with a new application identity.

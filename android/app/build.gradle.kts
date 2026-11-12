@@ -17,11 +17,15 @@ val releaseStoreFile = file("keystore.jks")
 val releaseStorePassword = localProperties.getProperty("storePassword")
 val releaseKeyAlias = localProperties.getProperty("keyAlias")
 val releaseKeyPassword = localProperties.getProperty("keyPassword")
-val isPreviewPackage = System.getenv("FLCLASH_PREVIEW_PACKAGE") == "true"
+val requireReleaseSigning = System.getenv("FLCLASH_REQUIRE_RELEASE_SIGNING") == "true"
 val hasReleaseSigning = releaseStoreFile.exists() &&
     releaseStorePassword != null &&
     releaseKeyAlias != null &&
     releaseKeyPassword != null
+
+check(!requireReleaseSigning || hasReleaseSigning) {
+    "Published Android builds require the configured release signing key"
+}
 
 android {
     namespace = "com.follow.clash"
@@ -72,7 +76,7 @@ android {
             } else {
                 signingConfig = signingConfigs.getByName("debug")
             }
-            if (isPreviewPackage || !hasReleaseSigning) {
+            if (!hasReleaseSigning) {
                 applicationIdSuffix = ".dev"
             }
 

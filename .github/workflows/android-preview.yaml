@@ -30,7 +30,7 @@ env:
   NDK_VERSION: r28c
   RELEASE_TAG: ${{ inputs.release_tag }}
   SOURCE_SHA: ${{ inputs.source_sha }}
-  FLCLASH_PREVIEW_PACKAGE: 'true'
+  FLCLASH_REQUIRE_RELEASE_SIGNING: 'true'
 
 jobs:
   android:
@@ -82,25 +82,27 @@ jobs:
           echo "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505  $bundle" | sha256sum -c -
       - name: Configure Android signing
         env:
-          KEYSTORE: ${{ secrets.PREVIEW_KEYSTORE }}
-          KEY_ALIAS: ${{ secrets.PREVIEW_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.PREVIEW_KEY_PASSWORD }}
-          STORE_PASSWORD: ${{ secrets.PREVIEW_STORE_PASSWORD }}
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "$KEYSTORE" && -n "$KEY_ALIAS" && -n "$KEY_PASSWORD" && -n "$STORE_PASSWORD" ]] && grep -q isPreviewPackage android/app/build.gradle.kts; then
-            printf '%s' "$KEYSTORE" | base64 --decode > android/app/keystore.jks
-            {
-              printf 'keyAlias=%s\n' "$KEY_ALIAS"
-              printf 'storePassword=%s\n' "$STORE_PASSWORD"
-              printf 'keyPassword=%s\n' "$KEY_PASSWORD"
-            } >> android/local.properties
-            echo 'APK_SIGNING=release' >> "$GITHUB_ENV"
-          else
-            echo '::warning::No complete Android signing secrets; using the existing separate .dev package with CI debug signing. Future builds may require reinstall.'
-            echo 'APK_SIGNING=debug' >> "$GITHUB_ENV"
+          if [[ -z "$KEYSTORE" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" || -z "$STORE_PASSWORD" ]]; then
+            echo '::error::Configure the shared Android release signing secrets KEYSTORE, KEY_ALIAS, KEY_PASSWORD and STORE_PASSWORD before publishing.'
+            exit 1
           fi
+          if ! grep -q FLCLASH_REQUIRE_RELEASE_SIGNING android/app/build.gradle.kts; then
+            echo '::error::Historical preview packages cannot be replaced with a different app identity; build a new release instead.'
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE" | base64 --decode > android/app/keystore.jks
+          {
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } >> android/local.properties
       - name: Install dependencies
         run: flutter pub get
       - name: Set Android preview version
@@ -111,7 +113,9 @@ jobs:
           run=$((10#${BASH_REMATCH[1]}))
           attempt=$((10#${BASH_REMATCH[2]}))
           test "$attempt" -lt 100
-          code=$((2026110401 + run * 100 + attempt))
+          base=$(sed -n 's/^version: [0-9.]*+\([0-9]*\)$/\1/p' pubspec.yaml)
+          [[ "$base" =~ ^[0-9]+$ ]]
+          code=$((10#$base + run * 100 + attempt))
           test "$code" -le 2100000000
           echo "ANDROID_PREVIEW_CODE=$code" >> "$GITHUB_ENV"
       - name: Build ARM64 APK
@@ -128,15 +132,19 @@ jobs:
           test -s "$apk"
           apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           test -n "$apksigner"
-          "$apksigner" verify --print-certs "$apk"
+          certs=$("$apksigner" verify --print-certs "$apk")
+          printf '%s\n' "$certs"
+          fingerprint=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          [[ "$fingerprint" =~ ^[0-9a-fA-F]{64}$ ]]
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
+          test -n "$aapt"
+          badging=$("$aapt" dump badging "$apk")
+          printf '%s\n' "$badging" | grep -E "^package: name='com\.follow\.clash' versionCode='${ANDROID_PREVIEW_CODE}' "
+          printf '%s\n' "$badging" | grep -F "versionName='${RELEASE_TAG#v}'"
           mkdir -p preview-assets
           name="FlClash-${RELEASE_TAG#v}-android-arm64-v8a.apk"
           cp "$apk" "preview-assets/$name"
-          if [[ "$APK_SIGNING" == debug ]]; then
-            printf 'Separate com.follow.clash.dev package; temporary CI debug signing. Back up profiles before a reinstall.\n' > preview-assets/signing.txt
-          else
-            printf 'Separate com.follow.clash.dev package; dedicated long-lived preview signing key.\n' > preview-assets/signing.txt
-          fi
+          printf 'Application ID: com.follow.clash; shared release signing key; certificate SHA-256: %s.\n' "$fingerprint" > preview-assets/signing.txt
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -160,9 +168,5 @@ jobs:
           gh release upload "$RELEASE_TAG" "preview-assets/$name" preview-assets/SHA256SUMS --clobber
           gh release view "$RELEASE_TAG" --json body --jq '.body' > preview-notes.md
           printf '\n\nAndroid ARM64 APK: %s\n' "$name" >> preview-notes.md
-          if [[ "$APK_SIGNING" == debug ]]; then
-            printf 'Android preview uses the separate com.follow.clash.dev package and CI debug signing; it can coexist with the official release, but later builds may require uninstall/reinstall. Back up profiles before reinstalling.\n' >> preview-notes.md
-          else
-            printf 'Android APK uses the dedicated preview signing key and the separate com.follow.clash.dev package. Existing previews signed with another key need a one-time reinstall.\n' >> preview-notes.md
-          fi
+          cat preview-assets/signing.txt >> preview-notes.md
           gh release edit "$RELEASE_TAG" --notes-file preview-notes.md
