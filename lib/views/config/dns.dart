@@ -1,4 +1,5 @@
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/common/dns_compatibility.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/form/form.dart';
 import 'package:fl_clash/l10n/l10n.dart';
@@ -245,8 +246,12 @@ class _DnsOverrideSpec extends OverrideSpec<DnsOverrideKey, Dns> {
     ),
     DnsOverrideKey.fakeIpFilter => ListOverrideField(
       (dns) => dns.fakeIpFilter,
-      (dns, value) => dns.copyWith(fakeIpFilter: value),
-      itemMaxLength: TextInputLimits.domain,
+      (dns, value) => dns.copyWith(
+        fakeIpFilter: dns.fakeIpFilterMode == FakeIpFilterMode.blacklist
+            ? normalizeFakeIpBlacklist(value)
+            : value,
+      ),
+      itemMaxLength: TextInputLimits.dnsServer,
       description: (l) => l.fakeipFilterDesc,
     ),
     DnsOverrideKey.fakeIpFilterMode => OptionsOverrideField(

@@ -53,6 +53,41 @@ Future<YamlMap> _dnsOf({
 }
 
 void main() {
+  test('fake-ip blacklist normalizes encrypted resolver URL only', () async {
+    final dns = await _dnsOf(
+      rawConfig: {
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'nameserver': ['9.9.9.9'],
+          'fake-ip-filter': [
+            '*.lan',
+            'https://private.example/account-token/dns-query?key=secret',
+            'private.example',
+          ],
+        },
+      },
+      keys: {},
+    );
+    expect(dns['fake-ip-filter'], ['*.lan', 'private.example']);
+  });
+
+  test('fake-ip rule mode keeps its explicit rules unchanged', () async {
+    final dns = await _dnsOf(
+      rawConfig: {
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'nameserver': ['9.9.9.9'],
+          'fake-ip-filter-mode': 'rule',
+          'fake-ip-filter': ['DOMAIN,private.example,real-ip'],
+        },
+      },
+      keys: {},
+    );
+    expect(dns['fake-ip-filter'], ['DOMAIN,private.example,real-ip']);
+  });
+
   test('overrides only the selected DNS keys of an enabled profile', () async {
     final dns = await _dnsOf(rawConfig: {'dns': _profileDns});
 
