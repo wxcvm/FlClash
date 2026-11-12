@@ -4,6 +4,7 @@
 #include <ws2ipdef.h>
 
 #include "proxy_plugin.h"
+#include "proxy_snapshot.h"
 
 // This must be included before many other Windows headers.
 #include <windows.h>
@@ -126,14 +127,6 @@ bool ForEachConnection(const std::function<bool(LPTSTR)>& visit)
   return success;
 }
 
-bool ApplyOptionsToConnections(INTERNET_PER_CONN_OPTION_LIST& list)
-{
-  return ForEachConnection([&list](LPTSTR connection)
-  {
-    return SetOptionsForConnection(list, connection);
-  });
-}
-
 bool NotifySettingsChanged()
 {
   const bool changed = InternetSetOption(
@@ -143,46 +136,110 @@ bool NotifySettingsChanged()
   return changed && refreshed;
 }
 
-bool startProxy(const int port, const flutter::EncodableList& bypassDomain)
-{
-  auto url = kProxyServerPrefix + std::to_wstring(port);
-  auto bypassList = BuildBypassList(bypassDomain);
-  std::vector<INTERNET_PER_CONN_OPTION> options(3);
+// One native plugin owns the system proxy for this process. Keep a separate
+// snapshot for LAN and each RAS connection rather than resetting all to DIRECT.
+std::map<std::wstring, proxy::ProxyOwnership> ownedConnections;
 
+std::optional<proxy::ProxySnapshot> ReadProxySnapshot(LPTSTR connection)
+{
+  std::vector<INTERNET_PER_CONN_OPTION> options(4);
+  options[0].dwOption = INTERNET_PER_CONN_FLAGS;
+  options[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
+  options[2].dwOption = INTERNET_PER_CONN_PROXY_BYPASS;
+  options[3].dwOption = INTERNET_PER_CONN_AUTOCONFIG_URL;
+  INTERNET_PER_CONN_OPTION_LIST list = {};
+  list.dwSize = sizeof(list);
+  list.pszConnection = connection;
+  list.dwOptionCount = static_cast<DWORD>(options.size());
+  list.pOptions = options.data();
+  DWORD size = sizeof(list);
+  const bool ok = InternetQueryOption(
+      nullptr, INTERNET_OPTION_PER_CONNECTION_OPTION, &list, &size) != FALSE;
+  proxy::ProxySnapshot snapshot;
+  snapshot.flags = options[0].Value.dwValue;
+  std::wstring* strings[] = {&snapshot.server, &snapshot.bypass,
+                            &snapshot.auto_config};
+  for (size_t k = 1; k < options.size(); ++k)
+  {
+    if (options[k].Value.pszValue != nullptr)
+    {
+      if (ok) *strings[k - 1] = options[k].Value.pszValue;
+      GlobalFree(options[k].Value.pszValue);
+    }
+  }
+  if (!ok) return std::nullopt;
+  return snapshot;
+}
+
+bool WriteProxySnapshot(LPTSTR connection, proxy::ProxySnapshot snapshot)
+{
+  std::vector<INTERNET_PER_CONN_OPTION> options(4);
+  options[0].dwOption = INTERNET_PER_CONN_FLAGS;
+  options[0].Value.dwValue = snapshot.flags;
+  options[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
+  options[1].Value.pszValue = snapshot.server.data();
+  options[2].dwOption = INTERNET_PER_CONN_PROXY_BYPASS;
+  options[2].Value.pszValue = snapshot.bypass.data();
+  options[3].dwOption = INTERNET_PER_CONN_AUTOCONFIG_URL;
+  options[3].Value.pszValue = snapshot.auto_config.data();
   INTERNET_PER_CONN_OPTION_LIST list = {};
   list.dwSize = sizeof(list);
   list.dwOptionCount = static_cast<DWORD>(options.size());
   list.pOptions = options.data();
+  return SetOptionsForConnection(list, connection);
+}
 
-  options[0].dwOption = INTERNET_PER_CONN_FLAGS;
-  options[0].Value.dwValue = PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY;
-
-  options[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
-  options[1].Value.pszValue = url.data();
-
-  options[2].dwOption = INTERNET_PER_CONN_PROXY_BYPASS;
-  options[2].Value.pszValue = bypassList.data();
-
-  const bool optionsApplied = ApplyOptionsToConnections(list);
+bool startProxy(const int port, const flutter::EncodableList& bypassDomain)
+{
+  const auto url = kProxyServerPrefix + std::to_wstring(port);
+  const auto bypass = BuildBypassList(bypassDomain);
+  const bool optionsApplied = ForEachConnection([&](LPTSTR connection)
+  {
+    const auto current = ReadProxySnapshot(connection);
+    if (!current) return false;  // Never take over without a restorable baseline.
+    const std::wstring key = connection == nullptr ? L"" : connection;
+    auto it = ownedConnections.try_emplace(
+        key, proxy::ProxyOwnership{*current, *current}).first;
+    proxy::ProxySnapshot next = *current;
+    next.flags = PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY;
+    next.server = url;
+    next.bypass = bypass;
+    it->second.rememberStart(*current, next);
+    const bool ok = WriteProxySnapshot(connection, next);
+    // WinINet may normalize its stored values. Only accept a snapshot that
+    // still points at the requested proxy, never claim an unrelated server.
+    const auto actual = ReadProxySnapshot(connection);
+    if (actual && actual->server == next.server &&
+        (actual->flags & PROXY_TYPE_PROXY) != 0)
+    {
+      it->second.applied = *actual;
+    }
+    return ok;
+  });
   const bool settingsNotified = NotifySettingsChanged();
   return optionsApplied && settingsNotified;
 }
 
 bool stopProxy()
 {
-  std::vector<INTERNET_PER_CONN_OPTION> options(1);
-
-  INTERNET_PER_CONN_OPTION_LIST list = {};
-  list.dwSize = sizeof(list);
-  list.dwOptionCount = 1;
-  list.pOptions = options.data();
-
-  options[0].dwOption = INTERNET_PER_CONN_FLAGS;
-  options[0].Value.dwValue = PROXY_TYPE_DIRECT;
-
-  const bool optionsApplied = ApplyOptionsToConnections(list);
+  const bool restored = ForEachConnection([](LPTSTR connection)
+  {
+    const std::wstring key = connection == nullptr ? L"" : connection;
+    const auto it = ownedConnections.find(key);
+    if (it == ownedConnections.end()) return true;
+    const auto current = ReadProxySnapshot(connection);
+    if (!current) return false;
+    if (it->second.stillOwns(*current) &&
+        !WriteProxySnapshot(connection, it->second.original))
+    {
+      return false;
+    }
+    // If another program changed the settings, leave its configuration alone.
+    ownedConnections.erase(it);
+    return true;
+  });
   const bool settingsNotified = NotifySettingsChanged();
-  return optionsApplied && settingsNotified;
+  return restored && settingsNotified;
 }
 
 std::optional<int> ProxyPort(const std::wstring& server)

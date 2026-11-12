@@ -8,6 +8,7 @@
 #include <variant>
 
 #include "proxy_plugin.h"
+#include "proxy_snapshot.h"
 
 namespace proxy {
 namespace test {
@@ -20,6 +21,40 @@ using flutter::MethodCall;
 using flutter::MethodResultFunctions;
 
 }  // namespace
+
+TEST(ProxyOwnership, RepeatedStartPreservesOriginalProxyAndPac) {
+  const ProxySnapshot original{5, L"127.0.0.1:3128", L"localhost",
+                               L"https://example.test/proxy.pac"};
+  const ProxySnapshot first{3, L"127.0.0.1:7890", L"<local>", original.auto_config};
+  const ProxySnapshot second{3, L"127.0.0.1:8090", L"<local>", original.auto_config};
+  ProxyOwnership owner{original, original};
+  owner.rememberStart(original, first);
+  owner.rememberStart(first, second);
+  EXPECT_TRUE(owner.original == original);
+  EXPECT_TRUE(owner.stillOwns(second));
+}
+
+TEST(ProxyOwnership, DoesNotRestoreOverExternalChanges) {
+  const ProxySnapshot original{1, L"", L"", L""};
+  const ProxySnapshot ours{3, L"127.0.0.1:7890", L"<local>", L""};
+  const ProxySnapshot external{3, L"127.0.0.1:3128", L"localhost", L""};
+  ProxyOwnership owner{original, ours};
+  EXPECT_FALSE(owner.stillOwns(external));
+  owner.rememberStart(external, ours);
+  EXPECT_TRUE(owner.original == external);
+  EXPECT_TRUE(owner.stillOwns(ours));
+}
+
+TEST(ProxyOwnership, SameServerWithChangedPacOrBypassIsNotOwned) {
+  const ProxySnapshot ours{3, L"127.0.0.1:7890", L"<local>", L""};
+  ProxyOwnership owner{ProxySnapshot{}, ours};
+  auto current = ours;
+  current.bypass = L"example.test";
+  EXPECT_FALSE(owner.stillOwns(current));
+  current = ours;
+  current.auto_config = L"https://example.test/proxy.pac";
+  EXPECT_FALSE(owner.stillOwns(current));
+}
 
 TEST(ProxyPlugin, UnknownMethodIsNotImplemented) {
   ProxyPlugin plugin;
