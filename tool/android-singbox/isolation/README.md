@@ -79,3 +79,12 @@ native session, not a restart or a physical-network fallback. A failed retest
 leaves the VPN running so recovery can be tested. Repeated taps are coalesced;
 pressing Retest when stopped never starts the VPN. The endpoint may be blocked
 on some networks: an HTTPS failure alone is not a diagnosis of a core bug.
+
+DNS validation now uses a local DNS server with caching disabled and an explicit
+TUN DNS address 172.19.0.2. The probe binds UDP to the VPN, verifies the source
+address, sends an example.com A query and checks transaction ID, question, DNS
+status and an IPv4 answer. This exercises the local Android resolver through
+libbox, not a fallback to a physical socket. HTTPS and DNS must both succeed.
+Stop also checks that the Java TUN owner, command server and monitor references
+are released; it does not prove that Go heap memory has been reclaimed or that
+the process has exited. The service still runs only with explicit consent.
