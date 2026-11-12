@@ -61,6 +61,18 @@ internal object IsolatedSingBoxRuntime {
             invoke { runtime.javaClass.getMethod("start", String::class.java).invoke(runtime, config) }
         }
 
+        fun snapshot(): String = invoke {
+            runtime.javaClass.getMethod("snapshot").invoke(runtime) as String
+        }
+
+        fun selectOutbound(group: String, tag: String) {
+            invoke { runtime.javaClass.getMethod("selectOutbound", String::class.java, String::class.java).invoke(runtime, group, tag) }
+        }
+
+        fun testOutbound(tag: String) {
+            invoke { runtime.javaClass.getMethod("testOutbound", String::class.java).invoke(runtime, tag) }
+        }
+
         fun resetNetwork() {
             invoke { runtime.javaClass.getMethod("resetNetwork").invoke(runtime) }
         }

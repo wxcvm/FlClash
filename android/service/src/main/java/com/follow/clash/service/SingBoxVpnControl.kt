@@ -18,6 +18,9 @@ object SingBoxVpnControl {
     internal const val STOP = VALIDATE + 2
     internal const val STATUS = VALIDATE + 3
     internal const val RESET = VALIDATE + 4
+    internal const val SNAPSHOT = VALIDATE + 5
+    internal const val SELECT = VALIDATE + 6
+    internal const val URL_TEST = VALIDATE + 7
 
     fun isAvailable(context: Context): Boolean = IsolatedSingBoxRuntime.isPackaged(context)
 
@@ -34,13 +37,24 @@ object SingBoxVpnControl {
     fun resetNetwork(remote: IBinder) { call(remote, RESET) }
     fun isRunning(remote: IBinder): Boolean = call(remote, STATUS) != 0
 
+    fun snapshot(remote: IBinder): String = transact(remote, SNAPSHOT) { it.readString().orEmpty() }
+    fun selectOutbound(remote: IBinder, group: String, tag: String) {
+        call(remote, SELECT) { it.writeString(group); it.writeString(tag) }
+    }
+    fun testOutbound(remote: IBinder, tag: String) {
+        call(remote, URL_TEST) { it.writeString(tag) }
+    }
+
     private fun configCall(remote: IBinder, code: Int, profile: File) {
         ParcelFileDescriptor.open(profile, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
             call(remote, code) { descriptor.writeToParcel(it, 0) }
         }
     }
 
-    private fun call(remote: IBinder, code: Int, write: (Parcel) -> Unit = {}): Int {
+    private fun call(remote: IBinder, code: Int, write: (Parcel) -> Unit = {}): Int =
+        transact(remote, code, write) { it.readInt() }
+
+    private fun <T> transact(remote: IBinder, code: Int, write: (Parcel) -> Unit = {}, read: (Parcel) -> T): T {
         val data = Parcel.obtain()
         val reply = Parcel.obtain()
         try {
@@ -48,7 +62,7 @@ object SingBoxVpnControl {
             write(data)
             check(remote.transact(code, data, reply, 0)) { "sing-box VPN command was rejected" }
             reply.readException()
-            return reply.readInt()
+            return read(reply)
         } finally {
             data.recycle()
             reply.recycle()

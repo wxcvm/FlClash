@@ -22,6 +22,10 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
         session.start(service, config);
     }
 
+    public String snapshot() throws Exception { return NativeTelemetry.snapshot(); }
+    public void selectOutbound(String group, String tag) throws Exception { NativeTelemetry.select(group, tag); }
+    public void testOutbound(String tag) throws Exception { NativeTelemetry.test(tag); }
+
     public void resetNetwork() { session.resetNetwork(); }
 
     @Override public void close() throws Exception {

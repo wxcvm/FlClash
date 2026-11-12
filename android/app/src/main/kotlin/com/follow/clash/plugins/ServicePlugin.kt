@@ -71,6 +71,15 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "start" -> start(call, result)
             "stop" -> stop(call, result)
             "nativeCoreStatus" -> result.success(nativeStatus())
+            "nativeSnapshot" -> nativeOperation(result) { ServiceController.nativeSnapshot() }
+            "selectNativeOutbound" -> nativeOperation(result) {
+                ServiceController.selectNativeOutbound(requireNotNull(call.argument<String>("group")), requireNotNull(call.argument<String>("tag")))
+                true
+            }
+            "testNativeOutbound" -> nativeOperation(result) {
+                ServiceController.testNativeOutbound(requireNotNull(call.argument<String>("tag")))
+                true
+            }
             "validateNativeCore" -> validateNativeCore(call, result)
             "startNativeCore" -> startNativeCore(call, result)
             "stopNativeCore" -> stopNativeCore(call, result)
@@ -128,6 +137,14 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
             ServiceState.syncSharedState(state)
             result.success("")
+        }
+    }
+
+    private fun nativeOperation(result: MethodChannel.Result, operation: suspend () -> Any) {
+        scope.launch {
+            runCatching { operation() }
+                .onSuccess { result.success(it) }
+                .onFailure { result.error("NATIVE_COMMAND", it.message, null) }
         }
     }
 

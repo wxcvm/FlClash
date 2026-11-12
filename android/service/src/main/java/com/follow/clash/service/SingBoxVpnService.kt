@@ -29,12 +29,22 @@ class SingBoxVpnService : VpnService() {
 
     private val control = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-            if (code !in SingBoxVpnControl.VALIDATE..SingBoxVpnControl.RESET || reply == null) {
+            if (code !in SingBoxVpnControl.VALIDATE..SingBoxVpnControl.URL_TEST || reply == null) {
                 return super.onTransact(code, data, reply, flags)
             }
             data.enforceInterface(SingBoxVpnControl.TOKEN)
             if (Binder.getCallingUid() != Process.myUid()) throw SecurityException("Private VPN control")
             try {
+                if (code == SingBoxVpnControl.SNAPSHOT) {
+                    val snapshot = synchronized(lifecycle) {
+                        check(running && !destroyed) { "sing-box VPN is not running" }
+                        requireNotNull(session).snapshot()
+                    }
+                    check(snapshot.length <= 220_000) { "Native snapshot exceeds Binder budget" }
+                    reply.writeNoException()
+                    reply.writeString(snapshot)
+                    return true
+                }
                 val result = synchronized(lifecycle) {
                     check(!destroyed) { "VPN owner has been destroyed" }
                     when (code) {
@@ -55,6 +65,16 @@ class SingBoxVpnService : VpnService() {
                         SingBoxVpnControl.RESET -> {
                             check(running) { "sing-box VPN is not running" }
                             session?.resetNetwork()
+                            0
+                        }
+                        SingBoxVpnControl.SELECT -> {
+                            check(running) { "sing-box VPN is not running" }
+                            requireNotNull(session).selectOutbound(requireNotNull(data.readString()), requireNotNull(data.readString()))
+                            0
+                        }
+                        SingBoxVpnControl.URL_TEST -> {
+                            check(running) { "sing-box VPN is not running" }
+                            requireNotNull(session).testOutbound(requireNotNull(data.readString()))
                             0
                         }
                         else -> if (running) 1 else 0

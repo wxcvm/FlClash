@@ -132,6 +132,16 @@ object ServiceController {
         startNative(options)
     }
 
+    private suspend fun <T> nativeCommand(block: (NativeManagedService) -> T): T = lock.withLock {
+        check(runtime?.nativeConfigPath != null) { "sing-box VPN is not running" }
+        requireNotNull(binding).useService { block(it as NativeManagedService) }.getOrThrow()
+    }
+
+    internal suspend fun nativeSnapshot(): String = nativeCommand { it.snapshot() }
+    internal suspend fun selectNativeOutbound(group: String, tag: String) =
+        nativeCommand { it.selectOutbound(group, tag) }
+    internal suspend fun testNativeOutbound(tag: String) = nativeCommand { it.testOutbound(tag) }
+
     internal suspend fun validateNativeProfile(profile: File): String = lock.withLock {
         check(!hasNativeOwner) { "Stop the native VPN before checking another profile" }
         val app = GlobalState.application
@@ -376,6 +386,10 @@ private class NativeManagedService(
     private val remote: IBinder,
     private val profile: File,
 ) : ManagedService {
+    fun snapshot(): String = SingBoxVpnControl.snapshot(remote)
+    fun selectOutbound(group: String, tag: String) = SingBoxVpnControl.selectOutbound(remote, group, tag)
+    fun testOutbound(tag: String) = SingBoxVpnControl.testOutbound(remote, tag)
+
     fun validate() {
         SingBoxVpnControl.validate(remote, profile)
     }
