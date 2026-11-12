@@ -38,3 +38,13 @@ existing Fake-IP blacklist if diagnosis confirms the need. Do not paste the
 secret path/query, add broad wildcard exclusions, or route it DIRECT without
 checking the intended privacy policy. FlClash cannot control AdGuard's own
 DNS cache or guarantee that its DNS interception will coexist with TUN.
+
+## Mihomo reconnect fix
+
+The pinned core's ClearAll already synchronously resets resolver clients, including
+policy-only and bootstrap DNS transports. FlClash no longer follows that operation
+with a second asynchronous resolver reset on a network-change notification. This
+prevents the delayed reset from closing newly opened resolver connections after
+handover. Any previous network-health result is invalidated on passive desktop
+network changes as well as explicit recovery. Fake-IP mappings remain untouched.
+This does not change the current route or restart the VPN on a passive event.

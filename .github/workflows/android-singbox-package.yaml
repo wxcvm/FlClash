@@ -110,6 +110,13 @@ jobs:
           if grep -E '^(go/Seq|io/nekohasekai/libbox/)' service-classes.txt; then
             echo 'libbox classes leaked into the host classpath' >&2; exit 1
           fi
+      - name: Test Mihomo network recovery
+        if: github.ref_name == 'feat/windows-fakeip-doh-compatibility' || github.head_ref == 'feat/windows-fakeip-doh-compatibility'
+        working-directory: core
+        env:
+          CGO_ENABLED: 0
+        run: go test -run 'TestNetworkChange|TestRecoveryHealth' .
+
       - name: Test native quality ranking
         run: flutter test test/native_quality_ranking_test.dart test/native_auto_recovery_test.dart test/plugins/service_test.dart test/common/task_dns_override_test.dart
       - name: Compile and test actual Android app with native runtime

@@ -6,6 +6,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 # No private URL in the diagnostic report or subprocess arguments.
+if ([uri]$TestUrl -and ([uri]$TestUrl).Host -in @('localhost','127.0.0.1','::1')) {
+    throw 'Choose a public HTTPS test URL, not loopback.'
+}
 if ($ResolverHost -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$' -or
     $ResolverHost.Contains('..')) {
     throw 'Supply the resolver hostname only, without scheme, path or query.'
@@ -41,7 +44,9 @@ function Test-HttpPath([string]$ProxyUrl) {
     $args = @('--silent', '--output', 'NUL', '--connect-timeout', '5',
               '--max-time', '12', '--write-out', '%{http_code} %{time_total}')
     if ($ProxyUrl) {
-        $args += @('--proxy', $ProxyUrl, '--noproxy', '')
+        # Windows PowerShell 5 can drop empty native-command arguments.
+        # The fixed diagnostic URL is public; exclude only loopback from proxy bypass.
+        $args += @('--proxy', $ProxyUrl, '--noproxy', 'localhost,127.0.0.1,::1')
     } else {
         $args += @('--noproxy', '*')
     }

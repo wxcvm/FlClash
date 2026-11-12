@@ -76,6 +76,28 @@ func TestNetworkChangeResetsResolverWithoutMovingRoute(t *testing.T) {
 	}
 }
 
+func TestNetworkChangeInvalidatesRecoveryHealth(t *testing.T) {
+	previousRunning := isRunning.Load()
+	previousReset := resetNetworkResolver
+	t.Cleanup(func() {
+		cancelRecoveryHealth()
+		setRunning(previousRunning)
+		resetNetworkResolver = previousReset
+	})
+	setRunning(true)
+	resetNetworkResolver = func() {}
+	epoch, version := routeStamp()
+	recoveryHealthMu.Lock()
+	recoveryHealth = NetworkHealthSnapshot{
+		State: "reachable", CoreEpoch: epoch, RouteVersion: version,
+	}
+	recoveryHealthMu.Unlock()
+	handleNetworkChanged()
+	if got := handleNetworkHealth(); got.State != "idle" {
+		t.Fatalf("previous network health survived network change: %+v", got)
+	}
+}
+
 func TestStopListenerClosesTrackedConnections(t *testing.T) {
 	previous := isRunning.Load()
 	t.Cleanup(func() { isRunning.Store(previous) })
