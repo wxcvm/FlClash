@@ -37,17 +37,21 @@ class SingBoxVpnService : VpnService() {
 
     private val control = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-            if (code !in SingBoxVpnControl.VALIDATE..SingBoxVpnControl.QUALITY_CANCEL || reply == null) {
+            if (code !in SingBoxVpnControl.VALIDATE..SingBoxVpnControl.STATUS_SNAPSHOT || reply == null) {
                 return super.onTransact(code, data, reply, flags)
             }
             data.enforceInterface(SingBoxVpnControl.TOKEN)
             if (Binder.getCallingUid() != Process.myUid()) throw SecurityException("Private VPN control")
             try {
-                if (code == SingBoxVpnControl.SNAPSHOT || code == SingBoxVpnControl.QUALITY_STATUS) {
+                if (code == SingBoxVpnControl.SNAPSHOT || code == SingBoxVpnControl.QUALITY_STATUS ||
+                    code == SingBoxVpnControl.STATUS_SNAPSHOT) {
                     val snapshot = synchronized(lifecycle) {
                         check(running && !destroyed) { "sing-box VPN is not running" }
-                        if (code == SingBoxVpnControl.SNAPSHOT) requireNotNull(session).snapshot()
-                        else requireNotNull(session).qualitySnapshot()
+                        when (code) {
+                            SingBoxVpnControl.SNAPSHOT -> requireNotNull(session).snapshot()
+                            SingBoxVpnControl.STATUS_SNAPSHOT -> requireNotNull(session).statusSnapshot()
+                            else -> requireNotNull(session).qualitySnapshot()
+                        }
                     }
                     check(snapshot.length <= 220_000) { "Native snapshot exceeds Binder budget" }
                     reply.writeNoException()

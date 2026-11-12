@@ -131,7 +131,7 @@ class Service {
   }
 
   Future<AndroidNativeStatus> getNativeStatus() async {
-    final revision = _nativeStatusRevision;
+    final revision = ++_nativeStatusRevision;
     final data = await methodChannel.invokeMapMethod<Object?, Object?>(
       'nativeCoreStatus',
     );
@@ -139,7 +139,6 @@ class Service {
     if (revision != _nativeStatusRevision && nativeStatus.value != null) {
       return nativeStatus.value!;
     }
-    _nativeStatusRevision++;
     nativeStatus.value = status;
     return status;
   }
@@ -155,6 +154,11 @@ class Service {
 
   Future<void> cancelNativeQuality() async {
     await methodChannel.invokeMethod<bool>('cancelNativeQuality');
+  }
+
+  Future<Map<String, dynamic>> getNativeStatusSnapshot() async {
+    final json = await methodChannel.invokeMethod<String>('nativeStatusSnapshot');
+    return Map<String, dynamic>.from(jsonDecode(json ?? '{}') as Map);
   }
 
   Future<Map<String, dynamic>> getNativeSnapshot() async {

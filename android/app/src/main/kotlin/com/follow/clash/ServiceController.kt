@@ -219,6 +219,7 @@ object ServiceController {
     internal suspend fun nativeQualitySnapshot(): String = nativeCommand { it.qualitySnapshot() }
     internal suspend fun cancelNativeQuality() = nativeCommand { it.cancelQuality() }
 
+    internal suspend fun nativeStatusSnapshot(): String = nativeCommand { it.statusSnapshot() }
     internal suspend fun nativeSnapshot(): String = nativeCommand { it.snapshot() }
     internal suspend fun selectNativeOutbound(group: String, tag: String, expectedGeneration: Long) =
         nativeCommand { it.selectOutbound(group, tag, expectedGeneration) }
@@ -552,6 +553,7 @@ private class NativeManagedService(
     fun startQuality(tag: String) = SingBoxVpnControl.startQuality(remote, tag)
     fun qualitySnapshot(): String = SingBoxVpnControl.qualitySnapshot(remote)
     fun cancelQuality() = SingBoxVpnControl.cancelQuality(remote)
+    fun statusSnapshot(): String = SingBoxVpnControl.statusSnapshot(remote)
     fun snapshot(): String = SingBoxVpnControl.snapshot(remote)
     fun selectOutbound(group: String, tag: String, expectedGeneration: Long) = SingBoxVpnControl.selectOutbound(remote, group, tag, expectedGeneration)
     fun resetNetwork() = SingBoxVpnControl.resetNetwork(remote)

@@ -75,8 +75,8 @@ class SetupAction extends _$SetupAction {
     ref.read(totalTrafficProvider.notifier).value = const Traffic();
     if (status.ownsRuntime) {
       ref.read(runningVpnOptionsProvider.notifier).value = null;
-      ref.read(proxiesActionProvider.notifier).cancelDelayTests();
     }
+    ref.read(proxiesActionProvider.notifier).syncAndroidNativeOwnership();
     _updateRunTime();
     _syncRuntimeTicker();
   }

@@ -16,9 +16,16 @@ class AndroidNativeDashboard extends StatefulWidget {
   State<AndroidNativeDashboard> createState() => _AndroidNativeDashboardState();
 }
 
-class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
+class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
+    with WidgetsBindingObserver {
   final Service _service = Service();
   Map<String, dynamic>? _snapshot;
+  Map<String, dynamic>? _live;
+  Timer? _liveTimer;
+  bool _foreground = true;
+  bool _polling = false;
+  int _liveRevision = 0;
+  String? _liveError;
   String _message = '';
   bool _busy = false;
   bool _showLogs = false;
@@ -35,9 +42,13 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _foreground = WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     _service.nativeStatus.addListener(_onNativeStatus);
     _onNativeStatus();
     if (_service.nativeStatus.value?.engine == 'sing-box') unawaited(_refresh());
+    _scheduleLive();
   }
 
   void _onNativeStatus() {
@@ -45,6 +56,8 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
     final started = status?.engine == 'sing-box' ? status!.startedAt : 0;
     if (started == _sessionStartedAt) return;
     _sessionStartedAt = started;
+    _liveRevision++;
+    _liveTimer?.cancel();
     _cancelRequested = true;
     _qualityRequested = false;
     _networkGeneration = null;
@@ -54,12 +67,61 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
       _quality = null;
       _qualityRunning = false;
       _snapshot = null;
+      _live = null;
+      _liveError = null;
       _batchProgress = '';
     });
+    _scheduleLive();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) _liveRevision++;
+    _scheduleLive();
+  }
+
+  void _scheduleLive() {
+    _liveTimer?.cancel();
+    if (!widget.home || !_foreground || _sessionStartedAt == 0 || !mounted) return;
+    _liveTimer = Timer(const Duration(seconds: 4), () => unawaited(_pollLive()));
+  }
+
+  Future<void> _pollLive() async {
+    if (!mounted || !_foreground || _sessionStartedAt == 0) return;
+    if (_busy || _polling || ModalRoute.of(context)?.isCurrent == false) {
+      _scheduleLive();
+      return;
+    }
+    _polling = true;
+    final revision = ++_liveRevision;
+    final session = _sessionStartedAt;
+    bool current() => mounted && _foreground && revision == _liveRevision && session == _sessionStartedAt;
+    try {
+      final sample = await _service.getNativeStatusSnapshot();
+      if (!current()) return;
+      final changed = _acceptGeneration(sample['networkGeneration']);
+      setState(() {
+        _live = sample;
+        _liveError = null;
+        if (changed) _snapshot = null;
+      });
+    } catch (_) {
+      if (current()) setState(() {
+        _live = null;
+        _liveError = '暂时无法读取原生流量，请刷新';
+      });
+    } finally {
+      _polling = false;
+      _scheduleLive();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _liveRevision++;
+    _liveTimer?.cancel();
     _service.nativeStatus.removeListener(_onNativeStatus);
     _cancelRequested = true;
     if (_qualityRequested) {
@@ -199,10 +261,17 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
 
   Future<void> _readSnapshot() async {
     final session = _sessionStartedAt;
+    final revision = ++_liveRevision;
     final snapshot = await _service.getNativeSnapshot();
     if (mounted && session == _sessionStartedAt) {
       _acceptGeneration(snapshot['networkGeneration']);
-      setState(() => _snapshot = snapshot);
+      setState(() {
+        _snapshot = snapshot;
+        if (revision == _liveRevision) {
+          _live = snapshot;
+          _liveError = null;
+        }
+      });
     }
   }
 
@@ -256,8 +325,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
+    final live = _live;
     final status = Map<String, dynamic>.from(
-      (snapshot?['status'] as Map?) ?? const {},
+      (live?['status'] as Map?) ?? const {},
     );
     final groups = _rows(snapshot?['groups']);
     final quality = _quality;
@@ -265,7 +335,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
     final outbounds = _rows(snapshot?['outbounds']);
     final logs = (snapshot?['logs'] as List? ?? const []).whereType<String>();
     final traffic = status['trafficAvailable'] == true;
-    final rates = traffic && snapshot?['rateAvailable'] == true;
+    final rates = traffic && live?['rateAvailable'] == true;
     return BaseScaffold(
       title: widget.home ? 'FlClash · sing-box' : 'sing-box 运行管理',
       body: ValueListenableBuilder<AndroidNativeStatus?>(
@@ -285,7 +355,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
                 items: [
                   ListItem(
                     title: Text(running ? 'sing-box 正在运行' : native?.ownsRuntime == true ? '内核切换 / 清理中' : '内核已停止'),
-                    subtitle: Text(_busy ? '读取或执行命令中…' : '按需刷新 · 无后台轮询'),
+                    subtitle: Text(_busy ? '读取或执行命令中…' : widget.home ? '前台每 4 秒刷新状态 · 节点与日志按需读取' : '按需刷新 · 无后台轮询'),
                   ),
                   if (widget.home) ...[
                     ListItem(
@@ -316,7 +386,8 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
                       subtitle: const Text('重置内核连接，不重启 VPN；现有连接可能中断'),
                       onTap: enabled ? () => unawaited(_resetNetwork()) : null,
                     ),
-                  if (running && snapshot != null) ...[
+                  if (running && _liveError != null) ListItem(title: Text(_liveError!)),
+                  if (running && live != null) ...[
                     ListItem(
                       title: const Text('实时流量'),
                       subtitle: Text(rates

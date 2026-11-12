@@ -83,6 +83,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 true
             }
             "nativeSnapshot" -> nativeOperation(result) { ServiceController.nativeSnapshot() }
+            "nativeStatusSnapshot" -> nativeOperation(result) { ServiceController.nativeStatusSnapshot() }
             "resetNativeNetwork" -> nativeOperation(result) {
                 ServiceController.resetNativeNetwork()
                 true

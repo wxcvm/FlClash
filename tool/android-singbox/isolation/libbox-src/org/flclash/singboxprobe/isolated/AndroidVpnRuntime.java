@@ -28,9 +28,12 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
     public String qualitySnapshot() throws Exception { return quality.snapshot(); }
     public void cancelQuality() throws Exception { quality.cancel(); }
 
-    public String snapshot() throws Exception {
+    public String snapshot() throws Exception { return snapshot(false); }
+    public String statusSnapshot() throws Exception { return snapshot(true); }
+
+    private String snapshot(boolean statusOnly) throws Exception {
         long generation = platform.networkGeneration();
-        org.json.JSONObject data = new org.json.JSONObject(NativeTelemetry.snapshot());
+        org.json.JSONObject data = new org.json.JSONObject(statusOnly ? NativeTelemetry.statusSnapshot() : NativeTelemetry.snapshot());
         if (generation != platform.networkGeneration()) {
             throw new IOException("Network changed while reading status; refresh again");
         }

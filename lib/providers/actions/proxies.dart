@@ -136,6 +136,7 @@ class ProxiesAction extends _$ProxiesAction {
   }
 
   bool get _autoSpeedReady =>
+      service?.nativeOwnsRuntime != true &&
       _autoSpeedOnline &&
       ref.read(downloadSpeedAutoGroupProvider) != null &&
       (system.isDesktop || ref.read(appVisibleProvider)) &&
@@ -330,6 +331,17 @@ class ProxiesAction extends _$ProxiesAction {
     }
   }
 
+  void syncAndroidNativeOwnership() {
+    if (service?.nativeOwnsRuntime == true) {
+      cancelDelayTests();
+      _speedTestGeneration++;
+      _autoSpeedTimer?.cancel();
+      debouncer.cancel(FunctionTag.updateGroups);
+    } else {
+      _scheduleAutoSpeed();
+    }
+  }
+
   void cancelDelayTests() {
     for (final job in _delayTestJobs) {
       job.cancelled = true;
@@ -368,6 +380,7 @@ class ProxiesAction extends _$ProxiesAction {
   }
 
   void updateGroupsDebounce([Duration? duration]) {
+    if (service?.nativeOwnsRuntime == true) return;
     debouncer.call(FunctionTag.updateGroups, updateGroups, duration: duration);
   }
 
@@ -396,9 +409,11 @@ class ProxiesAction extends _$ProxiesAction {
   }
 
   Future<void> updateGroups() async {
+    if (service?.nativeOwnsRuntime == true) return;
     try {
       ref.read(groupsProvider.notifier).value = await retry(
         task: () async {
+          if (service?.nativeOwnsRuntime == true) return [];
           final sortType = ref.read(
             proxiesStyleSettingProvider.select((state) => state.sortType),
           );
@@ -424,7 +439,7 @@ class ProxiesAction extends _$ProxiesAction {
             return [];
           }
         },
-        retryIf: (res) => res.isEmpty,
+        retryIf: (res) => service?.nativeOwnsRuntime != true && res.isEmpty,
       );
     } catch (e) {
       // The Core failure path already runs inside the retry task above; a
