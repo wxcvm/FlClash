@@ -133,6 +133,9 @@ object ServiceController {
     suspend fun start(options: VpnOptions): Boolean = lock.withLock {
         if (options.nativeConfigPath != null) return@withLock startNative(options).started
         if (hasNativeOwner) {
+            if (MihomoCoreTransport.isolated && (latestSharedState ?: GlobalState.application.sharedState).setupParams == null) {
+                return@withLock false
+            }
             if (!stopForHandoff()) return@withLock false
         }
         startMihomoLocked(options)
@@ -272,7 +275,9 @@ object ServiceController {
         }
         return withContext(NonCancellable) {
             if (MihomoCoreTransport.isolated && !runCatching {
-                    withContext(Dispatchers.IO) { MihomoCoreTransport.canSuspend() }
+                    withContext(Dispatchers.IO) {
+                        MihomoCoreTransport.resumeAfterNative() && MihomoCoreTransport.canSuspend()
+                    }
                 }.getOrDefault(false)) {
                 candidate.stopIfConnected()
                 candidate.unbind()

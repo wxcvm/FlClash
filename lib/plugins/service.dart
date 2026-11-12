@@ -284,6 +284,7 @@ class AndroidNativeStatus {
     required this.nativeOwner,
     required this.state,
     this.startedAt = 0,
+    this.mihomoSuspended = false,
   });
 
   factory AndroidNativeStatus.fromMap(Map<Object?, Object?> data) =>
@@ -293,6 +294,7 @@ class AndroidNativeStatus {
         nativeOwner: data['nativeOwner'] == true,
         state: data['state'] as String? ?? 'STOPPED',
         startedAt: (data['startedAt'] as num?)?.toInt() ?? 0,
+        mihomoSuspended: data['mihomoSuspended'] == true,
       );
 
   final bool available;
@@ -300,6 +302,7 @@ class AndroidNativeStatus {
   final bool nativeOwner;
   final String state;
   final int startedAt;
+  final bool mihomoSuspended;
 }
 
 class AndroidNativeStartResult {

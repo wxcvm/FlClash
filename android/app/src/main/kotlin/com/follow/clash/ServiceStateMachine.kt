@@ -171,6 +171,8 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             val result = startPreparationLock.withLock preparation@ {
                 val options = sharedState.vpnOptions?.copy(nativeConfigPath = null)
                     ?: return@preparation false
+                // Do not tear down a working native VPN without a restore profile.
+                if (sharedState.setupParams == null) return@preparation false
                 if (!isCurrent(request) || !prepareVpn(options)) return@preparation false
                 transitionLock.withLock transition@ {
                     if (!isCurrent(request)) return@transition false

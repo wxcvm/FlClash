@@ -163,6 +163,7 @@ private class FakeHost(override val scope: CoroutineScope) : ServiceStateHost {
             return false
         }
         runtime = ServiceRuntime(vpn = runsAsVpn ?: options.enable, startedAtMillis = STARTED_AT, nativeConfigPath = options.nativeConfigPath)
+        hasNativeOwner = options.nativeConfigPath != null
         return true
     }
 
@@ -184,6 +185,47 @@ private class FakeHost(override val scope: CoroutineScope) : ServiceStateHost {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServiceStateMachineTest {
+
+    @Test
+    fun `explicit Mihomo switch replaces manual native run`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestNativeStart(File("native.json")).await().started)
+        assertTrue(machine.requestMihomoStart().await())
+        assertEquals(null, host.runtime?.nativeConfigPath)
+        assertFalse(host.hasNativeOwner)
+        assertEquals(RunState.STARTED, machine.runState.value)
+        assertEquals(1, host.startCalls)
+        assertTrue(machine.requestStart().await())
+        assertEquals(1, host.startCalls)
+    }
+
+    @Test
+    fun `explicit Mihomo switch without a profile leaves native VPN running`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestNativeStart(File("native.json")).await().started)
+        machine.syncSharedState(configuredState().copy(setupParams = null))
+        assertFalse(machine.requestMihomoStart().await())
+        assertEquals("native.json", host.runtime?.nativeConfigPath)
+        assertEquals(0, host.startCalls)
+        assertEquals(RunState.STARTED, machine.runState.value)
+    }
+
+    @Test
+    fun `refused Mihomo handoff preserves native run`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestNativeStart(File("native.json")).await().started)
+        host.startSucceeds = false
+        assertFalse(machine.requestMihomoStart().await())
+        assertEquals("native.json", host.runtime?.nativeConfigPath)
+        assertTrue(host.hasNativeOwner)
+        assertEquals(RunState.STARTED, machine.runState.value)
+    }
 
     @Test
     fun `manual native run is not replaced by ordinary start`() = runTest {

@@ -138,9 +138,11 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                     title: Text(engine),
                     subtitle: Text(status?.state ?? '正在读取状态'),
                   ),
-                  const ListItem(
-                    title: Text('Mihomo'),
-                    subtitle: Text('内置 · 默认内核'),
+                  ListItem(
+                    title: const Text('Mihomo'),
+                    subtitle: Text(status?.mihomoSuspended == true
+                        ? '已暂停 Core 请求 · 使用 sing-box 运行管理'
+                        : '内置 · 默认内核'),
                   ),
                   ListItem(
                     title: const Text('sing-box'),
