@@ -85,6 +85,36 @@ void main() {
       expect(before, [1, 2, 3]);
     });
 
+    test('wrapped history keeps order and replaces logical indices', () {
+      var list = FixedList<int>(3);
+      for (var i = 1; i <= 8; i++) {
+        list = list.append(i);
+      }
+      expect(list.list, [6, 7, 8]);
+      expect(list[0], 6);
+      expect(list[2], 8);
+      final before = list.list;
+      list = list.replace({0: 60, 2: 80});
+      expect(list.list, [60, 7, 80]);
+      expect(before, [6, 7, 8]);
+      final copy = list.copyWith();
+      list.add(9);
+      expect(list.list, [7, 80, 9]);
+      expect(copy.list, [60, 7, 80]);
+      expect(() => list[-1], throwsRangeError);
+      expect(() => list[3], throwsRangeError);
+      list.clear();
+      list.add(10);
+      expect(list.list, [10]);
+    });
+
+    test('capacity one overwrites without growing', () {
+      final list = FixedList<int>(1);
+      list.add(1);
+      list.add(2);
+      expect(list.list, [2]);
+    });
+
     test('append still honours maxLength', () {
       var list = FixedList<int>(2);
       for (var i = 1; i <= 4; i++) {
