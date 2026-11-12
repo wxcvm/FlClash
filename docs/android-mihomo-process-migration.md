@@ -27,3 +27,9 @@ Mihomo process, then relocate VPN/Proxy service ownership and ServiceConfig,
 network observation, notification/pressure handling and always-on startup.
 Only after those paths are verified can the UI stop loading JNI. This probe
 does not yet reduce normal app memory or switch production ownership.
+
+Stage 2 adds one-way descriptor-backed callbacks for actual Core RPC responses,
+quickSetup and native events. Only diagnostics, log subscription and a fixed
+listener-free private fixture are exposed in the debug probe. The device test
+now initializes the isolated Go state and checks core.initialized after setup.
+Production Flutter and VPN callers are still not switched to this transport.

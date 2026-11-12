@@ -29,6 +29,13 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
                     val response = JSONObject(core.invoke(request.toString()).decodeToString())
                     check(response.getString("id") == "probe-$attempt" && response.isNull("error"))
                     check(response.get("result") is Boolean)
+                    core.setEventListener { /* callbacks arrive through private Binder */ }
+                    val logStart = JSONObject(core.invoke("""{"id":"log","method":"log.start"}""").decodeToString())
+                    check(logStart.isNull("error"))
+                    check(core.quickSetup().isEmpty()) { "Mihomo quickSetup failed" }
+                    val initialized = JSONObject(core.invoke("""{"id":"init","method":"core.initialized"}""").decodeToString())
+                    check(initialized.getBoolean("result"))
+                    core.setEventListener(null)
                     val memory = JSONObject(core.invoke(
                         """{"id":"memory","method":"core.memory"}""",
                     ).decodeToString())
@@ -37,7 +44,7 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
                     result.putInt("nativePid$attempt", core.pid)
                 }
             }
-            result.putString("stream", "PASS: actual Mihomo JNI RPC, separate PIDs, process death and restart\n")
+            result.putString("stream", "PASS: actual Mihomo JNI RPC, quickSetup, event subscription, separate PIDs and process restart\n")
             finish(Activity.RESULT_OK, result)
         } catch (error: Throwable) {
             result.putString("stream", "FAIL: ${error.stackTraceToString()}\n")

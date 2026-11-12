@@ -13,6 +13,8 @@ import android.os.ParcelFileDescriptor
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.io.File
+import org.json.JSONObject
 
 /** Blocking diagnostic client: call only off the Android main thread. */
 class MihomoProcessProbeControl private constructor(
@@ -24,12 +26,50 @@ class MihomoProcessProbeControl private constructor(
 ) : AutoCloseable {
     private var closed = false
 
-    fun invoke(json: String): ByteArray {
+    fun invoke(json: String): ByteArray = command(INVOKE, json)
+
+    /** Uses the real QuickSetup bridge, with an isolated, listener-free fixture. */
+    fun quickSetup(): String {
+        val home = File(context.cacheDir, "mihomo-probe-home").apply { mkdirs() }
+        val profile = File(home, "probe.yaml").apply { writeText(MihomoProcessProbeService.PROBE_CONFIG) }
+        val init = JSONObject().put("home-dir", home.path).put("version", 1)
+        val setup = JSONObject()
+            .put("base", JSONObject().put("path", profile.path).put("overlay", ""))
+            .put("selected-map", JSONObject())
+            .put("options", JSONObject())
+        return command(QUICK_SETUP, JSONObject().put("init", init).put("setup", setup).toString()).decodeToString()
+    }
+
+    fun setEventListener(listener: ((ByteArray) -> Unit)?) {
         check(!closed)
-        return CoreProbePayload.open(context, json.encodeToByteArray()).use { input ->
-            transact(remote, owner, INVOKE, { input.writeToParcel(it, 0) }) {
-                CoreProbePayload.read(ParcelFileDescriptor.CREATOR.createFromParcel(it))
+        val receiver = listener?.let { callback ->
+            CoreProbeCallback.receiver { result -> result.onSuccess(callback) }
+        }
+        transact(remote, owner, EVENTS, { it.writeStrongBinder(receiver) }) { Unit }
+    }
+
+    private fun command(code: Int, json: String): ByteArray {
+        check(!closed)
+        val done = CountDownLatch(1)
+        val result = AtomicReference<Result<ByteArray>>()
+        val callback = CoreProbeCallback.receiver {
+            if (result.compareAndSet(null, it)) done.countDown()
+        }
+        val death = IBinder.DeathRecipient {
+            if (result.compareAndSet(null, Result.failure(IllegalStateException("Core process died")))) done.countDown()
+        }
+        remote.linkToDeath(death, 0)
+        try {
+            CoreProbePayload.open(context, json.encodeToByteArray()).use { input ->
+                transact(remote, owner, code, {
+                    it.writeStrongBinder(callback)
+                    input.writeToParcel(it, 0)
+                }) { Unit }
             }
+            check(done.await(20, TimeUnit.SECONDS)) { "Core did not answer" }
+            return requireNotNull(result.get()).getOrThrow()
+        } finally {
+            runCatching { remote.unlinkToDeath(death, 0) }
         }
     }
 
@@ -58,7 +98,9 @@ class MihomoProcessProbeControl private constructor(
         internal const val TOKEN = "com.follow.clash.service.MihomoProcessProbe"
         internal const val ATTACH = IBinder.FIRST_CALL_TRANSACTION
         internal const val INVOKE = ATTACH + 1
-        internal const val STOP = ATTACH + 2
+        internal const val QUICK_SETUP = ATTACH + 2
+        internal const val EVENTS = ATTACH + 3
+        internal const val STOP = ATTACH + 4
 
         fun connect(context: Context): MihomoProcessProbeControl {
             check(Looper.myLooper() != Looper.getMainLooper()) { "Use a background thread" }
