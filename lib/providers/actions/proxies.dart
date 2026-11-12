@@ -330,8 +330,9 @@ class ProxiesAction extends _$ProxiesAction {
         return;
       }
       final initialProfileId = ref.read(currentProfileIdProvider);
-      final initialSelection =
-          ref.read(currentProfileProvider)?.selectedMap[groupName];
+      final initialSelection = ref
+          .read(currentProfileProvider)
+          ?.selectedMap[groupName];
       final candidates = _resolveDelayTestTargets([
         (proxies: group.all, testUrl: group.testUrl),
       ]).map((target) => target.proxyName).toSet();
@@ -380,10 +381,7 @@ class ProxiesAction extends _$ProxiesAction {
       ]);
 
       if (stable.isEmpty) {
-        dialogs.showBanner(
-          '下载测速失败：没有节点完成有效的数据下载',
-          level: BannerLevel.warning,
-        );
+        dialogs.showBanner('下载测速失败：没有节点完成有效的数据下载', level: BannerLevel.warning);
         return;
       }
       if (!ref.mounted ||
