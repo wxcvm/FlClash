@@ -28,9 +28,13 @@ import java.io.File
 class MihomoProcessProbeInstrumentation : Instrumentation() {
     private var live = false
     private var handover = false
+    private var nativeProxy = false
+    private var soakSeconds = 0
     override fun onCreate(arguments: Bundle?) {
         live = arguments?.getString("liveVpn") == "true"
         handover = arguments?.getString("handover") == "true"
+        nativeProxy = arguments?.getString("nativeProxy") == "true"
+        soakSeconds = arguments?.getString("soakSeconds")?.toIntOrNull() ?: 0
         super.onCreate(arguments)
         start()
     }
@@ -92,7 +96,7 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
         val result = Bundle()
         try {
             if (live) {
-                DualCoreVpnAcceptance(this, handover).run(result)
+                DualCoreVpnAcceptance(this, handover, nativeProxy, soakSeconds).run(result)
                 result.putString("stream", "PASS: live dual-core VPN acceptance\\n")
                 finish(Activity.RESULT_OK, result)
                 return
@@ -165,7 +169,7 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
             result.putString("stream", "PASS: production lifecycle Binder, actual Mihomo JNI RPC, quickSetup, event subscription, separate PIDs and process restart\n")
             finish(Activity.RESULT_OK, result)
         } catch (error: Throwable) {
-            result.putString("stream", "FAIL: ${error.stackTraceToString()}\n")
+            result.putString("stream", if (nativeProxy) "FAIL: native proxy acceptance (${error.javaClass.simpleName}); inspect local diagnostics\n" else "FAIL: ${error.stackTraceToString()}\n")
             finish(Activity.RESULT_CANCELED, result)
         }
     }

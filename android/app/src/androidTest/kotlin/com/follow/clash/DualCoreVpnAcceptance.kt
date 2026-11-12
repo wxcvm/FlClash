@@ -21,6 +21,10 @@ import com.follow.clash.service.models.VpnOptions
 import com.google.gson.JsonParser
 import java.io.File
 import java.net.InetSocketAddress
+import java.net.DatagramSocket
+import java.net.DatagramPacket
+import java.net.InetAddress
+import java.util.concurrent.ThreadLocalRandom
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import kotlinx.coroutines.runBlocking
@@ -31,7 +35,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** Explicitly opt-in, app-only, real forwarding test of the production controller. */
-internal class DualCoreVpnAcceptance(private val runner: Instrumentation, private val handover: Boolean) {
+internal class DualCoreVpnAcceptance(private val runner: Instrumentation, private val handover: Boolean,
+    private val nativeProxy: Boolean, private val soakSeconds: Int) {
     private val context = runner.targetContext
     private val cm = context.getSystemService(ConnectivityManager::class.java)
     private val am = context.getSystemService(ActivityManager::class.java)
@@ -68,15 +73,19 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
                   - MATCH,DIRECT
             """.trimIndent())
         }
+        val outbound = if (nativeProxy) readNativeOutbound() else JSONObject().put("type", "direct").put("tag", "acceptance-egress")
         val native = File(home, "singbox.json").apply {
             writeText(JSONObject("""
                 {"log":{"level":"warn"},"inbounds":[{"type":"tun","tag":"acceptance",
-                "address":["172.19.0.1/30"],"auto_route":true,"dns_mode":"disabled",
-                "route_address":["1.1.1.1/32"],"stack":"system"}],
-                "outbounds":[{"type":"direct","tag":"direct"}],
-                "route":{"auto_detect_interface":true,"final":"direct"}}
+                "address":["172.19.0.1/30"],"auto_route":true,"dns_mode":"hijack","dns_address":["172.19.0.2"],
+                "route_address":["1.1.1.1/32","172.19.0.2/32"],"stack":"system"}],
+                "dns":{"servers":[{"type":"local","tag":"android"}],"final":"android","disable_cache":true},
+                "outbounds":[],
+                "route":{"auto_detect_interface":true,"default_domain_resolver":"android",
+                "rules":[{"port":53,"action":"hijack-dns"}],"final":"acceptance-egress"}}
             """.trimIndent()).apply {
                 getJSONArray("inbounds").getJSONObject(0).put("include_package", JSONArray(listOf(packageName)))
+                put("outbounds", JSONArray().put(outbound))
             }.toString())
         }
         val options = VpnOptions(
@@ -88,8 +97,9 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         val setup = JSONObject().put("base", JSONObject().put("path", profile.path).put("overlay", ""))
             .put("selected-map", JSONObject()).put("options", JSONObject())
         try {
+            require(soakSeconds in 0..120)
             runBlocking {
-                withTimeout(300_000) {
+                withTimeout(480_000) {
                     val state = SharedState(vpnOptions = options, setupParams = JsonParser.parseString(setup.toString()).asJsonObject)
                     ServiceState.syncSharedState(state)
                     check(ServiceController.quickSetup(
@@ -99,12 +109,13 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
                     phase("mihomo-initial", "198.18.0.1", ":mihomo", ":singbox")
                     repeat(2) { round ->
                         val started = ServiceState.requestNativeStart(native).await()
-                        check(started.started) { "Native handoff failed: ${started.error}" }
+                        check(started.started) { if (nativeProxy) "Native proxy handoff failed; check local device diagnostics" else "Native handoff failed: ${started.error}" }
                         check(ServiceController.mihomoSuspended)
                         val blocked = JSONObject(rpc("""{"id":"blocked","method":"core.initialized"}"""))
                         check(blocked.getJSONObject("error").getString("code") == "core_unavailable")
                         phase("singbox-${round + 1}", "172.19.0.1", ":singbox", ":mihomo")
                         if (handover && round == 0) verifyHandover()
+                        if (soakSeconds > 0 && round == 0) verifySoak()
                         check(ServiceState.requestMihomoStart().await()) { "Mihomo restore failed" }
                         phase("mihomo-restored-${round + 1}", "198.18.0.1", ":mihomo", ":singbox")
                     }
@@ -126,6 +137,61 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         }
     }
 
+    // A single outbound, not a whole subscription: no selector or direct fallback.
+    private fun readNativeOutbound(): JSONObject {
+        val file = File(context.cacheDir, "native-acceptance-outbound.json")
+        try {
+            require(file.isFile && file.length() in 1..(256 * 1024L)) { "Missing or oversized outbound fixture" }
+            val value = JSONObject(file.readText())
+            val type = value.getString("type")
+            require(type in setOf("vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "socks", "http", "anytls")) {
+                "Unsupported single outbound type"
+            }
+            require(value.optString("server").isNotBlank() && value.optInt("server_port") in 1..65535)
+            require(!value.has("detour") && !value.has("outbounds")) { "Chained or group outbounds are not accepted" }
+            value.put("tag", "acceptance-egress")
+            value.put("domain_resolver", "android")
+            return value
+        } finally {
+            file.delete()
+        }
+    }
+
+    private fun dns(network: Network): Long {
+        val id = ThreadLocalRandom.current().nextInt(65536)
+        val query = ProbeDnsMessage.query(id)
+        val started = SystemClock.elapsedRealtime()
+        DatagramSocket(null).use { socket ->
+            network.bindSocket(socket)
+            socket.bind(InetSocketAddress(0))
+            socket.connect(InetAddress.getByName("172.19.0.2"), 53)
+            check(socket.localAddress.hostAddress == "172.19.0.1") { "DNS bypassed native TUN" }
+            socket.soTimeout = 8000
+            socket.send(DatagramPacket(query, query.size))
+            val bytes = ByteArray(4096)
+            val answer = DatagramPacket(bytes, bytes.size)
+            socket.receive(answer)
+            ProbeDnsMessage.verify(bytes, answer.length, id)
+        }
+        return SystemClock.elapsedRealtime() - started
+    }
+
+    private suspend fun verifySoak() {
+        val deadline = SystemClock.elapsedRealtime() + soakSeconds * 1000L
+        val samples = JSONArray()
+        do {
+            val network = requireNotNull(vpn("172.19.0.1"))
+            samples.put(JSONObject().put("tlsMs", https(network, "172.19.0.1"))
+                .put("dnsMs", dns(network)))
+            val remaining = deadline - SystemClock.elapsedRealtime()
+            if (remaining > 0) kotlinx.coroutines.delay(minOf(10_000L, remaining))
+        } while (SystemClock.elapsedRealtime() < deadline)
+        val report = JSONObject().put("phase", "singbox-soak").put("durationSeconds", soakSeconds)
+            .put("checks", samples)
+        reports.put(report)
+        runner.sendStatus(0, Bundle().apply { putString("phase", report.toString()) })
+    }
+
     private suspend fun verifyHandover() {
         val before = JSONObject(ServiceController.nativeStatusSnapshot()).getLong("networkGeneration")
         runner.sendStatus(1, Bundle().apply {
@@ -134,10 +200,16 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         val deadline = SystemClock.elapsedRealtime() + 60_000
         var generation = before
         var latency: Long? = null
+        var dnsLatency: Long? = null
         while (SystemClock.elapsedRealtime() < deadline && latency == null) {
             try {
                 generation = JSONObject(ServiceController.nativeStatusSnapshot()).getLong("networkGeneration")
-                if (generation != before) latency = https(requireNotNull(vpn("172.19.0.1")), "172.19.0.1")
+                if (generation != before) {
+                    val network = requireNotNull(vpn("172.19.0.1"))
+                    val tls = https(network, "172.19.0.1")
+                    dnsLatency = dns(network)
+                    latency = tls
+                }
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -148,7 +220,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         check(latency != null && generation != before) { "No successful native network handover within 60 seconds" }
         check(ServiceController.mihomoSuspended)
         val report = JSONObject().put("phase", "singbox-network-handover")
-            .put("beforeGeneration", before).put("afterGeneration", generation).put("tlsMs", latency)
+            .put("beforeGeneration", before).put("afterGeneration", generation).put("tlsMs", latency).put("dnsMs", dnsLatency)
         reports.put(report)
         runner.sendStatus(0, Bundle().apply { putString("phase", report.toString()) })
     }
@@ -167,13 +239,16 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             "$packageName$active" in names && "$packageName$inactive" !in names
         }
         waitFor("$name TUN") { vpn(address) != null }
-        val latency = https(requireNotNull(vpn(address)), address)
+        val network = requireNotNull(vpn(address))
+        val latency = https(network, address)
+        val dnsLatency = if (active == ":singbox") dns(network) else null
         val samples = JSONArray()
         repeat(3) {
             samples.put(pss())
             SystemClock.sleep(1000)
         }
         val report = JSONObject().put("phase", name).put("tlsMs", latency).put("samples", samples)
+        if (dnsLatency != null) report.put("dnsMs", dnsLatency).put("egress", if (nativeProxy) "proxy" else "direct")
         reports.put(report)
         runner.sendStatus(0, Bundle().apply { putString("phase", report.toString()) })
     }
