@@ -23,6 +23,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
   final _ranking = NativeQualityRanking();
   Map<String, dynamic>? _quality;
   int _sessionStartedAt = 0;
+  int? _networkGeneration;
   bool _qualityRunning = false;
   bool _qualityRequested = false;
   bool _cancelRequested = false;
@@ -44,6 +45,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
     _sessionStartedAt = started;
     _cancelRequested = true;
     _qualityRequested = false;
+    _networkGeneration = null;
     _ranking.clear();
     _latestQuality.clear();
     if (mounted) setState(() {
@@ -62,6 +64,18 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
       unawaited(_service.cancelNativeQuality().catchError((Object _) {}));
     }
     super.dispose();
+  }
+
+  bool _acceptGeneration(Object? raw) {
+    if (raw is! num) return false;
+    final generation = raw.toInt();
+    final changed = _networkGeneration != null && _networkGeneration != generation;
+    if (changed) {
+      _ranking.clear();
+      _latestQuality.clear();
+    }
+    _networkGeneration = generation;
+    return changed;
   }
 
   Future<void> _startQuality(String tag) => _runQuality([tag]);
@@ -106,7 +120,12 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
           if (sample.tag != tag) {
             throw StateError('测速返回了其他节点的结果');
           }
+          final changed = _acceptGeneration(result['networkGeneration']);
           setState(() => _quality = result);
+          if (changed || sample.state == 'canceled') {
+            _cancelRequested = true;
+            return '网络已变化或测速已取消，请在新网络重新测试';
+          }
           if (sample.state != 'running') {
             _ranking.record(sample);
             _latestQuality[tag] = result;
@@ -177,7 +196,10 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
 
   Future<void> _readSnapshot() async {
     final snapshot = await _service.getNativeSnapshot();
-    if (mounted) setState(() => _snapshot = snapshot);
+    if (mounted) {
+      _acceptGeneration(snapshot['networkGeneration']);
+      setState(() => _snapshot = snapshot);
+    }
   }
 
   Future<void> _refresh() => _perform(() async {
@@ -185,10 +207,19 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
     return '已更新原生内核数据';
   });
 
-  Future<void> _select(String group, String tag) => _perform(() async {
-    await _service.selectNativeOutbound(group, tag);
+  Future<void> _select(String group, String tag, {bool measured = false}) => _perform(() async {
+    if (measured && _networkGeneration == null) return '请先重新测速';
+    await _service.selectNativeOutbound(group, tag, generation: measured ? _networkGeneration! : -1);
     await _readSnapshot();
     return '已提交节点切换，当前选择以策略组返回值为准';
+  });
+
+  Future<void> _resetNetwork() => _perform(() async {
+    await _service.resetNativeNetwork();
+    _ranking.clear();
+    _latestQuality.clear();
+    await _readSnapshot();
+    return '已请求内核重建网络连接；请重新检查联网和节点延迟';
   });
 
   Future<void> _test(String tag) => _perform(() async {
@@ -255,6 +286,12 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
                     title: const Text('刷新节点、流量和日志'),
                     onTap: enabled ? () => unawaited(_refresh()) : null,
                   ),
+                  if (running)
+                    ListItem(
+                      title: const Text('网络异常 · 重新建立连接'),
+                      subtitle: const Text('重置内核连接，不重启 VPN；现有连接可能中断'),
+                      onTap: enabled ? () => unawaited(_resetNetwork()) : null,
+                    ),
                   if (running && snapshot != null) ...[
                     ListItem(
                       title: const Text('实时流量'),
@@ -350,13 +387,15 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
                           title: Text('实测推荐：$best'),
                           subtitle: const Text('基于本次会话近期带宽、延迟和失败记录 · 点击应用'),
                           onTap: enabled && !_qualityRunning
-                              ? () => unawaited(_select(group['tag'] as String, best))
+                              ? () => unawaited(_select(group['tag'] as String, best, measured: true))
                               : null,
                         ),
                       for (final item in _rows(group['items']))
                         ListItem(
                           title: Text(item['tag'] as String),
-                          subtitle: Text('${item['type']} · ${_delay(item)}'),
+                          subtitle: Text(item['type'] == 'urltest'
+                              ? '内核自动测速组选路 · 可自动重新选择可用节点'
+                              : '${item['type']} · ${_delay(item)}'),
                           onTap: enabled && group['selectable'] == true
                               ? () => unawaited(_select(
                                   group['tag'] as String,

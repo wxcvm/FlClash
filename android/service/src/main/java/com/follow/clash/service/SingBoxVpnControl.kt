@@ -45,8 +45,8 @@ object SingBoxVpnControl {
     fun cancelQuality(remote: IBinder) { call(remote, QUALITY_CANCEL) }
 
     fun snapshot(remote: IBinder): String = transact(remote, SNAPSHOT) { it.readString().orEmpty() }
-    fun selectOutbound(remote: IBinder, group: String, tag: String) {
-        call(remote, SELECT) { it.writeString(group); it.writeString(tag) }
+    fun selectOutbound(remote: IBinder, group: String, tag: String, expectedGeneration: Long) {
+        call(remote, SELECT) { it.writeString(group); it.writeString(tag); it.writeLong(expectedGeneration) }
     }
     fun testOutbound(remote: IBinder, tag: String) {
         call(remote, URL_TEST) { it.writeString(tag) }

@@ -75,8 +75,8 @@ internal object IsolatedSingBoxRuntime {
             runtime.javaClass.getMethod("snapshot").invoke(runtime) as String
         }
 
-        fun selectOutbound(group: String, tag: String) {
-            invoke { runtime.javaClass.getMethod("selectOutbound", String::class.java, String::class.java).invoke(runtime, group, tag) }
+        fun selectOutbound(group: String, tag: String, expectedGeneration: Long) {
+            invoke { runtime.javaClass.getMethod("selectOutbound", String::class.java, String::class.java, Long::class.javaPrimitiveType).invoke(runtime, group, tag, expectedGeneration) }
         }
 
         fun testOutbound(tag: String) {

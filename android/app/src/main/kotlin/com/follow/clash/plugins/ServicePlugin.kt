@@ -81,8 +81,12 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 true
             }
             "nativeSnapshot" -> nativeOperation(result) { ServiceController.nativeSnapshot() }
+            "resetNativeNetwork" -> nativeOperation(result) {
+                ServiceController.resetNativeNetwork()
+                true
+            }
             "selectNativeOutbound" -> nativeOperation(result) {
-                ServiceController.selectNativeOutbound(requireNotNull(call.argument<String>("group")), requireNotNull(call.argument<String>("tag")))
+                ServiceController.selectNativeOutbound(requireNotNull(call.argument<String>("group")), requireNotNull(call.argument<String>("tag")), call.argument<Number>("generation")?.toLong() ?: -1L)
                 true
             }
             "testNativeOutbound" -> nativeOperation(result) {

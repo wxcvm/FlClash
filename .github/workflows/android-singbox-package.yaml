@@ -42,6 +42,11 @@ jobs:
           ndk-version: r28c
           link-to-sdk: true
       - uses: gradle/actions/setup-gradle@v6
+      - name: Test network epoch state transitions
+        run: |
+          mkdir -p /tmp/flclash-network-test
+          javac --release 8 -d /tmp/flclash-network-test tool/android-singbox/isolation/libbox-src/org/flclash/singboxprobe/isolated/NetworkEpoch.java tool/android-singbox/isolation/tests/NetworkEpochTest.java
+          java -cp /tmp/flclash-network-test org.flclash.singboxprobe.isolated.NetworkEpochTest
       - name: Obtain verified official ARM64 AAR
         run: |
           gh run download 43219145718 --repo "$GITHUB_REPOSITORY" --name sing-box-v1.14.4-arm64-probe --dir libbox-input

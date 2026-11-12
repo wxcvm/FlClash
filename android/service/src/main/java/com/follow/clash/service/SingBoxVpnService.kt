@@ -70,7 +70,7 @@ class SingBoxVpnService : VpnService() {
                         }
                         SingBoxVpnControl.SELECT -> {
                             check(running) { "sing-box VPN is not running" }
-                            requireNotNull(session).selectOutbound(requireNotNull(data.readString()), requireNotNull(data.readString()))
+                            requireNotNull(session).selectOutbound(requireNotNull(data.readString()), requireNotNull(data.readString()), data.readLong())
                             0
                         }
                         SingBoxVpnControl.URL_TEST -> {

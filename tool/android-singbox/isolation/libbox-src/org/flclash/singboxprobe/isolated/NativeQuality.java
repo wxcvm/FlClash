@@ -12,7 +12,7 @@ final class NativeQuality {
     private volatile Sample current;
 
     synchronized void start(String tag) throws Exception {
-        if (current != null && current.running()) throw new IllegalStateException("A speed test is already running");
+        if (current != null && !current.networkChanged() && current.running()) throw new IllegalStateException("A speed test is already running");
         cancel();
         if (tag == null || tag.trim().isEmpty() || tag.length() > 256) {
             throw new IllegalArgumentException("Select a specific outbound");
@@ -98,7 +98,7 @@ final class NativeQuality {
         }
 
         @Override public synchronized void onError(String message) {
-            if (!running()) return;
+            if (networkChanged() || !running()) return;
             error = message == null ? "Network quality test failed" : message;
             state = "failed";
         }

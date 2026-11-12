@@ -142,8 +142,9 @@ object ServiceController {
     internal suspend fun cancelNativeQuality() = nativeCommand { it.cancelQuality() }
 
     internal suspend fun nativeSnapshot(): String = nativeCommand { it.snapshot() }
-    internal suspend fun selectNativeOutbound(group: String, tag: String) =
-        nativeCommand { it.selectOutbound(group, tag) }
+    internal suspend fun selectNativeOutbound(group: String, tag: String, expectedGeneration: Long) =
+        nativeCommand { it.selectOutbound(group, tag, expectedGeneration) }
+    internal suspend fun resetNativeNetwork() = nativeCommand { it.resetNetwork() }
     internal suspend fun testNativeOutbound(tag: String) = nativeCommand { it.testOutbound(tag) }
 
     internal suspend fun validateNativeProfile(profile: File): String = lock.withLock {
@@ -394,7 +395,8 @@ private class NativeManagedService(
     fun qualitySnapshot(): String = SingBoxVpnControl.qualitySnapshot(remote)
     fun cancelQuality() = SingBoxVpnControl.cancelQuality(remote)
     fun snapshot(): String = SingBoxVpnControl.snapshot(remote)
-    fun selectOutbound(group: String, tag: String) = SingBoxVpnControl.selectOutbound(remote, group, tag)
+    fun selectOutbound(group: String, tag: String, expectedGeneration: Long) = SingBoxVpnControl.selectOutbound(remote, group, tag, expectedGeneration)
+    fun resetNetwork() = SingBoxVpnControl.resetNetwork(remote)
     fun testOutbound(tag: String) = SingBoxVpnControl.testOutbound(remote, tag)
 
     fun validate() {

@@ -147,10 +147,15 @@ class Service {
     return Map<String, dynamic>.from(jsonDecode(json ?? '{}') as Map);
   }
 
-  Future<void> selectNativeOutbound(String group, String tag) async {
+  Future<void> resetNativeNetwork() async {
+    await methodChannel.invokeMethod<bool>('resetNativeNetwork');
+  }
+
+  Future<void> selectNativeOutbound(String group, String tag, {int generation = -1}) async {
     await methodChannel.invokeMethod<bool>('selectNativeOutbound', {
       'group': group,
       'tag': tag,
+      'generation': generation,
     });
   }
 
