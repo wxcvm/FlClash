@@ -104,3 +104,54 @@ String formatDownloadSpeed(int bytesPerSecond) {
   }
   return '${(bytesPerSecond / 1000000).toStringAsFixed(1)} MB/s';
 }
+
+enum NodeHealthDecision { wait, optimize, failover }
+
+/// In-memory health history for the current profile and network. Unknown
+/// results (RPC failure/cancelled probe) are not evidence of node failure.
+class NodeHealthHistory {
+  String? _node;
+  int _failures = 0;
+  DateTime? _lastOptimization;
+  final Map<String, ({int successes, int failures})> _samples = {};
+
+  Map<String, ({int successes, int failures})> get samples =>
+      Map.unmodifiable(_samples);
+
+  void reset() {
+    _node = null;
+    _failures = 0;
+    _lastOptimization = null;
+    _samples.clear();
+  }
+
+  NodeHealthDecision record(String node, int? delay, DateTime now) {
+    if (_node != node) {
+      _node = node;
+      _failures = 0;
+    }
+    if (delay == null || delay == 0) return NodeHealthDecision.wait;
+    final previous = _samples[node] ?? (successes: 0, failures: 0);
+    final healthy = delay > 0;
+    _samples[node] = (
+      successes: previous.successes + (healthy ? 1 : 0),
+      failures: previous.failures + (healthy ? 0 : 1),
+    );
+    if (!healthy) {
+      _failures++;
+      return _failures >= 2
+          ? NodeHealthDecision.failover
+          : NodeHealthDecision.wait;
+    }
+    _failures = 0;
+    final last = _lastOptimization;
+    return last == null || now.difference(last) >= const Duration(minutes: 30)
+        ? NodeHealthDecision.optimize
+        : NodeHealthDecision.wait;
+  }
+
+  void markOptimization(DateTime now) {
+    _lastOptimization = now;
+    _failures = 0;
+  }
+}

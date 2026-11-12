@@ -80,6 +80,7 @@ class ProxiesAction extends _$ProxiesAction {
   bool _autoSpeedOnline = true;
   bool _autoSpeedRunning = false;
   int _autoSpeedCursor = 0;
+  final _nodeHealth = NodeHealthHistory();
 
   final List<_DelayTestJob> _delayTestJobs = [];
   final Map<String, int> _latestDelayTestGeneration = {};
@@ -106,34 +107,40 @@ class ProxiesAction extends _$ProxiesAction {
         _speedTestGeneration++;
         _autoSpeedTimer?.cancel();
         _autoSpeedCursor = 0;
+        _nodeHealth.reset();
       }
     });
     ref.listen(coreStatusProvider, (_, next) {
       if (next != CoreStatus.connected) {
         cancelDelayTests();
         _speedTestGeneration++;
+        _nodeHealth.reset();
       }
       _scheduleAutoSpeed();
     });
     ref.listen(isStartProvider, (_, _) => _scheduleAutoSpeed());
     ref.listen(appVisibleProvider, (_, _) => _scheduleAutoSpeed());
+    ref.listen(suspendProvider, (_, _) => _scheduleAutoSpeed());
   }
 
   bool get _autoSpeedReady =>
       _autoSpeedOnline &&
       ref.read(downloadSpeedAutoGroupProvider) != null &&
-      ref.read(appVisibleProvider) &&
+      (system.isDesktop || ref.read(appVisibleProvider)) &&
+      !ref.read(suspendProvider) &&
       ref.read(isStartProvider) &&
       ref.read(coreStatusProvider) == CoreStatus.connected;
 
   void setDownloadSpeedAutoGroup(String? name) {
     ref.read(downloadSpeedAutoGroupProvider.notifier).select(name);
     _autoSpeedCursor = 0;
+    _nodeHealth.reset();
     _scheduleAutoSpeed();
   }
 
   void onAutoSpeedNetworkChange(bool online) {
     _autoSpeedOnline = online;
+    _nodeHealth.reset();
     _scheduleAutoSpeed();
   }
 
@@ -163,12 +170,52 @@ class ProxiesAction extends _$ProxiesAction {
       return;
     }
     _autoSpeedRunning = true;
+    final profile = ref.read(currentProfileIdProvider);
+    final epoch = ref.read(routeTrackerProvider).hostEpoch;
+    final generation = _speedTestGeneration;
+    final selection = _currentSelectedName(group.name);
+    final incumbent = group.getCurrentSelectedName(selection);
+    bool isCurrent() =>
+        ref.mounted &&
+        _autoSpeedReady &&
+        ref.read(downloadSpeedAutoGroupProvider) == group.name &&
+        ref.read(currentProfileIdProvider) == profile &&
+        ref.read(routeTrackerProvider).hostEpoch == epoch &&
+        _speedTestGeneration == generation &&
+        _currentSelectedName(group.name) == selection;
     try {
-      await selectByDownloadSpeed(group.name, automatic: true);
+      if (incumbent.isEmpty || reservedCustomProxyNames.contains(incumbent)) {
+        return;
+      }
+      int? delay;
+      try {
+        final result = await _core.testDelay(
+          TestDelayParams(
+            proxyName: incumbent,
+            testUrl: ref.read(realTestUrlProvider(group.testUrl)),
+            timeout: ref.read(appSettingProvider).delayTestTimeout,
+          ),
+        );
+        delay = result.value;
+      } catch (error) {
+        commonPrint.log(
+          'Automatic node health check failed: $error',
+          logLevel: coreFailureLogLevel(error),
+        );
+      }
+      if (!isCurrent()) return;
+      final decision = _nodeHealth.record(incumbent, delay, DateTime.now());
+      if (decision == NodeHealthDecision.wait) return;
+      _nodeHealth.markOptimization(DateTime.now());
+      await selectByDownloadSpeed(
+        group.name,
+        automatic: true,
+        confirmedFailure: decision == NodeHealthDecision.failover,
+      );
     } finally {
       _autoSpeedRunning = false;
       if (ref.mounted && _autoSpeedTimer?.isActive != true) {
-        _scheduleAutoSpeed(delay: const Duration(minutes: 30));
+        _scheduleAutoSpeed(delay: const Duration(seconds: 30));
       }
     }
   }
@@ -441,6 +488,7 @@ class ProxiesAction extends _$ProxiesAction {
     bool selectWinner = true,
     bool matchSearch = false,
     bool automatic = false,
+    bool confirmedFailure = false,
   }) async {
     if (!_speedTestingGroups.add(groupName)) {
       return;
@@ -557,6 +605,11 @@ class ProxiesAction extends _$ProxiesAction {
       final current = currentGroup.getCurrentSelectedName(
         initialSelection ?? '',
       );
+      // A failed throughput sample alone is not proof that a working node
+      // is dead. Only the health monitor can authorize that failover.
+      if (automatic && !confirmedFailure && !stable.containsKey(current)) {
+        return;
+      }
       final winner = chooseDownloadSpeedWinner(stable, current);
       if (winner == null ||
           winner == current ||

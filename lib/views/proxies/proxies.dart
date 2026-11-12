@@ -74,7 +74,7 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       if (autoGroups.isNotEmpty || autoGroup != null)
         PopupMenuItem(
           glyph: AppGlyphs.speed,
-          label: '自动下载速度优选（本次运行）',
+          label: '智能节点优选（本次运行）',
           subItems: [
             PopupMenuItem(
               label: '关闭',

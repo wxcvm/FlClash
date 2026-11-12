@@ -3,6 +3,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('health checks require two failures and ignore unknown results', () {
+    final health = NodeHealthHistory();
+    final now = DateTime(2026);
+    expect(health.record('A', 30, now), NodeHealthDecision.optimize);
+    health.markOptimization(now);
+    expect(health.record('A', -1, now), NodeHealthDecision.wait);
+    expect(health.record('A', null, now), NodeHealthDecision.wait);
+    expect(health.record('A', -2, now), NodeHealthDecision.failover);
+    expect(health.samples['A'], (successes: 1, failures: 2));
+    expect(health.record('B', -1, now), NodeHealthDecision.wait);
+    health.reset();
+    expect(health.samples, isEmpty);
+    expect(health.record('A', -1, now), NodeHealthDecision.wait);
+  });
+
+  test('health success clears failures and optimization is rate limited', () {
+    final health = NodeHealthHistory();
+    final now = DateTime(2026);
+    health.markOptimization(now);
+    expect(health.record('A', -1, now), NodeHealthDecision.wait);
+    expect(health.record('A', 50, now), NodeHealthDecision.wait);
+    expect(health.record('A', -1, now), NodeHealthDecision.wait);
+    expect(
+      health.record('A', 50, now.add(const Duration(minutes: 30))),
+      NodeHealthDecision.optimize,
+    );
+  });
+
+
   test('speed group activity is independent and clears on completion', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
