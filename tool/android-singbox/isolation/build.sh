@@ -19,7 +19,8 @@ unzip -p "$AAR" classes.jar > "$WORK/libbox.jar"
 unzip -p "$AAR" jni/arm64-v8a/libbox.so > "$WORK/libbox.so"
 unzip -p "$MIHOMO_AAR" jni/arm64-v8a/libgojni.so > "$WORK/libclash.so"
 test -s "$WORK/libclash.so"
-javac --release 8 -cp "$PLATFORM:$MIHOMO_JAR" -d "$WORK/host" $(find "$ROOT/src" -name '*.java')
+javac --release 8 -cp "$PLATFORM:$MIHOMO_JAR" -d "$WORK/host" $(find "$ROOT/src" -name '*.java') \
+    "$ROOT/../../../android/service/src/main/java/com/follow/clash/service/IsolatedLibbox.java"
 jar cf "$WORK/host.jar" -C "$WORK/host" .
 "$TOOLS/d8" --min-api 29 --lib "$PLATFORM" --output "$WORK/dex" "$WORK/host.jar" "$MIHOMO_JAR"
 javac --release 8 -cp "$PLATFORM:$WORK/libbox.jar" -d "$WORK/libbox-adapter" $(find "$ROOT/libbox-src" -name '*.java')
