@@ -120,6 +120,28 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         handleStopAction()
     }
 
+    @Volatile private var nativeSelection: String? = null
+
+    fun requestNativeStart(path: String): Deferred<Boolean> {
+        require(path.isNotBlank()) { "Select a sing-box JSON profile" }
+        val options = sharedState.vpnOptions ?: host.loadSharedState().vpnOptions
+            ?: return CompletableDeferred(false)
+        if (host.runtime?.nativeConfigPath != null) return CompletableDeferred(false)
+        nativeSelection = path
+        sharedState = sharedState.copy(vpnOptions = options.copy(enable = true, nativeConfigPath = path))
+        val outcome = requestStart()
+        return host.scope.async {
+            val started = outcome.await()
+            if (!started && nativeSelection == path) clearNativeSelection()
+            started
+        }
+    }
+
+    private fun clearNativeSelection() {
+        nativeSelection = null
+        sharedState = sharedState.copy(vpnOptions = sharedState.vpnOptions?.copy(nativeConfigPath = null))
+    }
+
     fun requestStart(): Deferred<Boolean> {
         if (isStartedAs(sharedState.vpnOptions)) {
             return CompletableDeferred(true)
@@ -129,12 +151,16 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     }
 
     fun requestStop(): Deferred<Boolean> {
+        clearNativeSelection()
         val request = createRequest(running = false)
         return host.scope.async { stop(request) }
     }
 
     fun syncSharedState(state: SharedState) {
-        sharedState = state
+        val path = nativeSelection
+        sharedState = if (path == null) state else state.copy(
+            vpnOptions = state.vpnOptions?.copy(enable = true, nativeConfigPath = path),
+        )
         applySharedState()
     }
 

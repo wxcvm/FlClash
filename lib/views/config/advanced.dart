@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/plugins/service.dart';
+import 'package:fl_clash/providers/action.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
@@ -105,13 +109,73 @@ class AdvancedConfigView extends StatelessWidget {
   }
 }
 
-class AndroidCoreView extends ConsumerWidget {
+class AndroidCoreView extends ConsumerStatefulWidget {
   const AndroidCoreView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AndroidCoreView> createState() => _AndroidCoreViewState();
+}
+
+class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
+  bool _available = false;
+  bool _active = false;
+  bool _busy = false;
+  String _path = '';
+  String _message = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final status = await service?.nativeStatus() ?? const {};
+      if (!mounted) return;
+      setState(() {
+        _available = status['available'] == true;
+        _active = status['active'] == true;
+        if (_active) _path = status['path'] as String? ?? _path;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _message = error.toString());
+    }
+  }
+
+  Future<void> _perform(Future<String> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final message = await action();
+      if (mounted) setState(() => _message = message);
+    } catch (error) {
+      if (mounted) setState(() => _message = error.toString());
+    } finally {
+      await _refresh();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<String> _choose() async {
+    final selected = await picker.pickerFile();
+    final path = selected?.path;
+    if (path == null || !mounted) return '未选择配置';
+    final source = File(path);
+    if (await source.length() > 16 * 1024 * 1024) return '配置超过 16 MiB';
+    final folder = await appPath.profilesPath;
+    final target = File('$folder/android-singbox.json');
+    await target.parent.create(recursive: true);
+    await source.copy(target.path);
+    if (mounted) setState(() => _path = target.path);
+    return '已导入 JSON；启动时执行原生配置验证';
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l = context.appLocalizations;
     final status = ref.watch(coreStatusProvider);
+    final running = ref.watch(isStartProvider);
     return BaseScaffold(
       title: '内核管理',
       body: ListView(
@@ -123,40 +187,73 @@ class AndroidCoreView extends ConsumerWidget {
           generateSection(
             title: '当前内核',
             items: [
-              const ListItem(
-                title: Text('Mihomo'),
-                subtitle: Text('内置 · 随应用更新'),
-              ),
               ListItem(
-                title: Text(l.coreStatus),
-                subtitle: Text(switch (status) {
-                  CoreStatus.connecting => l.connecting,
-                  CoreStatus.connected => l.connected,
-                  CoreStatus.disconnected => l.disconnected,
-                }),
-                trailing: const CoreStatusButton(),
+                title: Text(_active ? 'sing-box' : 'Mihomo'),
+                subtitle: Text(_active ? '独立 VPN 正在运行' : '内置 · 随应用更新'),
+              ),
+              if (!_active)
+                ListItem(
+                  title: Text(l.coreStatus),
+                  subtitle: Text(switch (status) {
+                    CoreStatus.connecting => l.connecting,
+                    CoreStatus.connected => l.connected,
+                    CoreStatus.disconnected => l.disconnected,
+                  }),
+                  trailing: const CoreStatusButton(),
+                ),
+              ListItem(
+                title: const Text('刷新运行状态'),
+                onTap: _busy ? null : _refresh,
               ),
             ],
-            footer:
-                'Android 使用内置 Mihomo。点击状态按钮可重启内核；'
-                '当前不支持切换独立 sing-box、Xray 或 Hysteria 2。',
           ),
           generateSection(
-            title: '内核配置',
+            title: 'sing-box 原生配置',
             items: [
-              ListItem.open(
-                title: Text(l.general),
-                widget: const GeneralView(),
+              ListItem(
+                title: const Text('官方 sing-box 1.14.4'),
+                subtitle: Text(_available ? '已安装 · 实验性 VPN' : '当前 APK 未包含原生内核'),
               ),
-              ListItem.open(
-                title: Text(l.network),
-                widget: BaseScaffold(
-                  title: l.network,
-                  body: const NetworkListView(),
-                ),
+              ListItem(
+                title: const Text('导入 sing-box JSON'),
+                subtitle: Text(_path.isEmpty ? '选择包含 TUN 的完整配置' : _path),
+                onTap: !_available || _busy || _active ? null : () => _perform(_choose),
+              ),
+              ListItem(
+                title: const Text('启动 sing-box'),
+                onTap: !_available || _busy || _active || _path.isEmpty
+                    ? null
+                    : () => _perform(() async {
+                        final started = await ref.read(setupActionProvider.notifier).startAndroidNative(_path);
+                        return started ? 'sing-box VPN 已启动' : '启动失败；请检查配置及 VPN 授权';
+                      }),
+              ),
+              ListItem(
+                title: const Text('停止 sing-box / 返回 Mihomo'),
+                onTap: _busy || !_active ? null : () => _perform(() async {
+                  await ref.read(setupActionProvider.notifier).setRunning(false);
+                  return '已停止；可使用普通连接按钮启动 Mihomo';
+                }),
               ),
             ],
+            footer: '原生 JSON 独立管理路由及 DNS。Clash 订阅仍使用 Mihomo。'
+                '原生节点列表和流量统计尚未接入，不会用 Mihomo 数据冒充。',
           ),
+          if (_message.isNotEmpty)
+            Padding(padding: const EdgeInsets.all(12), child: SelectableText(_message)),
+          if (!_active)
+            generateSection(
+              title: 'Mihomo 配置',
+              items: [
+                ListItem.open(title: Text(l.general), widget: const GeneralView()),
+                ListItem.open(
+                  title: Text(l.network),
+                  widget: BaseScaffold(title: l.network, body: const NetworkListView()),
+                ),
+                if (running)
+                  const ListItem(title: Text('当前普通连接正在运行')),
+              ],
+            ),
         ],
       ),
     );

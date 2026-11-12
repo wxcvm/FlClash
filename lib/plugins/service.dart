@@ -113,6 +113,26 @@ class Service {
     }
   }
 
+  Future<Map<String, Object?>> nativeStatus() async =>
+      await methodChannel.invokeMapMethod<String, Object?>('nativeStatus') ??
+      const {};
+
+  Future<bool> startNative(String path) async {
+    final previous = _startRequested;
+    _startRequested = true;
+    try {
+      final started = await methodChannel.invokeMethod<bool>('startNative', {
+        'path': path,
+        'revision': ++_commandRevision,
+      }) ?? false;
+      if (!started) _startRequested = previous;
+      return started;
+    } catch (_) {
+      _startRequested = previous;
+      rethrow;
+    }
+  }
+
   Future<bool> start() async {
     _startRequested = true;
     return await methodChannel.invokeMethod<bool>(

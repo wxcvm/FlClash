@@ -45,6 +45,8 @@ class SetupAction extends _$SetupAction {
   var _lastPushDuration = Duration.zero;
   var _pendingForceApply = false;
 
+  bool _nativeRunning = false;
+
   bool get _isRunning => _startTime != null && _startTime!.isBeforeNow;
 
   @override
@@ -96,6 +98,7 @@ class SetupAction extends _$SetupAction {
     _stopRuntimeTicker();
     if (!running) {
       _startTime = null;
+      _nativeRunning = false;
       debouncer.cancel(FunctionTag.applyProfile);
       _pendingForceApply = false;
       _updateRunTime();
@@ -129,7 +132,9 @@ class SetupAction extends _$SetupAction {
 
   void _refreshRunningState() {
     _updateRunTime();
-    unawaited(ref.read(commonActionProvider.notifier).updateTraffic());
+    if (!_nativeRunning) {
+      unawaited(ref.read(commonActionProvider.notifier).updateTraffic());
+    }
   }
 
   void _updateRunTime() {
@@ -148,6 +153,12 @@ class SetupAction extends _$SetupAction {
       return;
     }
     _startTime = await serviceStartTime();
+    if (_isRunning && system.isAndroid && (await service?.nativeStatus())?['active'] == true) {
+      _nativeRunning = true;
+      globalState.needInitStatus = false;
+      _setLocalRunning(true);
+      return;
+    }
     if (_isRunning) {
       globalState.lastConfigMd5 = await preferences.getAppliedConfigMd5();
       await _run(true, initialize: true, resume: true);
@@ -156,6 +167,26 @@ class SetupAction extends _$SetupAction {
     } else {
       await globalState.safeRun(() => applyProfile(force: true));
     }
+  }
+
+  Future<bool> startAndroidNative(String path) async {
+    final android = service;
+    if (android == null) return false;
+    final started = await android.startNative(path);
+    if (!started) {
+      final status = await android.nativeStatus();
+      if (status['active'] != true && await android.getRunTime() == null) {
+        _setLocalRunning(false);
+      }
+      return false;
+    }
+    _nativeRunning = true;
+    _startTime = await android.getRunTime() ?? DateTime.now();
+    _setLocalRunning(true);
+    ref.read(runningVpnOptionsProvider.notifier).value = null;
+    ref.read(trafficsProvider.notifier).clear();
+    ref.read(totalTrafficProvider.notifier).value = const Traffic();
+    return true;
   }
 
   Future<bool> setRunning(bool running, {bool initialize = false}) {
