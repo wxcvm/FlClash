@@ -636,10 +636,10 @@ class ProxiesAction extends _$ProxiesAction {
           .whereMatches(query, (proxy) => proxy.searchFields)
           .map((proxy) => proxy.name)
           .where(
-          (name) =>
-              !reservedCustomProxyNames.contains(name) &&
-              !isSubscriptionInfoProxyName(name),
-        )
+            (name) =>
+                !reservedCustomProxyNames.contains(name) &&
+                !isSubscriptionInfoProxyName(name),
+          )
           .toSet()
           .toList();
       final candidates = automatic
