@@ -11,7 +11,6 @@ import androidx.core.content.getSystemService
 import com.follow.clash.common.AccessControlMode
 import com.follow.clash.common.GlobalState
 import com.follow.clash.common.R as CommonR
-import com.follow.clash.core.Core
 import com.follow.clash.service.models.CIDR
 import com.follow.clash.service.models.VpnOptions
 import com.follow.clash.service.models.getIpv4RouteAddress
@@ -27,8 +26,7 @@ import android.net.VpnService as SystemVpnService
 class VpnService : SystemVpnService(), ManagedService {
     private val modules = ServiceModules(this)
     private val binder = LocalBinder()
-    private val tunLock = Any()
-    private var tunRunning = false
+    private val tunnel = TunnelSession(MihomoTunnelEngine)
 
     override fun onDestroy() {
         try {
@@ -149,31 +147,20 @@ class VpnService : SystemVpnService(), ManagedService {
             establish()?.detachFd()
                 ?: error("VPN establishment was rejected by the system")
         }
-        synchronized(tunLock) {
-            tunRunning = true
-            try {
-                // A Core that fails to take the descriptor leaves the system
-                // routes pointing at an interface nothing reads, and it no
-                // longer keeps its own sockets out of them: every connection
-                // then hangs until it times out. Tear the VPN down instead of
-                // reporting a start that only looks successful.
-                check(
-                    Core.startTun(
-                        fd = fd,
-                        protect = this::protect,
-                        resolveUid = this::resolveUid,
-                        resolvePackage = this::resolvePackage,
-                        stack = options.stack,
-                        address = options.tunAddress,
-                        dns = options.tunDns,
-                        options = options.tunOptions,
-                    ),
-                ) { "Core rejected the tun file descriptor" }
-            } catch (error: Exception) {
-                stopTunLocked()
-                throw error
-            }
-        }
+        // A failed engine start must tear down the routes rather than report
+        // success with a TUN that nothing reads.
+        tunnel.start(
+            TunnelRequest(
+                fd = fd,
+                protect = this::protect,
+                resolveUid = this::resolveUid,
+                resolvePackage = this::resolvePackage,
+                stack = options.stack,
+                address = options.tunAddress,
+                dns = options.tunDns,
+                options = options.tunOptions,
+            ),
+        )
     }
 
     private fun Builder.addAddressAndRoutes(options: VpnOptions) {
@@ -281,16 +268,7 @@ class VpnService : SystemVpnService(), ManagedService {
         }
     }
 
-    private fun stopTun() = synchronized(tunLock) {
-        stopTunLocked()
-    }
-
-    private fun stopTunLocked() {
-        if (tunRunning) {
-            Core.stopTun()
-            tunRunning = false
-        }
-    }
+    private fun stopTun() = tunnel.stop()
 
     companion object {
         // mihomo's own TUN default: 198.18.0.0/15 is benchmarking space no LAN
