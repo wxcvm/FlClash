@@ -199,31 +199,31 @@ object ServiceController {
             return NativeStartResult(false, false, preflight.exceptionOrNull()?.message.orEmpty())
         }
         return withContext(NonCancellable) {
-        if (!stopForHandoff()) {
-            candidate.stopIfConnected()
-            candidate.unbind()
-            return@withContext NativeStartResult(false, false, "Existing VPN could not be stopped")
-        }
-        binding = candidate
-        val result = candidate.useService { service -> service.start() }
-        if (result.isFailure) {
-            val cleanup = candidate.stopIfConnected()
-            if (cleanup.isFailure) {
-                nativeCleanupPending = true
-                return@withContext NativeStartResult(false, false, "Native startup and cleanup failed: ${result.exceptionOrNull()?.message}")
+            if (!stopForHandoff()) {
+                candidate.stopIfConnected()
+                candidate.unbind()
+                return@withContext NativeStartResult(false, false, "Existing VPN could not be stopped")
             }
-            release()
-            val restored = previous != null && previousOptions != null &&
-                startMihomoLocked(previousOptions.copy(nativeConfigPath = null))
-            return@withContext NativeStartResult(false, restored, result.exceptionOrNull()?.message.orEmpty())
-        }
-        ServiceConfig.updateVpnOptions(options)
-        runtime = ServiceRuntime(
-            vpn = true,
-            startedAtMillis = System.currentTimeMillis(),
-            nativeConfigPath = path,
-        )
-        NativeStartResult(true, false, "")
+            binding = candidate
+            val result = candidate.useService { service -> service.start() }
+            if (result.isFailure) {
+                val cleanup = candidate.stopIfConnected()
+                if (cleanup.isFailure) {
+                    nativeCleanupPending = true
+                    return@withContext NativeStartResult(false, false, "Native startup and cleanup failed: ${result.exceptionOrNull()?.message}")
+                }
+                release()
+                val restored = previous != null && previousOptions != null &&
+                    startMihomoLocked(previousOptions.copy(nativeConfigPath = null))
+                return@withContext NativeStartResult(false, restored, result.exceptionOrNull()?.message.orEmpty())
+            }
+            ServiceConfig.updateVpnOptions(options)
+            runtime = ServiceRuntime(
+                vpn = true,
+                startedAtMillis = System.currentTimeMillis(),
+                nativeConfigPath = path,
+            )
+            NativeStartResult(true, false, "")
         }
     }
 

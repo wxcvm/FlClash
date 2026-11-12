@@ -32,8 +32,7 @@ class SingBoxVpnService : VpnService() {
     @Volatile private var running = false
     @Volatile private var destroyed = false
     @Volatile private var retiring = false
-    private var preparedConfig: String? = null
-    @Volatile private var owner: IBinder? = null
+    private val lease = NativeConfigLease<IBinder>()
     private var ownerDeath: IBinder.DeathRecipient? = null
     private val main = Handler(Looper.getMainLooper())
 
@@ -63,29 +62,25 @@ class SingBoxVpnService : VpnService() {
                         SingBoxVpnControl.VALIDATE -> {
                             check(!running && session == null) { "Stop the active VPN before preflight" }
                             val token = requireNotNull(data.readStrongBinder())
-                            check(owner == null || owner == token) { "Native VPN is owned by another controller" }
-                            if (owner == null) {
+                            if (lease.owner() == null) {
                                 val recipient = IBinder.DeathRecipient { closeAsync() }
                                 token.linkToDeath(recipient, 0)
-                                owner = token
                                 ownerDeath = recipient
                             }
-                            preparedConfig = null
-                            val config = readConfig(data)
-                            IsolatedSingBoxRuntime.validate(this@SingBoxVpnService, config)
-                            preparedConfig = config
+                            lease.claim(token)
+                            lease.prepare(token, { readConfig(data) }) { config ->
+                                IsolatedSingBoxRuntime.validate(this@SingBoxVpnService, config)
+                            }
                             0
                         }
                         SingBoxVpnControl.START -> {
-                            check(owner == data.readStrongBinder()) { "Invalid native VPN controller" }
-                            val config = requireNotNull(preparedConfig) { "Native VPN requires successful preflight" }
-                            preparedConfig = null
+                            val config = lease.consume(requireNotNull(data.readStrongBinder()))
                             startLocked(config)
                             0
                         }
                         SingBoxVpnControl.STOP -> {
                             val token = data.readStrongBinder()
-                            check(owner == null || owner == token) { "Invalid native VPN controller" }
+                            check(lease.canStop(token)) { "Invalid native VPN controller" }
                             retireLocked()
                             0
                         }
@@ -184,10 +179,8 @@ class SingBoxVpnService : VpnService() {
         check(android.app.Application.getProcessName() == "$packageName:singbox") { "Refusing to retire non-native process" }
         retiring = true
         processRetiring = true
-        preparedConfig = null
-        val token = owner
+        val token = lease.retire()
         val death = ownerDeath
-        owner = null
         ownerDeath = null
         if (token != null && death != null) runCatching { token.unlinkToDeath(death, 0) }
         // Bound native cleanup: if JNI close stalls, the OS still releases its descriptors.
@@ -260,7 +253,7 @@ class SingBoxVpnService : VpnService() {
         destroyed = true
         // A preflight-only unbind is explicitly retired by the controller.
         // Unexpected destruction of a live owner must also release its process.
-        if (!retiring && (running || session != null || owner != null)) closeAsync()
+        if (!retiring && (running || session != null || lease.owner() != null)) closeAsync()
         cleanup.shutdown()
         super.onDestroy()
     }

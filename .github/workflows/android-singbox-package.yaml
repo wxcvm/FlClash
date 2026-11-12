@@ -47,6 +47,11 @@ jobs:
           mkdir -p /tmp/flclash-network-test
           javac --release 8 -d /tmp/flclash-network-test tool/android-singbox/isolation/libbox-src/org/flclash/singboxprobe/isolated/NetworkEpoch.java tool/android-singbox/isolation/tests/NetworkEpochTest.java
           java -cp /tmp/flclash-network-test org.flclash.singboxprobe.isolated.NetworkEpochTest
+      - name: Test native config lease
+        run: |
+          mkdir -p /tmp/flclash-lease-test
+          javac --release 8 -d /tmp/flclash-lease-test android/service/src/main/java/com/follow/clash/service/NativeConfigLease.java android/tests/service/NativeConfigLeaseCheck.java
+          java -cp /tmp/flclash-lease-test com.follow.clash.service.NativeConfigLeaseCheck
       - name: Obtain verified official ARM64 AAR
         run: |
           gh run download 43219145718 --repo "$GITHUB_REPOSITORY" --name sing-box-v1.14.4-arm64-probe --dir libbox-input
