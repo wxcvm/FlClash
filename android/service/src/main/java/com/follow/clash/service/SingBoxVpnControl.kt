@@ -37,11 +37,11 @@ object SingBoxVpnControl {
         Intent(context, SingBoxVpnService::class.java).setAction(FOREGROUND)
 
     /** Invoke on a background dispatcher; configuration is never copied into Binder strings. */
-    fun validate(remote: IBinder, profile: File) = configCall(remote, VALIDATE, profile)
-    fun start(remote: IBinder) { call(remote, START) }
+    fun validate(remote: IBinder, profile: File, owner: IBinder) = configCall(remote, VALIDATE, profile, owner)
+    fun start(remote: IBinder, owner: IBinder) { call(remote, START) { it.writeStrongBinder(owner) } }
 
     /** A successful stop means the old process is dead, not just unbound. */
-    fun stop(remote: IBinder) {
+    fun stop(remote: IBinder, owner: IBinder) {
         val dead = CountDownLatch(1)
         val recipient = IBinder.DeathRecipient { dead.countDown() }
         try {
@@ -51,7 +51,7 @@ object SingBoxVpnControl {
         }
         try {
             try {
-                call(remote, STOP)
+                call(remote, STOP) { it.writeStrongBinder(owner) }
             } catch (_: DeadObjectException) {
                 return
             }
@@ -59,7 +59,7 @@ object SingBoxVpnControl {
                 "Native VPN process did not exit; retry stop before switching"
             }
         } finally {
-            remote.unlinkToDeath(recipient, 0)
+            try { remote.unlinkToDeath(recipient, 0) } catch (_: NoSuchElementException) { /* already dead */ }
         }
     }
     fun resetNetwork(remote: IBinder) { call(remote, RESET) }
@@ -77,9 +77,9 @@ object SingBoxVpnControl {
         call(remote, URL_TEST) { it.writeString(tag) }
     }
 
-    private fun configCall(remote: IBinder, code: Int, profile: File) {
+    private fun configCall(remote: IBinder, code: Int, profile: File, owner: IBinder) {
         ParcelFileDescriptor.open(profile, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            call(remote, code) { descriptor.writeToParcel(it, 0) }
+            call(remote, code) { it.writeStrongBinder(owner); descriptor.writeToParcel(it, 0) }
         }
     }
 

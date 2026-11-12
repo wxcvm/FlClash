@@ -28,11 +28,13 @@ import java.util.concurrent.Executors
 @RequiresApi(29)
 class SingBoxVpnService : VpnService() {
     private val lifecycle = Any()
-    private var session: IsolatedSingBoxRuntime.Session? = null
+    @Volatile private var session: IsolatedSingBoxRuntime.Session? = null
     @Volatile private var running = false
     @Volatile private var destroyed = false
     @Volatile private var retiring = false
     private var preparedConfig: String? = null
+    @Volatile private var owner: IBinder? = null
+    private var ownerDeath: IBinder.DeathRecipient? = null
     private val main = Handler(Looper.getMainLooper())
 
     private val control = object : Binder() {
@@ -56,10 +58,18 @@ class SingBoxVpnService : VpnService() {
                 }
                 val result = synchronized(lifecycle) {
                     if (retiring && code == SingBoxVpnControl.STOP) return@synchronized 0
-                    check(!destroyed && !retiring) { "VPN owner is retiring" }
+                    check(!destroyed && !retiring && !processRetiring) { "VPN owner is retiring" }
                     when (code) {
                         SingBoxVpnControl.VALIDATE -> {
                             check(!running && session == null) { "Stop the active VPN before preflight" }
+                            val token = requireNotNull(data.readStrongBinder())
+                            check(owner == null || owner == token) { "Native VPN is owned by another controller" }
+                            if (owner == null) {
+                                val recipient = IBinder.DeathRecipient { closeAsync() }
+                                token.linkToDeath(recipient, 0)
+                                owner = token
+                                ownerDeath = recipient
+                            }
                             preparedConfig = null
                             val config = readConfig(data)
                             IsolatedSingBoxRuntime.validate(this@SingBoxVpnService, config)
@@ -67,12 +77,15 @@ class SingBoxVpnService : VpnService() {
                             0
                         }
                         SingBoxVpnControl.START -> {
+                            check(owner == data.readStrongBinder()) { "Invalid native VPN controller" }
                             val config = requireNotNull(preparedConfig) { "Native VPN requires successful preflight" }
                             preparedConfig = null
                             startLocked(config)
                             0
                         }
                         SingBoxVpnControl.STOP -> {
+                            val token = data.readStrongBinder()
+                            check(owner == null || owner == token) { "Invalid native VPN controller" }
                             retireLocked()
                             0
                         }
@@ -168,17 +181,26 @@ class SingBoxVpnService : VpnService() {
     // The controller waits for Binder death before permitting another owner.
     private fun retireLocked() {
         if (retiring) return
+        check(android.app.Application.getProcessName() == "$packageName:singbox") { "Refusing to retire non-native process" }
         retiring = true
+        processRetiring = true
         preparedConfig = null
+        val token = owner
+        val death = ownerDeath
+        owner = null
+        ownerDeath = null
+        if (token != null && death != null) runCatching { token.unlinkToDeath(death, 0) }
+        // Bound native cleanup: if JNI close stalls, the OS still releases its descriptors.
+        main.postDelayed({ Process.killProcess(Process.myPid()) }, 3000)
         try {
             stopLocked()
         } catch (error: Throwable) {
             Log.e("FlClashSingBox", "Native cleanup failed; retiring isolated process", error)
         } finally {
             running = false
+            main.postDelayed({ Process.killProcess(Process.myPid()) }, 100)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
-            main.postDelayed({ Process.killProcess(Process.myPid()) }, 100)
         }
     }
 
@@ -207,11 +229,10 @@ class SingBoxVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             SingBoxVpnControl.FOREGROUND -> {
-                if (!retiring) promote(if (running) "sing-box VPN is running" else "Starting sing-box")
+                if (!retiring && !processRetiring) promote(if (running) "sing-box VPN is running" else "Starting sing-box")
             }
             SingBoxVpnControl.STOP_ACTION -> {
                 closeAsync()
-                notifyVpnRevoked()
             }
             else -> stopSelf(startId)
         }
@@ -220,10 +241,10 @@ class SingBoxVpnService : VpnService() {
 
     override fun onRevoke() {
         closeAsync()
-        notifyVpnRevoked()
     }
 
     private fun closeAsync() {
+        if (cleanup.isShutdown) return
         cleanup.execute {
             synchronized(lifecycle) {
                 try {
@@ -239,7 +260,7 @@ class SingBoxVpnService : VpnService() {
         destroyed = true
         // A preflight-only unbind is explicitly retired by the controller.
         // Unexpected destruction of a live owner must also release its process.
-        if (!retiring && (running || session != null)) closeAsync()
+        if (!retiring && (running || session != null || owner != null)) closeAsync()
         cleanup.shutdown()
         super.onDestroy()
     }
@@ -247,6 +268,7 @@ class SingBoxVpnService : VpnService() {
     private val cleanup = Executors.newSingleThreadExecutor()
 
     private companion object {
+        @Volatile private var processRetiring = false
         const val MAX_CONFIG_BYTES = 16 * 1024 * 1024
         const val CHANNEL = "flclash_singbox_vpn"
         const val NOTIFICATION_ID = 74

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Handler
 import android.os.IBinder
+import android.os.Binder
 import android.os.Looper
 import android.os.Build
 import com.follow.clash.common.GlobalState
@@ -197,12 +198,12 @@ object ServiceController {
             preflight.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             return NativeStartResult(false, false, preflight.exceptionOrNull()?.message.orEmpty())
         }
+        return withContext(NonCancellable) {
         if (!stopForHandoff()) {
             candidate.stopIfConnected()
             candidate.unbind()
-            return NativeStartResult(false, false, "Existing VPN could not be stopped")
+            return@withContext NativeStartResult(false, false, "Existing VPN could not be stopped")
         }
-        return withContext(NonCancellable) {
         binding = candidate
         val result = candidate.useService { service -> service.start() }
         if (result.isFailure) {
@@ -230,7 +231,7 @@ object ServiceController {
     private suspend fun stopForHandoff(): Boolean {
         val current = binding
         if (current != null) {
-            val stopped = current.useService { service ->
+            val stopped = if (hasNativeOwner) current.stopIfConnected() else current.useService { service ->
                 if (service is VpnService && Build.VERSION.SDK_INT >= 29) {
                     check(!service.isAlwaysOn && !service.isLockdownEnabled) {
                         "Disable always-on/lockdown VPN before switching cores"
@@ -290,6 +291,10 @@ object ServiceController {
                     return@withLock false
                 }
                 GlobalState.log("Background service disconnected: $message")
+                if (hasNativeOwner && disconnectedBinding.stopIfConnected().isFailure) {
+                    nativeCleanupPending = true
+                    return@withLock false
+                }
                 release()
                 true
             }
@@ -315,6 +320,9 @@ private class ManagedServiceBinding(
         get() = intent.component
 
     private val serviceState = MutableStateFlow<Result<ManagedService>?>(null)
+    // Android may rebind a BIND_AUTO_CREATE connection after process death.
+    // Retain the original native owner, never adopt a replacement binder implicitly.
+    @Volatile private var nativeOwner: NativeManagedService? = null
 
     @Volatile
     private var isBound = false
@@ -344,7 +352,7 @@ private class ManagedServiceBinding(
     }
 
     suspend fun stopIfConnected(): Result<Unit> = runCatching {
-        val service = serviceState.value?.getOrNull() ?: return@runCatching
+        val service = nativeOwner ?: serviceState.value?.getOrNull() ?: return@runCatching
         withContext(Dispatchers.Default) {
             service.stop()
         }
@@ -366,7 +374,8 @@ private class ManagedServiceBinding(
     override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
         runCatching {
             if (nativeProfile != null) {
-                NativeManagedService(requireNotNull(binder), nativeProfile)
+                check(nativeOwner == null) { "Native process was replaced; request a new session" }
+                NativeManagedService(requireNotNull(binder), nativeProfile).also { nativeOwner = it }
             } else when (binder) {
                 is VpnService.LocalBinder -> binder.service
                 is ProxyService.LocalBinder -> binder.service
@@ -403,6 +412,7 @@ private class NativeManagedService(
     private val remote: IBinder,
     private val profile: File,
 ) : ManagedService {
+    private val owner = Binder()
     fun startQuality(tag: String) = SingBoxVpnControl.startQuality(remote, tag)
     fun qualitySnapshot(): String = SingBoxVpnControl.qualitySnapshot(remote)
     fun cancelQuality() = SingBoxVpnControl.cancelQuality(remote)
@@ -412,17 +422,17 @@ private class NativeManagedService(
     fun testOutbound(tag: String) = SingBoxVpnControl.testOutbound(remote, tag)
 
     fun validate() {
-        SingBoxVpnControl.validate(remote, profile)
+        SingBoxVpnControl.validate(remote, profile, owner)
     }
 
     override fun start() {
         val app = GlobalState.application
         app.startForegroundService(SingBoxVpnControl.foregroundIntent(app))
-        SingBoxVpnControl.start(remote)
+        SingBoxVpnControl.start(remote, owner)
         check(SingBoxVpnControl.isRunning(remote)) { "Native VPN did not start" }
     }
 
     override fun stop() {
-        SingBoxVpnControl.stop(remote)
+        SingBoxVpnControl.stop(remote, owner)
     }
 }
