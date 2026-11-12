@@ -16,7 +16,23 @@ public final class ProbeService extends Service {
     static final int PROBE = IBinder.FIRST_CALL_TRANSACTION;
     static final String DESCRIPTOR = "org.flclash.singboxprobe.Probe";
 
-    private String probe() throws Exception {
+    // Keep the JNI-owning loader alive across service instances in this process.
+    private static ClassLoader isolatedLoader;
+
+    private Class<?> loadApi() throws Exception {
+        synchronized (ProbeService.class) {
+            if (isolatedLoader == null) {
+                isolatedLoader = createIsolatedLoader();
+            }
+            Class<?> api = Class.forName("io.nekohasekai.libbox.Libbox", true, isolatedLoader);
+            if (api.getClassLoader() != isolatedLoader) {
+                throw new IllegalStateException("libbox API escaped its classloader");
+            }
+            return api;
+        }
+    }
+
+    private ClassLoader createIsolatedLoader() throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (InputStream in = getAssets().open("libbox.dex")) {
             byte[] buffer = new byte[16384];
@@ -36,10 +52,11 @@ public final class ProbeService extends Service {
         if (bridge == go.Seq.class || bridge.getClassLoader() != isolated) {
             throw new IllegalStateException("libbox resolved the host Go bridge");
         }
-        Class<?> api = Class.forName("io.nekohasekai.libbox.Libbox", true, isolated);
-        if (api.getClassLoader() != isolated) {
-            throw new IllegalStateException("libbox API escaped its classloader");
-        }
+        return isolated;
+    }
+
+    private String probe() throws Exception {
+        Class<?> api = loadApi();
         String version = (String) api.getMethod("version").invoke(null);
         if (!"1.14.4".equals(version) && !"v1.14.4".equals(version)) {
             throw new IllegalStateException("Unexpected libbox version: " + version);
@@ -48,7 +65,8 @@ public final class ProbeService extends Service {
             api.getMethod("checkConfig", String.class).invoke(null, "{");
             throw new IllegalStateException("Invalid JSON was accepted");
         } catch (InvocationTargetException expected) {
-            if (expected.getCause() == null) throw expected;
+            // A JNI/linkage error is a failed probe, not a rejected config.
+            if (!(expected.getCause() instanceof Exception)) throw expected;
         }
         return version;
     }
