@@ -1,12 +1,9 @@
-import 'dart:async';
-
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:prism_ui/prism_ui.dart';
 
 String _label(BuildContext context, String zh, String en) =>
     Localizations.localeOf(context).languageCode == 'zh' ? zh : en;
@@ -46,55 +43,42 @@ class NetworkHealthSheet extends ConsumerStatefulWidget {
   ConsumerState<NetworkHealthSheet> createState() => _NetworkHealthSheetState();
 }
 
-class _NetworkHealthSheetState extends ConsumerState<NetworkHealthSheet> {
-  Timer? _timer;
+class _NetworkHealthSheetState extends ConsumerState<NetworkHealthSheet>
+    with WidgetsBindingObserver, ActivePollingMixin<NetworkHealthSheet> {
   Map<String, dynamic>? _snapshot;
-  bool _reading = false;
   bool _requesting = false;
   bool _unavailable = false;
 
   @override
-  void initState() {
-    super.initState();
-    unawaited(_refresh());
-    // Read the cached result only while the sheet is visible. Polling does
-    // not send a network probe or restart the core.
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) {
-      unawaited(_refresh());
-    });
-  }
+  Duration get pollInterval => const Duration(seconds: 2);
 
+  // Read cached diagnostics only while this page is visible and foregrounded.
+  // No network probe is sent by polling.
   @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _refresh() async {
-    if (_reading || !mounted) return;
+  Future<void> poll(PollGuard isCurrent) async {
+    if (!isCurrent()) return;
     if (ref.read(coreStatusProvider) != CoreStatus.connected) {
-      setState(() {
-        _snapshot = null;
-        _unavailable = false;
-      });
+      if (_snapshot != null || _unavailable) {
+        setState(() {
+          _snapshot = null;
+          _unavailable = false;
+        });
+      }
       return;
     }
-    _reading = true;
     try {
       final value = await ref.read(coreHandlerProvider).getNetworkHealth();
-      if (!mounted) return;
+      if (!isCurrent()) return;
       setState(() {
         _snapshot = value;
         _unavailable = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!isCurrent()) return;
       setState(() {
         _snapshot = null;
         _unavailable = true;
       });
-    } finally {
-      _reading = false;
     }
   }
 
@@ -103,7 +87,7 @@ class _NetworkHealthSheetState extends ConsumerState<NetworkHealthSheet> {
     setState(() => _requesting = true);
     try {
       await ref.read(coreHandlerProvider).checkNetworkHealth();
-      await _refresh();
+      if (mounted) restartPolling();
     } catch (_) {
       if (mounted) {
         setState(() => _unavailable = true);
