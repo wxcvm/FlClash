@@ -3,6 +3,9 @@ package com.follow.clash.service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.os.DeadObjectException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import java.io.File
@@ -35,8 +38,30 @@ object SingBoxVpnControl {
 
     /** Invoke on a background dispatcher; configuration is never copied into Binder strings. */
     fun validate(remote: IBinder, profile: File) = configCall(remote, VALIDATE, profile)
-    fun start(remote: IBinder, profile: File) = configCall(remote, START, profile)
-    fun stop(remote: IBinder) { call(remote, STOP) }
+    fun start(remote: IBinder) { call(remote, START) }
+
+    /** A successful stop means the old process is dead, not just unbound. */
+    fun stop(remote: IBinder) {
+        val dead = CountDownLatch(1)
+        val recipient = IBinder.DeathRecipient { dead.countDown() }
+        try {
+            remote.linkToDeath(recipient, 0)
+        } catch (_: DeadObjectException) {
+            return
+        }
+        try {
+            try {
+                call(remote, STOP)
+            } catch (_: DeadObjectException) {
+                return
+            }
+            check(dead.await(5, TimeUnit.SECONDS) || !remote.isBinderAlive) {
+                "Native VPN process did not exit; retry stop before switching"
+            }
+        } finally {
+            remote.unlinkToDeath(recipient, 0)
+        }
+    }
     fun resetNetwork(remote: IBinder) { call(remote, RESET) }
     fun isRunning(remote: IBinder): Boolean = call(remote, STATUS) != 0
 

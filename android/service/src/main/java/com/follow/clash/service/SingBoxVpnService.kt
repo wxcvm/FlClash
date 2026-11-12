@@ -12,6 +12,11 @@ import android.os.IBinder
 import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import android.os.Process
+import android.os.Handler
+import android.os.Looper
+import android.system.Os
+import android.system.OsConstants
+import java.io.ByteArrayOutputStream
 import android.util.Log
 import androidx.annotation.RequiresApi
 import java.util.concurrent.Executors
@@ -26,6 +31,9 @@ class SingBoxVpnService : VpnService() {
     private var session: IsolatedSingBoxRuntime.Session? = null
     @Volatile private var running = false
     @Volatile private var destroyed = false
+    @Volatile private var retiring = false
+    private var preparedConfig: String? = null
+    private val main = Handler(Looper.getMainLooper())
 
     private val control = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
@@ -47,20 +55,25 @@ class SingBoxVpnService : VpnService() {
                     return true
                 }
                 val result = synchronized(lifecycle) {
-                    check(!destroyed) { "VPN owner has been destroyed" }
+                    if (retiring && code == SingBoxVpnControl.STOP) return@synchronized 0
+                    check(!destroyed && !retiring) { "VPN owner is retiring" }
                     when (code) {
                         SingBoxVpnControl.VALIDATE -> {
-                            IsolatedSingBoxRuntime.validate(this@SingBoxVpnService, readConfig(data))
+                            check(!running && session == null) { "Stop the active VPN before preflight" }
+                            preparedConfig = null
+                            val config = readConfig(data)
+                            IsolatedSingBoxRuntime.validate(this@SingBoxVpnService, config)
+                            preparedConfig = config
                             0
                         }
                         SingBoxVpnControl.START -> {
-                            startLocked(readConfig(data))
+                            val config = requireNotNull(preparedConfig) { "Native VPN requires successful preflight" }
+                            preparedConfig = null
+                            startLocked(config)
                             0
                         }
                         SingBoxVpnControl.STOP -> {
-                            stopLocked()
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                            stopSelf()
+                            retireLocked()
                             0
                         }
                         SingBoxVpnControl.RESET -> {
@@ -101,15 +114,29 @@ class SingBoxVpnService : VpnService() {
         }
     }
 
-    private fun readConfig(data: Parcel): String =
-        ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.CREATOR.createFromParcel(data))
-            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+    private fun readConfig(data: Parcel): String {
+        val descriptor = ParcelFileDescriptor.CREATOR.createFromParcel(data)
+        return ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
+            val stat = Os.fstat(descriptor.fileDescriptor)
+            require(OsConstants.S_ISREG(stat.st_mode) && stat.st_size in 0..MAX_CONFIG_BYTES.toLong()) {
+                "Native config must be a regular file of at most 16 MiB"
+            }
+            val bytes = ByteArrayOutputStream()
+            val buffer = ByteArray(16384)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                require(bytes.size() + count <= MAX_CONFIG_BYTES) { "Native config exceeds 16 MiB" }
+                bytes.write(buffer, 0, count)
+            }
+            bytes.toString(Charsets.UTF_8.name())
+        }
+    }
 
     private fun startLocked(config: String) {
         check(Build.VERSION.SDK_INT >= 29 && SingBoxVpnControl.isAvailable(this)) { "sing-box is unavailable" }
         check(prepare(this) == null) { "Android VPN consent required" }
-        IsolatedSingBoxRuntime.validate(this, config)
-        stopLocked()
+        check(session == null && !running) { "Native VPN already running" }
         try {
             promote("Starting sing-box")
             val next = IsolatedSingBoxRuntime.create(this)
@@ -123,8 +150,7 @@ class SingBoxVpnService : VpnService() {
             } catch (cleanup: Throwable) {
                 if (cleanup !== error) error.addSuppressed(cleanup)
             } finally {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                retireLocked()
             }
             throw error
         }
@@ -135,6 +161,25 @@ class SingBoxVpnService : VpnService() {
         active.close()
         session = null
         running = false
+    }
+
+    // Explicit stop is terminal for this process. Even if native cleanup fails,
+    // process death closes every remaining descriptor and reclaims the Go heap.
+    // The controller waits for Binder death before permitting another owner.
+    private fun retireLocked() {
+        if (retiring) return
+        retiring = true
+        preparedConfig = null
+        try {
+            stopLocked()
+        } catch (error: Throwable) {
+            Log.e("FlClashSingBox", "Native cleanup failed; retiring isolated process", error)
+        } finally {
+            running = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            main.postDelayed({ Process.killProcess(Process.myPid()) }, 100)
+        }
     }
 
     private fun promote(message: String) {
@@ -161,7 +206,9 @@ class SingBoxVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            SingBoxVpnControl.FOREGROUND -> promote(if (running) "sing-box VPN is running" else "Starting sing-box")
+            SingBoxVpnControl.FOREGROUND -> {
+                if (!retiring) promote(if (running) "sing-box VPN is running" else "Starting sing-box")
+            }
             SingBoxVpnControl.STOP_ACTION -> {
                 closeAsync()
                 notifyVpnRevoked()
@@ -180,12 +227,9 @@ class SingBoxVpnService : VpnService() {
         cleanup.execute {
             synchronized(lifecycle) {
                 try {
-                    stopLocked()
+                    retireLocked()
                 } catch (error: Throwable) {
-                    Log.e("FlClashSingBox", "VPN cleanup failed", error)
-                } finally {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                    Log.e("FlClashSingBox", "VPN retirement failed", error)
                 }
             }
         }
@@ -193,7 +237,9 @@ class SingBoxVpnService : VpnService() {
 
     override fun onDestroy() {
         destroyed = true
-        closeAsync()
+        // A preflight-only unbind is explicitly retired by the controller.
+        // Unexpected destruction of a live owner must also release its process.
+        if (!retiring && (running || session != null)) closeAsync()
         cleanup.shutdown()
         super.onDestroy()
     }
@@ -201,6 +247,7 @@ class SingBoxVpnService : VpnService() {
     private val cleanup = Executors.newSingleThreadExecutor()
 
     private companion object {
+        const val MAX_CONFIG_BYTES = 16 * 1024 * 1024
         const val CHANNEL = "flclash_singbox_vpn"
         const val NOTIFICATION_ID = 74
     }

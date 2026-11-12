@@ -20,6 +20,8 @@ import java.io.File
 import com.follow.clash.service.VpnService
 import com.follow.clash.service.models.VpnOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -158,7 +160,10 @@ object ServiceController {
             candidate.useService { (it as NativeManagedService).validate() }.getOrThrow()
             "1.14.4"
         } finally {
-            candidate.unbind()
+            withContext(NonCancellable) {
+                candidate.stopIfConnected()
+                candidate.unbind()
+            }
         }
     }
 
@@ -185,25 +190,31 @@ object ServiceController {
             candidate.useService { service -> (service as NativeManagedService).validate() }.getOrThrow()
         }
         if (preflight.isFailure) {
-            candidate.unbind()
+            withContext(NonCancellable) {
+                candidate.stopIfConnected()
+                candidate.unbind()
+            }
+            preflight.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             return NativeStartResult(false, false, preflight.exceptionOrNull()?.message.orEmpty())
         }
         if (!stopForHandoff()) {
+            candidate.stopIfConnected()
             candidate.unbind()
             return NativeStartResult(false, false, "Existing VPN could not be stopped")
         }
+        return withContext(NonCancellable) {
         binding = candidate
         val result = candidate.useService { service -> service.start() }
         if (result.isFailure) {
             val cleanup = candidate.stopIfConnected()
             if (cleanup.isFailure) {
                 nativeCleanupPending = true
-                return NativeStartResult(false, false, "Native startup and cleanup failed: ${result.exceptionOrNull()?.message}")
+                return@withContext NativeStartResult(false, false, "Native startup and cleanup failed: ${result.exceptionOrNull()?.message}")
             }
             release()
             val restored = previous != null && previousOptions != null &&
                 startMihomoLocked(previousOptions.copy(nativeConfigPath = null))
-            return NativeStartResult(false, restored, result.exceptionOrNull()?.message.orEmpty())
+            return@withContext NativeStartResult(false, restored, result.exceptionOrNull()?.message.orEmpty())
         }
         ServiceConfig.updateVpnOptions(options)
         runtime = ServiceRuntime(
@@ -211,7 +222,8 @@ object ServiceController {
             startedAtMillis = System.currentTimeMillis(),
             nativeConfigPath = path,
         )
-        return NativeStartResult(true, false, "")
+        NativeStartResult(true, false, "")
+        }
     }
 
     // Unlike general shutdown, handoff must not ignore an old owner's stop error.
@@ -406,7 +418,7 @@ private class NativeManagedService(
     override fun start() {
         val app = GlobalState.application
         app.startForegroundService(SingBoxVpnControl.foregroundIntent(app))
-        SingBoxVpnControl.start(remote, profile)
+        SingBoxVpnControl.start(remote)
         check(SingBoxVpnControl.isRunning(remote)) { "Native VPN did not start" }
     }
 
