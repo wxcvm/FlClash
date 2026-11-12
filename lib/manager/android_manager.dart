@@ -47,11 +47,13 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
     });
     service?.addListener(this);
     service?.nativeStatus.addListener(_nativeStatusChanged);
+    // Initial status is delivered asynchronously; do not modify providers during mount.
     unawaited(_refreshNativeStatus());
     app?.onPackagesChanged = _reloadPackages;
   }
 
   bool _wasNative = false;
+  (String, String, int, bool)? _lastNativeState;
   int _nativeRevision = 0;
 
   Future<void> _refreshNativeStatus() async {
@@ -66,6 +68,9 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
     if (!mounted) return;
     final status = service?.nativeStatus.value;
     if (status == null) return;
+    final signature = (status.engine, status.state, status.startedAt, status.ownsRuntime);
+    if (_lastNativeState == signature) return;
+    _lastNativeState = signature;
     final wasNative = _wasNative;
     _wasNative = status.ownsRuntime;
     if (!wasNative && !_wasNative) return;

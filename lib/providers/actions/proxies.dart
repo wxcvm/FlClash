@@ -410,8 +410,9 @@ class ProxiesAction extends _$ProxiesAction {
 
   Future<void> updateGroups() async {
     if (service?.nativeOwnsRuntime == true) return;
+    final generation = _speedTestGeneration;
     try {
-      ref.read(groupsProvider.notifier).value = await retry(
+      final groups = await retry(
         task: () async {
           if (service?.nativeOwnsRuntime == true) return [];
           final sortType = ref.read(
@@ -439,8 +440,11 @@ class ProxiesAction extends _$ProxiesAction {
             return [];
           }
         },
-        retryIf: (res) => service?.nativeOwnsRuntime != true && res.isEmpty,
+        retryIf: (res) => service?.nativeOwnsRuntime != true && generation == _speedTestGeneration && res.isEmpty,
       );
+      if (service?.nativeOwnsRuntime != true && generation == _speedTestGeneration) {
+        ref.read(groupsProvider.notifier).value = groups;
+      }
     } catch (e) {
       // The Core failure path already runs inside the retry task above; a
       // throw here only means ref.read hit a disposed container or the

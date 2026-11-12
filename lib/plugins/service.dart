@@ -136,8 +136,8 @@ class Service {
       'nativeCoreStatus',
     );
     final status = AndroidNativeStatus.fromMap(data ?? const {});
-    if (revision != _nativeStatusRevision && nativeStatus.value != null) {
-      return nativeStatus.value!;
+    if (revision != _nativeStatusRevision) {
+      return nativeStatus.value ?? status;
     }
     nativeStatus.value = status;
     return status;

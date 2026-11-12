@@ -99,7 +99,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     bool current() => mounted && _foreground && revision == _liveRevision && session == _sessionStartedAt;
     try {
       final sample = await _service.getNativeStatusSnapshot();
-      if (!current()) return;
+      if (!current() || _busy) return;
       final changed = _acceptGeneration(sample['networkGeneration']);
       setState(() {
         _live = sample;
@@ -263,7 +263,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     final session = _sessionStartedAt;
     final revision = ++_liveRevision;
     final snapshot = await _service.getNativeSnapshot();
-    if (mounted && session == _sessionStartedAt) {
+    if (mounted && session == _sessionStartedAt && revision == _liveRevision) {
       _acceptGeneration(snapshot['networkGeneration']);
       setState(() {
         _snapshot = snapshot;
@@ -369,7 +369,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                     ListItem(
                       title: const Text('停止 sing-box'),
                       subtitle: const Text('退出原生内核并返回普通首页'),
-                      onTap: !_busy && !transitioning && native?.ownsRuntime == true
+                      onTap: !_busy && native?.state != 'STARTING' && native?.ownsRuntime == true
                           ? () => unawaited(_perform(() async {
                               final ok = await _service.stopNativeCore();
                               return ok ? '已停止' : '停止未完成，请重试';

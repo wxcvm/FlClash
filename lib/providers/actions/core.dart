@@ -103,6 +103,7 @@ class CoreAction extends _$CoreAction {
   }
 
   Future<bool> restartCore() {
+    if (service?.nativeOwnsRuntime == true) return Future.value(false);
     _requestedRestartRevision++;
     final activeOperation = _restartOperation;
     if (activeOperation != null) {
