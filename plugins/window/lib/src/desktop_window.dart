@@ -83,6 +83,8 @@ class DesktopWindow {
         listener.onWindowShouldTerminate();
       case WindowEvent.activate:
         listener.onWindowActivate();
+      case WindowEvent.systemResume:
+        listener.onSystemResume();
     }
   }
 

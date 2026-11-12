@@ -333,6 +333,7 @@ const _$ProxiesSortTypeEnumMap = {
   ProxiesSortType.none: 'none',
   ProxiesSortType.delay: 'delay',
   ProxiesSortType.name: 'name',
+  ProxiesSortType.speed: 'speed',
 };
 
 const _$ProxiesLayoutEnumMap = {

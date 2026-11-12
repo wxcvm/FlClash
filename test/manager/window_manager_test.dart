@@ -22,6 +22,15 @@ import '../helpers/test_profiles.dart';
 
 const _windowChannel = MethodChannel('window');
 
+class _RecordingCoreAction extends CoreAction {
+  static final recoveries = <bool>[];
+
+  @override
+  Future<void> reportNetworkChange({bool recover = false}) async {
+    recoveries.add(recover);
+  }
+}
+
 class _RecordingSystemAction extends SystemAction {
   static final calls = <String>[];
 
@@ -108,6 +117,7 @@ void main() {
 
   setUp(() {
     _RecordingSystemAction.calls.clear();
+    _RecordingCoreAction.recoveries.clear();
     windowCalls = [];
     isAlwaysOnTop = false;
     isMaximized = false;
@@ -118,6 +128,7 @@ void main() {
       overrides: [
         profilesProvider.overrideWith(TestProfiles.new),
         systemActionProvider.overrideWith(_RecordingSystemAction.new),
+        coreActionProvider.overrideWith(_RecordingCoreAction.new),
       ],
     );
     globalState.container = container;
@@ -166,6 +177,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
   }
+
+  testWidgets('system wake coalesces notifications and recovers a running VPN', (
+    tester,
+  ) async {
+    final listener = await pumpWindowManager(tester);
+    container.read(runTimeProvider.notifier).value = 1000;
+    listener.onSystemResume();
+    await tester.pump(const Duration(seconds: 1));
+    listener.onSystemResume();
+    await tester.pump(const Duration(seconds: 1));
+    expect(_RecordingCoreAction.recoveries, isEmpty);
+    await tester.pump(const Duration(seconds: 1));
+    expect(_RecordingCoreAction.recoveries, [true]);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('system wake does not start a stopped VPN', (tester) async {
+    final listener = await pumpWindowManager(tester);
+    listener.onSystemResume();
+    await tester.pump(const Duration(seconds: 2));
+    expect(_RecordingCoreAction.recoveries, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('renders its child untouched', (tester) async {
     await pumpWindowManager(tester);
