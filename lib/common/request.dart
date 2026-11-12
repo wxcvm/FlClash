@@ -31,16 +31,18 @@ class Request {
   Request({HttpClientAdapter? downloadAdapter}) {
     dio = Dio(BaseOptions(headers: {'User-Agent': browserUa}));
     _clashDio = Dio();
-    _clashDio.httpClientAdapter = downloadAdapter ?? IOHttpClientAdapter(
-      createHttpClient: () {
-        final client = HttpClient();
-        client.findProxy = (Uri uri) {
-          client.userAgent = globalState.ua;
-          return _findProxy(uri);
-        };
-        return client;
-      },
-    );
+    _clashDio.httpClientAdapter =
+        downloadAdapter ??
+        IOHttpClientAdapter(
+          createHttpClient: () {
+            final client = HttpClient();
+            client.findProxy = (Uri uri) {
+              client.userAgent = globalState.ua;
+              return _findProxy(uri);
+            };
+            return client;
+          },
+        );
     releaseDio = Dio(BaseOptions(headers: {'User-Agent': browserUa}));
     releaseDio.httpClientAdapter = IOHttpClientAdapter(
       createHttpClient: () {

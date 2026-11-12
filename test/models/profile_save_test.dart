@@ -60,7 +60,7 @@ void main() {
       expect(await savedFile.readAsString(), 'proxies: []');
     });
 
-    test('streams gzip and zlib subscriptions into the validated file', () async {
+    test('streams gzip and zlib into the validated file', () async {
       final yaml = utf8.encode('proxies: []\n# ${'x' * 300000}');
       for (final codec in [gzip, zlib]) {
         final profile = Profile.normal(label: 'compressed');
@@ -79,7 +79,7 @@ void main() {
       }
     });
 
-    test('cleans a rejected compressed profile without replacing the old file', () async {
+    test('rejects compressed updates and cleans temporary files', () async {
       final profile = Profile.normal(label: 'p');
       final saved = await profile.file;
       await saved.writeAsString('proxies: []');

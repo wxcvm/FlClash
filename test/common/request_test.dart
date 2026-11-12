@@ -199,8 +199,8 @@ void main() {
     });
   });
 
-  test('subscription downloads preserve bytes and response metadata', () async {
-    final dir = await Directory.systemTemp.createTemp('subscription-download');
+  test('subscription download preserves bytes and headers', () async {
+    final dir = await Directory.systemTemp.createTemp('subscription');
     addTearDown(() => dir.delete(recursive: true));
     final bytes = gzip.encode(utf8.encode('proxies: []'));
     final request = Request(
