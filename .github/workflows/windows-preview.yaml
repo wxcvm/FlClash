@@ -1,0 +1,90 @@
+name: Windows preview
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-preview.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-preview
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+  GO_VERSION: '1.27.1'
+
+jobs:
+  preview:
+    if: github.repository == 'wxcvm/FlClash' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Enable long paths
+        run: git config --global core.longpaths true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: core/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Fetch CA bundle
+        shell: bash
+        run: |
+          bundle=core/Clash.Meta/component/ca/ca-certificates.crt
+          curl -fsSL --retry 3 -o "$bundle" https://curl.se/ca/cacert-2026-09-25.pem
+          echo "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505  $bundle" | sha256sum -c -
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Build Windows preview packages
+        run: dart setup.dart windows --env pre --targets exe,zip -v
+      - name: Verify and hash packages
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem dist -Recurse -File | Where-Object { $_.Extension -in '.exe','.zip' })
+          if (-not ($files | Where-Object Extension -eq '.exe') -or -not ($files | Where-Object Extension -eq '.zip')) {
+            throw 'Expected both Windows installer and portable ZIP'
+          }
+          New-Item -ItemType Directory -Force preview-assets | Out-Null
+          foreach ($file in $files) {
+            Copy-Item $file.FullName (Join-Path preview-assets $file.Name)
+          }
+          Get-ChildItem preview-assets -File | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content preview-assets/SHA256SUMS -Encoding ascii
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlClash-Windows-x64-preview
+          path: preview-assets/*
+          if-no-files-found: error
+      - name: Publish GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v0.9.3-preview.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          cat > preview-notes.md <<'NOTES'
+          Windows x64 preview of wxcvm/FlClash.
+
+          Includes merged network reconnect, DNS socket recovery, Windows TUN bootstrap, REALITY X25519-MLKEM768 support and native core management changes.
+
+          Install using the EXE or extract the portable ZIP. SHA256SUMS contains file integrity hashes.
+
+          Preview: live Windows connectivity, sleep/resume and actual node throughput still require real-device validation. The pending real-download-speed selection and native Hysteria 2 PRs are not included unless merged into this build's source.
+          NOTES
+          printf '\nSource: %s\n' "$GITHUB_SHA" >> preview-notes.md
+          gh release create "$tag" preview-assets/* --target "$GITHUB_SHA" --prerelease --title "FlClash Windows $tag" --notes-file preview-notes.md
