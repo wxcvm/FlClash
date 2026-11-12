@@ -3,6 +3,7 @@ package core
 import (
 	"io"
 	"net"
+	"strconv"
 	"testing"
 
 	"github.com/metacubex/mihomo/adapter/outbound"
@@ -135,5 +136,49 @@ func TestRequestTrafficGivesUpOnAClosedRequestItCannotReport(t *testing.T) {
 	}
 	if watch.collect(closed, dropped) {
 		t.Fatal("a closed request outlived its retries")
+	}
+}
+
+func TestRequestTrafficReleasesIdleMapAndRestarts(t *testing.T) {
+	tracker := newPipeTracker(t)
+	var watch requestTrafficWatch
+	if !watch.add(tracker) || watch.peak != 1 {
+		t.Fatal("initial watch did not allocate")
+	}
+	closed := func(string) bool { return false }
+	collectDelivered(&watch, closed)
+	collectDelivered(&watch, closed)
+	if watch.requests != nil || watch.peak != 0 || watch.running {
+		t.Fatal("idle watch retained its backing map")
+	}
+	if !watch.add(tracker) || watch.peak != 1 {
+		t.Fatal("watch did not restart after releasing the map")
+	}
+	watch.clear()
+	if watch.requests != nil || watch.peak != 0 || watch.running {
+		t.Fatal("clear retained its backing map")
+	}
+}
+
+func TestRequestTrafficCompactsAfterLargeBurst(t *testing.T) {
+	remaining := &watchedRequest{upload: 42, closedReports: 2}
+	watch := requestTrafficWatch{
+		requests: map[string]*watchedRequest{"keep": remaining},
+		peak:     requestTrafficCompactThreshold,
+		running:  true,
+	}
+	for i := 0; i < requestTrafficCompactThreshold/4; i++ {
+		watch.requests[strconv.Itoa(i)] = &watchedRequest{}
+	}
+	watch.compactLocked()
+	if watch.peak != requestTrafficCompactThreshold {
+		t.Fatal("compacted before the low water mark")
+	}
+	delete(watch.requests, "0")
+	watch.compactLocked()
+	if watch.peak != requestTrafficCompactThreshold/4 ||
+		len(watch.requests) != requestTrafficCompactThreshold/4 ||
+		watch.requests["keep"] != remaining {
+		t.Fatal("compaction did not preserve remaining requests")
 	}
 }
