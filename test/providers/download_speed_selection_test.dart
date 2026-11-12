@@ -11,10 +11,11 @@ void main() {
 
   test('explicit fastest selection does not apply automatic hysteresis', () {
     expect(
-      chooseDownloadSpeedWinner({
-        'current': 100,
-        'other': 119,
-      }, 'current', automatic: false),
+      chooseDownloadSpeedWinner(
+        {'current': 100, 'other': 119},
+        'current',
+        automatic: false,
+      ),
       'other',
     );
   });

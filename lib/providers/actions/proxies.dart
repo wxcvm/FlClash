@@ -487,9 +487,15 @@ class ProxiesAction extends _$ProxiesAction {
       );
       return;
     }
-    if (!result.changed) {
-      return;
+    if (result.changed) {
+      await _refreshSelectedConnections(groupName, proxyName);
     }
+  }
+
+  Future<void> _refreshSelectedConnections(
+    String groupName,
+    String proxyName,
+  ) async {
     try {
       if (ref.read(appSettingProvider).closeConnections) {
         await _core.closeConnections();
@@ -795,6 +801,9 @@ class ProxiesAction extends _$ProxiesAction {
         ref
             .read(profilesActionProvider.notifier)
             .updateCurrentSelectedMap(groupName, name);
+        if (result.changed) {
+          await _refreshSelectedConnections(groupName, name);
+        }
       }
       await updateGroups();
       return true;
