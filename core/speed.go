@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -33,15 +34,75 @@ func downloadBytesPerSecond(bytes, millis int64) int64 {
 	return bytes * 1000 / millis
 }
 
-func handleTestSpeed(params *SpeedTestParams) *SpeedTestResult {
+// Calls run on separate goroutines. The dispatch sequence prevents a late
+// cancel handler from stopping a newer test or an older test from starting
+// after the host has cancelled it.
+type speedTestRegistry struct {
+	mu      sync.Mutex
+	stopped uint64
+	active  map[uint64]context.CancelFunc
+}
+
+func (r *speedTestRegistry) start(seq uint64) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	r.mu.Lock()
+	if seq <= r.stopped {
+		cancel()
+	} else {
+		if r.active == nil {
+			r.active = make(map[uint64]context.CancelFunc)
+		}
+		r.active[seq] = cancel
+	}
+	r.mu.Unlock()
+	return ctx, func() {
+		cancel()
+		r.mu.Lock()
+		delete(r.active, seq)
+		r.mu.Unlock()
+	}
+}
+
+func (r *speedTestRegistry) stop(seq uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if seq > r.stopped {
+		r.stopped = seq
+	}
+	for id, cancel := range r.active {
+		if id <= r.stopped {
+			cancel()
+			delete(r.active, id)
+		}
+	}
+}
+
+var speedTests speedTestRegistry
+
+func handleSpeedTestCall(call *MethodCall) (any, error) {
+	params, err := decodeArguments[*SpeedTestParams](call)
+	if err != nil {
+		return nil, err
+	}
+	ctx, finish := speedTests.start(call.seq)
+	defer finish()
+	return handleTestSpeed(ctx, params), nil
+}
+
+func handleStopSpeedCall(call *MethodCall) (any, error) {
+	speedTests.stop(call.seq)
+	return nil, nil
+}
+
+func handleTestSpeed(ctx context.Context, params *SpeedTestParams) *SpeedTestResult {
 	result := &SpeedTestResult{Name: params.ProxyName}
-	if params.ProxyName == "" {
+	if params.ProxyName == "" || ctx.Err() != nil {
 		result.Error = probeErrorFailed
 		return result
 	}
 
 	epoch, version := routeStamp()
-	probe := runProbe(context.Background(), probeRequest{
+	probe := runProbe(ctx, probeRequest{
 		method:        http.MethodGet,
 		url:           downloadSpeedURL,
 		proxyName:     params.ProxyName,
