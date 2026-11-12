@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/common/dns_compatibility.dart';
 import 'package:fl_clash/common/mitm_module.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
@@ -303,6 +304,15 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
       keepEmpty: data.keepEmptyDnsOverrides,
     ),
   );
+  if (rawDns['enhanced-mode'] == 'fake-ip' &&
+      (rawDns['fake-ip-filter-mode'] ?? 'blacklist') == 'blacklist') {
+    final entries = rawDns['fake-ip-filter'];
+    if (entries is List && entries.every((entry) => entry is String)) {
+      rawDns['fake-ip-filter'] = normalizeFakeIpBlacklist(
+        entries.cast<String>(),
+      );
+    }
+  }
   rawConfig['dns'] = rawDns;
   final ntpOverride = overrides.ntp.overrideJson(overrides.ntpOverrideKeys);
   if (ntpOverride.isNotEmpty) {

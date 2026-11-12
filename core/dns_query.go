@@ -1,6 +1,8 @@
 package core
 
 import (
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,14 +28,14 @@ func newDnsQuery(record dns.QueryRecord) DnsQuery {
 		Domain:    strings.TrimSuffix(record.Question.Name, "."),
 		Type:      D.Type(record.Question.Qtype).String(),
 		Initiator: record.Initiator,
-		Upstream:  record.Upstream,
+		Upstream:  redactDnsEndpoint(record.Upstream),
 		Cached:    record.Cached,
 		Answers:   []string{},
 		Delay:     time.Since(record.Start).Milliseconds(),
 		Time:      record.Start,
 	}
 	if record.Err != nil {
-		query.Error = record.Err.Error()
+		query.Error = dnsEndpointPattern.ReplaceAllStringFunc(record.Err.Error(), redactDnsEndpoint)
 	}
 	if record.Msg == nil {
 		return query
@@ -55,5 +57,22 @@ func dnsAnswerValue(rr D.RR) string {
 		return strings.TrimSuffix(record.Target, ".")
 	default:
 		return strings.TrimSpace(strings.TrimPrefix(rr.String(), rr.Header().String()))
+	}
+}
+
+// Private DoH endpoints often carry account identifiers in their path or
+// query. The query viewer and copied diagnostics need the server, not secrets.
+var dnsEndpointPattern = regexp.MustCompile(`(?i)(https|h3|tls|quic)://[^\s"'<>]+`)
+
+func redactDnsEndpoint(value string) string {
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" {
+		return value
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https", "h3", "tls", "quic":
+		return u.Scheme + "://" + u.Host
+	default:
+		return value
 	}
 }

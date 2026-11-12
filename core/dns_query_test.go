@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,5 +105,20 @@ func TestNewDnsQueryNamesUnknownTypes(t *testing.T) {
 
 	if query.Type != "TYPE65280" || query.Rcode != "NXDOMAIN" {
 		t.Fatalf("type = %q, rcode = %q", query.Type, query.Rcode)
+	}
+}
+
+func TestDnsQueryRedactsPrivateResolverCredentials(t *testing.T) {
+	query := newDnsQuery(dns.QueryRecord{
+		Question: dnsQuestion("example.test", D.TypeA),
+		Upstream: "https://user:pass@private.example:8443/account-secret/dns-query?token=secret#route",
+		Err:      errors.New("request https://private.example/account-secret?token=secret: timeout"),
+		Start:    time.Now(),
+	})
+	if query.Upstream != "https://private.example:8443" {
+		t.Fatalf("upstream = %q", query.Upstream)
+	}
+	if strings.Contains(query.Error, "secret") || !strings.Contains(query.Error, "timeout") {
+		t.Fatalf("error = %q", query.Error)
 	}
 }
