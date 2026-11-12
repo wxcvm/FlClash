@@ -23,8 +23,11 @@ The DEX includes the same Android platform/TUN/session adapter sources as
 the diagnostic APK. The shared IsolatedLibbox loader checks availability
 without initializing Go, then isolates the Go bridge and verifies the
 version before native config preflight. Do not load it in the UI process:
-a future dedicated process will own the native session. No production
-selection, VPN startup, automatic fallback, or process exit is enabled by
+the bound-only SingBoxPreflightService in :singbox now owns config validation.
+The preflight client transfers a file descriptor instead of a large Binder string,
+waits for binding off the UI thread and unbinds after validation. The service is
+non-exported, rejects foreign UIDs and never creates a VPN. No production
+selection, VPN startup, automatic fallback, or guaranteed process exit is enabled by
 this packaging change. The debug APK uses the existing .dev application ID;
 it is not a release or an update for the signed production app.
 

@@ -59,13 +59,14 @@ public final class IsolatedLibbox {
     }
 
     /** Native config preflight; no VPN establishment or route changes. */
-    public static void validateVpnConfig(Context context, String config) throws Exception {
+    public static String validateVpnConfig(Context context, String config) throws Exception {
         Class<?> api = loadApi(context);
         try {
             api.getMethod("checkConfig", String.class).invoke(null, config);
             if (!Boolean.TRUE.equals(api.getMethod("hasTunInbound", String.class).invoke(null, config))) {
                 throw new IllegalArgumentException("Native Android VPN requires a TUN inbound");
             }
+            return (String) api.getMethod("version").invoke(null);
         } catch (InvocationTargetException failure) {
             Throwable cause = failure.getCause();
             if (cause instanceof Exception) throw (Exception) cause;

@@ -5,6 +5,11 @@
 
     <application>
         <service
+            android:name=".SingBoxPreflightService"
+            android:exported="false"
+            android:process=":singbox" />
+
+        <service
             android:name=".VpnService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
