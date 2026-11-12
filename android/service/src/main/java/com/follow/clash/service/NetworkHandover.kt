@@ -23,7 +23,10 @@ internal class NetworkHandoverTracker<T : Any> {
         if (current == network) current = null
     }
 
-    fun update(next: T?): Boolean {
+    fun update(next: T?, dnsReady: Boolean = true): Boolean {
+        // Do not commit to a network before its link properties are known.
+        // In particular, a later DNS callback must still trigger recovery.
+        if (next != null && !dnsReady) return false
         if (next == null) {
             current = null
             return false

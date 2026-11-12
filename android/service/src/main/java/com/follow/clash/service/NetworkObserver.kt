@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 private data class NetworkInfo(
     @Volatile var losingUntilMillis: Long = 0,
-    @Volatile var dnsList: List<InetAddress> = emptyList(),
+    @Volatile var dnsList: List<InetAddress>? = null,
     @Volatile var capabilities: NetworkCapabilities? = null,
 )
 
@@ -123,7 +123,7 @@ object NetworkObserver {
         return networkSelectionPriority(
             transportPriority = transport,
             validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-            hasDns = info.dnsList.isNotEmpty(),
+            hasDns = info.dnsList?.isNotEmpty() == true,
             losing = info.losingUntilMillis > SystemClock.elapsedRealtime(),
         )
     }
@@ -137,21 +137,31 @@ object NetworkObserver {
             { if (it.first.key == handover.current) 0 else 1 },
             { it.first.key.networkHandle },
         ))?.first
-        val dnsList = preferred
-            ?.value
-            ?.dnsList
-            .orEmpty()
-            .map { address -> address.asSocketAddressText(DNS_PORT) }
-            .distinct()
-        if (dnsList != currentDnsList) {
-            currentDnsList = dnsList
-            Core.updateDNS(dnsList.joinToString(","))
+        // onAvailable can precede onLinkPropertiesChanged by more than the
+        // debounce interval. Unknown DNS is not an explicitly empty DNS list.
+        val servers = preferred?.let { entry ->
+            entry.value.dnsList ?: connectivity?.getLinkProperties(entry.key)?.dnsServers
         }
-        // Reset protected sockets after a real switch or an outage, even if
-        // Android supplies the same Network identity when connectivity returns.
+        if (preferred != null && servers == null) {
+            // Keep waiting for the new network's link properties. If the old
+            // network was lost, do not keep using its system DNS addresses.
+            handover.update(preferred.key, dnsReady = false)
+            if (handover.current == null) publishDns(emptyList())
+            return
+        }
+
+        publishDns(servers.orEmpty().map { it.asSocketAddressText(DNS_PORT) }.distinct())
+        // updateDNS is synchronous, so the new servers are installed before
+        // the Core releases old sockets and rebuilds the active outbounds.
         if (handover.update(preferred?.key)) {
             Core.resetNetwork()
         }
+    }
+
+    private fun publishDns(servers: List<String>) {
+        if (servers == currentDnsList) return
+        Core.updateDNS(servers.joinToString(","))
+        currentDnsList = servers
     }
 }
 

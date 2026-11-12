@@ -99,22 +99,28 @@ func isMatchRule(rule string) bool {
 }
 
 func loadConfigWithBase(base *SetupBase, configPath string) (*config.Config, error) {
+	cfg, _, err := loadConfigWithBaseSnapshot(base, configPath)
+	return cfg, err
+}
+
+func loadConfigWithBaseSnapshot(base *SetupBase, configPath string) (*config.Config, configDigest, error) {
 	document, err := mergeProfileBase(base)
 	if err != nil {
-		return nil, err
+		return nil, configDigest{}, err
 	}
 	raw := config.DefaultRawConfig()
 	if err := document.Decode(raw); err != nil {
-		return nil, err
+		return nil, configDigest{}, err
 	}
-	if err := writeConfigDocument(configPath, document); err != nil {
-		return nil, err
+	digest, err := writeConfigDocumentSnapshot(configPath, document)
+	if err != nil {
+		return nil, configDigest{}, err
 	}
 	cfg, err := config.ParseRawConfig(raw)
 	if err != nil {
-		return nil, err
+		return nil, configDigest{}, err
 	}
-	return withPlatformLimits(cfg), nil
+	return withPlatformLimits(cfg), digest, nil
 }
 
 func mergeProfileBase(base *SetupBase) (*yaml.Node, error) {
@@ -252,16 +258,27 @@ func isNull(node *yaml.Node) bool {
 // config.yaml is read again without this process: by the Android service
 // starting on its own and by mihomo's own reload through the controller.
 func writeConfigDocument(path string, document *yaml.Node) error {
+	_, err := writeConfigDocumentSnapshot(path, document)
+	return err
+}
+
+func writeConfigDocumentSnapshot(path string, document *yaml.Node) (configDigest, error) {
 	temporary, err := writeDocumentFile(filepath.Dir(path), ".config-*.yaml", document)
 	if err != nil {
-		return err
+		return configDigest{}, err
+	}
+	defer os.Remove(temporary)
+	// Hash the private temporary file before publishing it. The applied
+	// snapshot never depends on a later read of the shared config.yaml.
+	digest, err := digestConfigFile(temporary)
+	if err != nil {
+		return configDigest{}, err
 	}
 	if err := os.Rename(temporary, path); err != nil {
-		_ = os.Remove(temporary)
-		return err
+		return configDigest{}, err
 	}
 	scheduleReclaimOwnership()
-	return nil
+	return digest, nil
 }
 
 func writeDocumentFile(dir, pattern string, document *yaml.Node) (string, error) {

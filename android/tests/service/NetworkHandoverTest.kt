@@ -41,6 +41,19 @@ class NetworkHandoverTest {
     }
 
     @Test
+    fun `handover waits for DNS then resets exactly once`() {
+        val tracker = NetworkHandoverTracker<String>()
+        assertFalse(tracker.update("wifi"))
+        assertFalse(tracker.update("cell", dnsReady = false))
+        assertTrue(tracker.current == "wifi")
+        tracker.markLost("wifi")
+        assertFalse(tracker.update("cell", dnsReady = false))
+        assertTrue(tracker.current == null)
+        assertTrue(tracker.update("cell"))
+        assertFalse(tracker.update("cell"))
+    }
+
+    @Test
     fun `late loss of old network does not reset the new one`() {
         val tracker = NetworkHandoverTracker<String>()
         assertFalse(tracker.update("wifi"))

@@ -292,6 +292,12 @@ void WindowController::StartDragging() {
 
 std::optional<LRESULT> WindowController::HandleWindowMessage(
     HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+  if (message == WM_POWERBROADCAST && wparam == PBT_APMRESUMEAUTOMATIC) {
+    // Automatic resume is also sent for a user-initiated wake. Do not emit
+    // the later PBT_APMRESUMESUSPEND a second time.
+    emit_event_("system-resume");
+    return std::nullopt;
+  }
   if (wparam && message == WM_NCCALCSIZE) {
     const bool title_bar_hidden =
         style_ != nullptr && style_->title_bar_style == TitleBarStyle::kHidden;

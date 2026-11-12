@@ -2,6 +2,7 @@ export 'action.dart';
 export 'app.dart';
 export 'config.dart';
 export 'core.dart';
+export 'download_speed.dart';
 export 'database.dart';
 export 'on_demand.dart';
 export 'route_state.dart';

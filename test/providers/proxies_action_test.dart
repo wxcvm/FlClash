@@ -13,6 +13,7 @@ import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/config.dart';
 import 'package:fl_clash/providers/core.dart';
 import 'package:fl_clash/providers/database.dart';
+import 'package:fl_clash/providers/download_speed.dart';
 import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:flutter/widgets.dart';
@@ -366,6 +367,32 @@ void main() {
         debouncer.cancel((FunctionTag.changeProxy, 'Proxy'));
       },
     );
+  });
+
+  group('network recovery and speed selection', () {
+    test('recovery invalidates an in-flight download measurement', () async {
+      final started = Completer<void>();
+      final result = Completer<Map<String, dynamic>>();
+      when(() => core.testSpeed('HK-01')).thenAnswer((_) {
+        started.complete();
+        return result.future;
+      });
+      final container = buildContainer(profile: _selectedProfile('HK-01'));
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
+      container.read(groupsProvider.notifier).value = [
+        _group('Proxy', const [_proxy]),
+      ];
+      final action = actionOf(container);
+      final measurement = action.selectByDownloadSpeed('Proxy');
+      await started.future;
+      action.beginNetworkRecovery();
+      result.complete({'bytes-per-second': 1000000});
+      await measurement;
+      action.endNetworkRecovery();
+
+      expect(container.read(downloadSpeedResultsProvider), isEmpty);
+      verifyNever(() => core.selectSpeedProxy(any()));
+    });
   });
 
   group('proxyDelayTest', () {
