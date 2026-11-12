@@ -62,6 +62,7 @@ const (
 	connectionResetMethod    CoreMethod = "connection.reset"
 	dnsClearCacheMethod      CoreMethod = "dns.clearCache"
 	networkChangedMethod     CoreMethod = "network.changed"
+	networkRecoverMethod     CoreMethod = "network.recover"
 
 	logStartMethod      CoreMethod = "log.start"
 	logStopMethod       CoreMethod = "log.stop"

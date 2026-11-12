@@ -227,6 +227,7 @@ var methodHandlers = map[CoreMethod]methodHandler{
 	connectionResetMethod:    action(handleResetConnections),
 	dnsClearCacheMethod:      action(handleClearDnsCache),
 	networkChangedMethod:     action(handleNetworkChanged),
+	networkRecoverMethod:     action(handleResetNetwork),
 
 	logStartMethod:      action(handleStartLog),
 	logStopMethod:       action(handleStopLog),

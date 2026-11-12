@@ -1,6 +1,8 @@
 package core
 
 import (
+	"sync"
+
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/tunnel/statistic"
@@ -68,7 +70,13 @@ func handleNetworkChanged() {
 
 // A connection that went out over a network the device has left hangs until
 // TCP gives up on it, and so do the DNS clients' pooled connections.
+var networkResetMu sync.Mutex
+
 func handleResetNetwork() {
+	// A burst of handovers may arrive while a previous rebuild is still
+	// applying. Never overlap outbound rebuilds or connection cleanup.
+	networkResetMu.Lock()
+	defer networkResetMu.Unlock()
 	handleCloseConnections()
 	handleNetworkChanged()
 	reloadOutboundsOnNetworkChange()

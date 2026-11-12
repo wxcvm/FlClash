@@ -45,6 +45,7 @@ enum CoreMethod {
   connectionReset('connection.reset'),
   dnsClearCache('dns.clearCache'),
   networkChanged('network.changed'),
+  networkRecover('network.recover'),
   logStart('log.start'),
   logStop('log.stop'),
   listenerStart('listener.start'),

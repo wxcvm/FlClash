@@ -332,6 +332,8 @@ abstract class CoreHandlerInterface {
 
   Future<void> reportNetworkChange() => _command(CoreMethod.networkChanged);
 
+  Future<void> recoverNetwork() => _command(CoreMethod.networkRecover);
+
   Future<void> startLog() => _commandUnobserved(CoreMethod.logStart);
 
   Future<void> stopLog() => _commandUnobserved(CoreMethod.logStop);
