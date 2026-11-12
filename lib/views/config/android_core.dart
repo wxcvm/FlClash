@@ -98,6 +98,11 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
         : '启动未成功：${outcome.error}';
   }
 
+  Future<String> _switchToMihomo() async =>
+      await _service.startMihomoCore()
+          ? '已切回 Mihomo'
+          : '切换未完成，请检查当前 VPN 状态与配置';
+
   Future<String> _stop() async =>
       await _service.stopNativeCore() ? 'VPN 已停止' : '停止未完成，请重试';
 
@@ -193,6 +198,12 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                         ? () => _perform(_start)
                         : null,
                   ),
+                  if (native)
+                    ListItem(
+                      title: const Text('切回 Mihomo'),
+                      subtitle: const Text('停止 sing-box 后恢复原订阅配置'),
+                      onTap: busy ? null : () => _perform(_switchToMihomo),
+                    ),
                   ListItem(
                     title: const Text('停止 sing-box'),
                     onTap: !busy && (native || owned)

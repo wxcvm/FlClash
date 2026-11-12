@@ -116,6 +116,14 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
                     core.setListener(false)
                     core.setEvents(null)
                     result.putInt("productionMihomoPid", core.pid)
+                    core.retire()
+                    check(!core.alive) { "Mihomo retirement did not close the original Binder" }
+                }
+                MihomoCoreControl.connect(targetContext).use { next ->
+                    check(next.pid != result.getInt("productionMihomoPid"))
+                    val reply = awaitCore { next.invoke("""{"id":"restart","method":"core.initialized"}""", it) }
+                    check(JSONObject(reply.decodeToString()).getString("id") == "restart")
+                    next.retire()
                 }
             } else verifyProductionLifecycleBinder(hostPid, ProxyService::class.java)
             var firstPid = 0

@@ -188,6 +188,24 @@ class Service {
     }
   }
 
+  Future<bool> startMihomoCore() async {
+    final revision = ++_commandRevision;
+    _startRequested = true;
+    try {
+      return await methodChannel.invokeMethod<bool>(
+            'startMihomoCore', {'revision': revision},
+          ) ??
+          false;
+    } finally {
+      if (revision == _commandRevision) {
+        final status = await getNativeStatus();
+        if (revision == _commandRevision) {
+          _startRequested = status.engine != 'idle' || status.nativeOwner;
+        }
+      }
+    }
+  }
+
   Future<bool> stopNativeCore() async {
     final revision = ++_commandRevision;
     _startRequested = false;

@@ -56,3 +56,13 @@ Proxy PIDs (different from the UI PID), without establishing a VPN. The shared
 Core process remains connected for stopped-state profile operations; full exit
 on switching to sing-box, always-on recovery, traffic and measured PSS still
 require runtime validation and additional lifecycle work.
+
+Stage 5: explicit sing-box handoff closes Mihomo admission, stops the old service,
+retires the isolated :mihomo owner and waits for Binder death before native start.
+Mihomo RPCs return core_unavailable during native ownership; event subscription
+is retained without starting Core. Switching back reloads the latest synchronized
+SetupParams (including selected-map) and reattaches events; stopped-state access
+reinitializes Core without opening listeners. The core management screen exposes
+an explicit switch-back action. Device instrumentation now checks production Core
+retirement and a new PID on restart. Actual traffic, Android always-on, background
+polling UX, and memory/power measurement are still acceptance items.

@@ -175,9 +175,16 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
                 transitionLock.withLock transition@ {
                     if (!isCurrent(request)) return@transition false
                     transitioning(RunState.STARTING) {
-                        val started = host.startService(withLocalNetworkFallback(options))
-                        if (started) manualNativePath = null
-                        started
+                        try {
+                            val started = host.startService(withLocalNetworkFallback(options))
+                            if (started) manualNativePath = null
+                            started
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            host.log("Unable to switch to Mihomo: $error")
+                            false
+                        }
                     }
                 }
             }

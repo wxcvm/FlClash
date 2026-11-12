@@ -48,6 +48,8 @@ object ServiceController {
     @Volatile private var restoreMihomoConfig = false
 
     internal fun rememberSharedState(state: SharedState) { latestSharedState = state }
+    internal val mihomoSuspended: Boolean
+        get() = MihomoCoreTransport.isolated && MihomoCoreTransport.isSuspended()
     internal val hasNativeOwner: Boolean get() = runtime?.nativeConfigPath != null || nativeCleanupPending
 
     @Volatile

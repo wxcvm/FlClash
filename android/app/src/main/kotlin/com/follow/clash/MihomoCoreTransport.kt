@@ -2,6 +2,10 @@ package com.follow.clash
 
 import com.follow.clash.common.GlobalState
 import com.follow.clash.service.MihomoCoreControl
+import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /** One connection for all Flutter and background setup operations. */
 internal object MihomoCoreTransport {
@@ -9,6 +13,7 @@ internal object MihomoCoreTransport {
     private var client: MihomoCoreControl? = null
     private var events: ((ByteArray) -> Unit)? = null
     private var suspendedForNative = false
+    private var needsInit = false
 
     @Synchronized
     fun get(): MihomoCoreControl {
@@ -19,6 +24,23 @@ internal object MihomoCoreTransport {
         client = null
         return MihomoCoreControl.connect(GlobalState.application).also {
             try {
+                if (needsInit) {
+                    // Reopen stopped-state profile operations without opening proxy listeners.
+                    val done = CountDownLatch(1)
+                    val response = AtomicReference<Result<ByteArray>>()
+                    val args = JSONObject(ServiceStateMachine.initParams(
+                        GlobalState.application.filesDir.path, android.os.Build.VERSION.SDK_INT,
+                    ))
+                    it.invoke(JSONObject().put("id", "android-reinit").put("method", "core.init")
+                        .put("arguments", args).toString()) { value ->
+                        response.set(value)
+                        done.countDown()
+                    }
+                    check(done.await(20, TimeUnit.SECONDS)) { "Mihomo initialization timed out" }
+                    val reply = JSONObject(requireNotNull(response.get()).getOrThrow().decodeToString())
+                    check(reply.isNull("error")) { "Mihomo initialization failed: ${reply.opt("error")}" }
+                    needsInit = false
+                }
                 it.setEvents(events)
                 client = it
             } catch (error: Exception) {
@@ -37,7 +59,11 @@ internal object MihomoCoreTransport {
     fun suspendForNative() {
         val old = get()
         suspendedForNative = true
-        old.retire()
+        try {
+            old.retire()
+        } finally {
+            if (!old.connected || !old.alive) needsInit = true
+        }
         client = null
     }
 
