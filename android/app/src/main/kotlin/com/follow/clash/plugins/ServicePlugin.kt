@@ -7,6 +7,8 @@ import com.follow.clash.common.GlobalState
 import com.follow.clash.core.Core
 import com.follow.clash.models.SharedState
 import com.follow.clash.service.NetworkObserver
+import com.follow.clash.service.NativeVpnSessions
+import java.io.File
 import com.google.gson.Gson
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.BinaryMessenger
@@ -62,6 +64,9 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "syncState" -> syncState(call, result)
             "start" -> start(call, result)
             "stop" -> stop(call, result)
+            "nativeCoreStatus" -> nativeCoreStatus(result)
+            "startNativeCore" -> startNativeCore(call, result)
+            "stopNativeCore" -> stopNativeCore(call, result)
             else -> result.notImplemented()
         }
     }
@@ -116,6 +121,47 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
             ServiceState.syncSharedState(state)
             result.success("")
+        }
+    }
+
+    private fun nativeCoreStatus(result: MethodChannel.Result) {
+        result.success(mapOf(
+            "available" to NativeVpnSessions.isAvailable(GlobalState.application),
+            "engine" to (ServiceController.runtime?.engine ?: "idle"),
+            "nativeOwner" to ServiceController.hasNativeOwner,
+            "state" to ServiceState.runState.value.name,
+        ))
+    }
+
+    private fun startNativeCore(call: MethodCall, result: MethodChannel.Result) {
+        val path = call.argument<String>("path")
+        if (path.isNullOrBlank()) {
+            result.error("INVALID_ARGUMENT", "Select a native JSON config", null)
+            return
+        }
+        commandRevision = call.argument<Int>("revision") ?: commandRevision
+        val request = ServiceState.requestNativeStart(File(path))
+        scope.launch {
+            runCatching { request.await() }
+                .onSuccess { outcome ->
+                    result.success(mapOf(
+                        "started" to outcome.started,
+                        "restoredMihomo" to outcome.restoredMihomo,
+                        "error" to outcome.error,
+                        "engine" to (ServiceController.runtime?.engine ?: "idle"),
+                    ))
+                }
+                .onFailure { result.error("NATIVE_START", it.message, null) }
+        }
+    }
+
+    private fun stopNativeCore(call: MethodCall, result: MethodChannel.Result) {
+        commandRevision = call.argument<Int>("revision") ?: commandRevision
+        val request = ServiceState.requestStop()
+        scope.launch {
+            runCatching { request.await() }
+                .onSuccess { result.success(it) }
+                .onFailure { result.error("NATIVE_STOP", it.message, null) }
         }
     }
 

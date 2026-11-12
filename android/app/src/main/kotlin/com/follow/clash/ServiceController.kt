@@ -38,7 +38,8 @@ import kotlinx.coroutines.NonCancellable
 object ServiceController {
     private val lock = Mutex()
     private var binding: ManagedServiceBinding? = null
-    private var nativeBinding: NativeVpnSession? = null
+    @Volatile private var nativeBinding: NativeVpnSession? = null
+    internal val hasNativeOwner: Boolean get() = nativeBinding != null
     private var nativeToken: Any? = null
 
     @Volatile

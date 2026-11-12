@@ -15,6 +15,7 @@ import com.follow.clash.service.models.NotificationParams
 import com.follow.clash.service.models.VpnOptions
 import io.flutter.embedding.engine.FlutterEngine
 import kotlinx.coroutines.CoroutineScope
+import java.io.File
 
 internal data class ServiceRuntime(
     val vpn: Boolean,
@@ -29,6 +30,7 @@ internal data class ServiceRuntime(
 internal interface ServiceStateHost {
     val scope: CoroutineScope
     val runtime: ServiceRuntime?
+    val hasNativeOwner: Boolean get() = false
     val homeDirPath: String
     val sdkInt: Int
 
@@ -53,6 +55,9 @@ internal interface ServiceStateHost {
     suspend fun quickSetup(initParams: String, setupParams: String): Result<String>
 
     suspend fun startService(options: VpnOptions): Boolean
+
+    suspend fun startNativeService(config: File): NativeStartResult =
+        NativeStartResult(false, false, "Native VPN unavailable")
 
     suspend fun stopService()
 }
@@ -80,6 +85,9 @@ internal object AndroidServiceStateHost : ServiceStateHost {
 
     override val runtime: ServiceRuntime?
         get() = ServiceController.runtime
+
+    override val hasNativeOwner: Boolean
+        get() = ServiceController.hasNativeOwner
 
     override val homeDirPath: String
         get() = GlobalState.application.filesDir.path
@@ -145,6 +153,9 @@ internal object AndroidServiceStateHost : ServiceStateHost {
 
     override suspend fun startService(options: VpnOptions): Boolean =
         ServiceController.start(options)
+
+    override suspend fun startNativeService(config: File): NativeStartResult =
+        ServiceController.startSingBox(config)
 
     override suspend fun stopService() = ServiceController.stop()
 }

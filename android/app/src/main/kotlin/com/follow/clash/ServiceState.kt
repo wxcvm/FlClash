@@ -3,6 +3,7 @@ package com.follow.clash
 import com.follow.clash.models.SharedState
 import io.flutter.embedding.engine.FlutterEngine
 import kotlinx.coroutines.Deferred
+import java.io.File
 
 object ServiceState {
     private val machine = ServiceStateMachine(AndroidServiceStateHost)
@@ -29,6 +30,9 @@ object ServiceState {
     suspend fun awaitRunTime(): Long = machine.awaitRunTime()
 
     fun requestStart(): Deferred<Boolean> = machine.requestStart()
+
+    internal fun requestNativeStart(config: File): Deferred<NativeStartResult> =
+        machine.requestNativeStart(config)
 
     fun requestStop(): Deferred<Boolean> = machine.requestStop()
 

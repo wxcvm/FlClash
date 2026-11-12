@@ -16,6 +16,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
+import java.io.File
 
 enum class RunState {
     STARTED,
@@ -128,6 +129,37 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return host.scope.async { outcome.await() == StartOutcome.STARTED }
     }
 
+    fun requestNativeStart(config: File): Deferred<NativeStartResult> {
+        val request = createRequest(running = true)
+        return host.scope.async {
+            val result = startPreparationLock.withLock {
+                if (!isCurrent(request)) {
+                    return@withLock NativeStartResult(false, false, "Superseded by a newer request")
+                }
+                if (!prepareVpn(true)) {
+                    return@withLock NativeStartResult(false, false, VPN_PERMISSION_MESSAGE)
+                }
+                transitionLock.withLock {
+                    if (!isCurrent(request)) {
+                        return@withLock NativeStartResult(false, false, "Superseded by a newer request")
+                    }
+                    transitioning(RunState.STARTING) {
+                        host.startNativeService(config)
+                    }
+                }
+            }
+            // A rejected native config or restored Mihomo is still a live run.
+            // Do not use abandon(), which would stop that working service.
+            transitionLock.withLock {
+                if (isCurrent(request) && !result.started && host.runtime == null && !host.hasNativeOwner) {
+                    arbiter.resetToStopped(request)
+                }
+                publish()
+            }
+            result
+        }
+    }
+
     fun requestStop(): Deferred<Boolean> {
         val request = createRequest(running = false)
         return host.scope.async { stop(request) }
@@ -140,7 +172,8 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
 
     // No new request for a settled run: one refused at a prompt would take the service down.
     private fun isStartedAs(options: VpnOptions?): Boolean =
-        runState.value == RunState.STARTED && host.runtime?.vpn == options?.enable
+        runState.value == RunState.STARTED &&
+            (host.runtime?.engine == "sing-box" || host.runtime?.vpn == options?.enable)
 
     // The intent is claimed before the Core is set up, so a second action that lands meanwhile
     // toggles this start off instead of racing a second setup against it.
@@ -240,7 +273,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             return false
         }
         val options = sharedState.vpnOptions ?: return false
-        if (!prepareVpn(options)) {
+        if (!prepareVpn(options.enable)) {
             if (host.app() == null && isCurrent(request)) {
                 host.showToast(VPN_PERMISSION_MESSAGE)
             }
@@ -249,7 +282,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return transitionLock.withLock {
             when {
                 !isCurrent(request) -> false
-                host.runtime?.vpn == options.enable -> true
+                host.runtime?.engine == "sing-box" || host.runtime?.vpn == options.enable -> true
                 else -> transitioning(RunState.STARTING) {
                     host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
                 }
@@ -286,10 +319,10 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             return@withLock false
         }
         abandonVpnPreparation()
-        if (host.runtime != null) {
+        if (host.runtime != null || host.hasNativeOwner) {
             stopLocked()
         }
-        isCurrent(request)
+        isCurrent(request) && host.runtime == null && !host.hasNativeOwner
     }
 
     private suspend fun stopLocked() = transitioning(RunState.STOPPING) { stopService() }
@@ -324,9 +357,9 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         }
     }
 
-    private suspend fun prepareVpn(options: VpnOptions): Boolean {
+    private suspend fun prepareVpn(enable: Boolean): Boolean {
         val app = host.app()
-            ?: return !options.enable || host.isVpnPermissionGranted()
+            ?: return !enable || host.isVpnPermissionGranted()
         return suspendCancellableCoroutine { continuation ->
             val callback: (Boolean) -> Unit = { granted ->
                 pendingVpnPreparation = null
@@ -342,7 +375,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
                 pendingVpnPreparation = null
                 app.cancelVpnPreparation(callback)
             }
-            app.prepareVpn(options.enable, callback)
+            app.prepareVpn(enable, callback)
         }
     }
 
