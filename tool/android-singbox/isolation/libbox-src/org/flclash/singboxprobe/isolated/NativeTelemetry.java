@@ -25,7 +25,7 @@ public final class NativeTelemetry implements CommandClientHandler {
         options.addCommand(Libbox.CommandGroup);
         options.addCommand(Libbox.CommandOutbounds);
         options.addCommand(Libbox.CommandLog);
-        CommandClient client = Libbox.newCommandClient(observer, options);
+        CommandClient client = new CommandClient(observer, options);
         try {
             client.connect();
             observer.ready.await(3, TimeUnit.SECONDS);

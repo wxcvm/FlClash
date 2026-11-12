@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/views/config/general.dart';
+import 'package:fl_clash/views/config/android_native_dashboard.dart';
 import 'package:fl_clash/views/config/network.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
@@ -124,6 +125,17 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                   ),
                 ],
               ),
+              if (native)
+                generateSection(
+                  title: 'sing-box 运行管理',
+                  items: [
+                    ListItem.open(
+                      title: const Text('节点、流量与日志'),
+                      subtitle: const Text('原生策略组、延迟、运行数据'),
+                      widget: const AndroidNativeDashboard(),
+                    ),
+                  ],
+                ),
               generateSection(
                 title: 'sing-box 原生配置',
                 items: [
@@ -157,7 +169,7 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                 ],
                 footer: '使用带 TUN 的 sing-box 原生 JSON；不会转换 Clash 订阅。'
                     '启动失败时尝试恢复先前的 Mihomo VPN。'
-                    '当前不支持原生节点管理、流量统计或自动切换。',
+                    '节点、流量与日志可在运行管理查看；暂不支持自动切换。',
               ),
               if (_busy)
                 const Padding(

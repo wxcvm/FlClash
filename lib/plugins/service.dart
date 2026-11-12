@@ -129,6 +129,22 @@ class Service {
     return status;
   }
 
+  Future<Map<String, dynamic>> getNativeSnapshot() async {
+    final json = await methodChannel.invokeMethod<String>('nativeSnapshot');
+    return Map<String, dynamic>.from(jsonDecode(json ?? '{}') as Map);
+  }
+
+  Future<void> selectNativeOutbound(String group, String tag) async {
+    await methodChannel.invokeMethod<bool>('selectNativeOutbound', {
+      'group': group,
+      'tag': tag,
+    });
+  }
+
+  Future<void> testNativeOutbound(String tag) async {
+    await methodChannel.invokeMethod<bool>('testNativeOutbound', {'tag': tag});
+  }
+
   Future<String> validateNativeCore(String path) async =>
       await methodChannel.invokeMethod<String>('validateNativeCore', {
         'path': path,
