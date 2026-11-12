@@ -2,14 +2,14 @@ name: Android optional sing-box package
 on:
   workflow_dispatch:
   push:
-    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe]
+    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/android-dns-path-recovery]
     paths:
       - 'android/**'
       - 'lib/**'
       - 'tool/android-singbox/isolation/libbox-src/**'
       - '.github/workflows/android-singbox-package.yaml'
   pull_request:
-    branches: [main, feat/android-singbox-core-ui]
+    branches: [main, feat/android-singbox-core-ui, feat/android-mihomo-process-probe]
     paths:
       - 'android/**'
       - 'lib/**'
@@ -24,7 +24,7 @@ permissions:
   actions: read
 jobs:
   package:
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || github.head_ref == 'feat/android-mihomo-process-probe'))
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || (github.head_ref == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-dns-path-recovery')))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -66,7 +66,7 @@ jobs:
       - name: Test network epoch state transitions
         run: |
           mkdir -p /tmp/flclash-network-test
-          javac --release 8 -d /tmp/flclash-network-test tool/android-singbox/isolation/libbox-src/org/flclash/singboxprobe/isolated/NetworkEpoch.java tool/android-singbox/isolation/tests/NetworkEpochTest.java
+          javac --release 8 -d /tmp/flclash-network-test tool/android-singbox/isolation/libbox-src/org/flclash/singboxprobe/isolated/NetworkEpoch.java tool/android-singbox/isolation/libbox-src/org/flclash/singboxprobe/isolated/NetworkPathFingerprint.java tool/android-singbox/isolation/tests/NetworkEpochTest.java
           java -cp /tmp/flclash-network-test org.flclash.singboxprobe.isolated.NetworkEpochTest
       - name: Test native config lease
         run: |
@@ -135,7 +135,7 @@ jobs:
           path: native-app-apk/*.apk
           retention-days: 7
       - name: Build isolated Mihomo device test APK
-        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/android-dns-path-recovery' || github.head_ref == 'feat/android-dns-path-recovery'
         run: |
           cd android
           ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Ptarget-platform=android-arm64 -PflclashMihomoProcessProbe=true -PflclashMihomoIsolated=true -PflclashSingBoxAar="$LIBBOX_AAR"
@@ -156,7 +156,7 @@ jobs:
           cp "$app" mihomo-process-test/app.apk
           cp "$test_apk" mihomo-process-test/test.apk
       - uses: actions/upload-artifact@v4
-        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/android-dns-path-recovery' || github.head_ref == 'feat/android-dns-path-recovery'
         with:
           name: mihomo-process-device-test
           path: mihomo-process-test/

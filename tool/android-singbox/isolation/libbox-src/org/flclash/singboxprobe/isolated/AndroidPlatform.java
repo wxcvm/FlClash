@@ -110,12 +110,14 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
             @Override public void onLinkPropertiesChanged(Network network, LinkProperties value) {
                 if (callback != this || !network.equals(candidate)) return;
                 link = value;
+                retries = 0;
                 refresh();
             }
 
             @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities value) {
                 if (callback != this || !network.equals(candidate)) return;
                 caps = value;
+                retries = 0;
                 refresh();
             }
 
@@ -136,15 +138,23 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                 handler.removeCallbacks(retry);
                 // Prefer callback-delivered properties, not synchronous queries from onAvailable.
                 if (link == null || caps == null) return;
+                if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                    || (Build.VERSION.SDK_INT >= 28
+                        && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED))) {
+                    invalidatePath();
+                    return;
+                }
                 String name = link.getInterfaceName();
                 if (name != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) {
                     try {
                         java.net.NetworkInterface nic = java.net.NetworkInterface.getByName(name);
                         if (nic != null && nic.getIndex() > 0) {
                             boolean metered = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
-                            String fingerprint = name + "/" + nic.getIndex()
-                                + "/" + link.getDnsServers() + "/" + link.getLinkAddresses()
-                                + "/" + link.getRoutes();
+                            String fingerprint = NetworkPathFingerprint.of(name, nic.getIndex(),
+                                link.getDnsServers(), link.getLinkAddresses(), link.getRoutes(),
+                                Build.VERSION.SDK_INT >= 28 && link.isPrivateDnsActive(),
+                                Build.VERSION.SDK_INT >= 28 ? link.getPrivateDnsServerName() : null,
+                                link.getDomains());
                             NetworkEpoch.Snapshot<Network> previous = networks.snapshot();
                             if (networks.publish(this, candidate, fingerprint)) {
                                 cancelStaleDns();
@@ -170,8 +180,17 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                         android.util.Log.w("FlClashLibbox", "Cannot read underlying interface", error);
                     }
                 }
+                // An unavailable NIC must not keep the previous DNS path usable.
+                invalidatePath();
                 // A bounded retry handles Android creating the NIC after the callback.
                 if (++retries <= 10 && callback == this) handler.postDelayed(retry, 100);
+            }
+
+            private void invalidatePath() {
+                if (candidate != null && networks.invalidate(this, candidate)) {
+                    cancelStaleDns();
+                    if (callback == this) listener.updateDefaultInterface("", -1, false, false);
+                }
             }
         };
         networks.begin(next);
