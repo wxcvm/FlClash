@@ -158,7 +158,7 @@ private class FakeHost(override val scope: CoroutineScope) : ServiceStateHost {
         if (!startSucceeds) {
             return false
         }
-        runtime = ServiceRuntime(vpn = runsAsVpn ?: options.enable, startedAtMillis = STARTED_AT)
+        runtime = ServiceRuntime(vpn = runsAsVpn ?: options.enable, startedAtMillis = STARTED_AT, nativeConfigPath = options.nativeConfigPath)
         return true
     }
 
@@ -879,5 +879,41 @@ class ServiceStateMachineTest {
         assertTrue(host.logs.any { it.contains("binder died") })
         assertFalse(machine.captureRequestToken().running)
         assertEquals(RunState.STOPPED, machine.runState.value)
+    }
+
+    @Test
+    fun `native selection is not mistaken for an already running Mihomo VPN`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestStart().await())
+        val native = vpnOptions().copy(nativeConfigPath = "/files/native.json")
+        machine.syncSharedState(configuredState().copy(vpnOptions = native))
+        assertTrue(machine.requestStart().await())
+        assertEquals(2, host.startCalls)
+        assertEquals("/files/native.json", host.runtime?.nativeConfigPath)
+        assertTrue(machine.requestStart().await())
+        assertEquals(2, host.startCalls)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestStart().await())
+        assertEquals(3, host.startCalls)
+        assertEquals(null, host.runtime?.nativeConfigPath)
+    }
+
+    @Test
+    fun `rejected native preflight preserves the running Mihomo VPN`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestStart().await())
+        host.startSucceeds = false
+        machine.syncSharedState(configuredState().copy(
+            vpnOptions = vpnOptions().copy(nativeConfigPath = "/files/bad.json"),
+        ))
+        assertFalse(machine.requestStart().await())
+        assertEquals(RunState.STARTED, machine.runState.value)
+        assertEquals(0, host.stopCalls)
+        assertTrue(machine.isRunRequested)
+        assertEquals(null, host.runtime?.nativeConfigPath)
     }
 }

@@ -19,7 +19,11 @@ import kotlinx.coroutines.CoroutineScope
 internal data class ServiceRuntime(
     val vpn: Boolean,
     val startedAtMillis: Long,
-)
+    val nativeConfigPath: String? = null,
+) {
+    fun matches(options: VpnOptions?): Boolean =
+        options != null && vpn == options.enable && nativeConfigPath == options.nativeConfigPath
+}
 
 /**
  * The machine owns the arbitration and the transitions; this is only the part that cannot run on a

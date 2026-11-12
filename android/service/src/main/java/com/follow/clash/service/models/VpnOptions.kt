@@ -26,6 +26,8 @@ data class VpnOptions(
     val routeAddress: List<String>,
     val mtu: Int = 0,
     val congestionController: String? = null,
+    // An explicit native JSON profile; null keeps the ordinary Mihomo path.
+    val nativeConfigPath: String? = null,
 )
 
 private const val DEFAULT_TUN_MTU = 9000
