@@ -128,6 +128,9 @@ jobs:
           code=$((10#$base + run * 100 + attempt))
           test "$code" -le 2100000000
           echo "ANDROID_PREVIEW_CODE=$code" >> "$GITHUB_ENV"
+          # Flutter 3.47.6 adds an ABI offset to split APK version codes.
+          # This workflow ships a single ARM64 APK and reserves one exact code.
+          printf '\nforce-version-code-ignoring-abi=true\n' >> android/gradle.properties
       - name: Build ARM64 APK
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}

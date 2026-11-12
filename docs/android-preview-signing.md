@@ -46,3 +46,5 @@ Before either an artifact-only build or a public preview, the dual-platform work
 ## Build duration and retry
 
 Windows and Android build concurrently after exact-SHA CI and signing preflight, sharing one preview tag generated from the dispatch run. Publishing still waits for both verified packages. The APK verifier accepts the old and new apksigner certificate labels and requires all recognized fingerprints to equal the pinned key. A platform-specific Go cache avoids sharing Android cross-compiled artifacts with host tests; Windows reuses the desktop native dependency cache. The complete CI already performs Flutter analysis, so packaging does not repeat it.
+
+Flutter 3.47.6 normally adds an ABI-specific offset to split APK version codes. The single ARM64 release job sets `force-version-code-ignoring-abi=true` in its build checkout so the actual APK code equals the reserved release code; the package verification still checks that exact value. This does not change other local or upstream multi-ABI builds.
