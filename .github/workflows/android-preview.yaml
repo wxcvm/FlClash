@@ -46,7 +46,21 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: core/go.sum
+          cache: false
+      - name: Locate Go caches
+        id: go-cache
+        shell: bash
+        run: |
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.go-cache.outputs.mod }}
+            ${{ steps.go-cache.outputs.build }}
+          key: android-arm64-go-${{ env.GO_VERSION }}-${{ env.NDK_VERSION }}-${{ hashFiles('core/go.sum', 'core/Clash.Meta/go.sum', 'build_config.yaml', 'plugins/setup/setup_hooks/lib/src/go_builder.dart') }}
+          restore-keys: |
+            android-arm64-go-${{ env.GO_VERSION }}-${{ env.NDK_VERSION }}-
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -130,14 +144,16 @@ jobs:
           test -n "$apksigner"
           certs=$("$apksigner" verify --print-certs "$apk")
           printf '%s\n' "$certs"
-          fingerprint=$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-          [[ "$fingerprint" =~ ^[0-9a-fA-F]{64}$ ]]
-          test "${fingerprint,,}" = "$ANDROID_EXPECTED_CERT"
+          fingerprint=$(printf '%s\n' "$certs" | bash tool/ci/verify-android-cert.sh "$ANDROID_EXPECTED_CERT")
           aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
           test -n "$aapt"
           badging=$("$aapt" dump badging "$apk")
-          printf '%s\n' "$badging" | grep -E "^package: name='com\.follow\.clash' versionCode='${ANDROID_PREVIEW_CODE}' "
-          printf '%s\n' "$badging" | grep -F "versionName='${RELEASE_TAG#v}'"
+          package=$(printf '%s\n' "$badging" | sed -n '/^package: /p')
+          printf '%s\n' "$package"
+          [[ "$package" == *"name='com.follow.clash'"* && "$package" == *"versionCode='${ANDROID_PREVIEW_CODE}'"* && "$package" == *"versionName='${RELEASE_TAG#v}'"* ]] || {
+            echo '::error::APK package name or version does not match the release metadata.'
+            exit 1
+          }
           mkdir -p preview-assets
           name="FlClash-${RELEASE_TAG#v}-android-arm64-v8a.apk"
           cp "$apk" "preview-assets/$name"

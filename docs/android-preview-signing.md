@@ -42,3 +42,7 @@ Each new dual-platform release publishes `android-build.json` with the actual ve
 Android builds are now artifact-only reusable jobs. Do not backfill or replace an existing release APK: publish a new tag with a higher versionCode instead. The original official app requires one backup/reinstall/restore if its certificate differs. A rollback must be rebuilt under a new higher versionCode; an older APK is not an in-place rollback.
 
 Before either an artifact-only build or a public preview, the dual-platform workflow requires the latest push-triggered main build run for the exact source SHA to have completed successfully, including all nine named validation jobs. A failed, pending or skipped required job blocks packaging. Run the workflow on main only after its CI passes; use `publish: false` for an installable test candidate and `publish: true` for a new public prerelease. Real-device validation remains a separate requirement for stable promotion.
+
+## Build duration and retry
+
+Windows and Android build concurrently after exact-SHA CI and signing preflight, sharing one preview tag generated from the dispatch run. Publishing still waits for both verified packages. The APK verifier accepts the old and new apksigner certificate labels and requires all recognized fingerprints to equal the pinned key. A platform-specific Go cache avoids sharing Android cross-compiled artifacts with host tests; Windows reuses the desktop native dependency cache. The complete CI already performs Flutter analysis, so packaging does not repeat it.
