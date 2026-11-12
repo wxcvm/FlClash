@@ -132,7 +132,10 @@ class SingBoxVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             SingBoxVpnControl.FOREGROUND -> promote(if (running) "sing-box VPN is running" else "Starting sing-box")
-            SingBoxVpnControl.STOP_ACTION -> closeAsync()
+            SingBoxVpnControl.STOP_ACTION -> {
+                closeAsync()
+                notifyVpnRevoked()
+            }
             else -> stopSelf(startId)
         }
         return START_NOT_STICKY

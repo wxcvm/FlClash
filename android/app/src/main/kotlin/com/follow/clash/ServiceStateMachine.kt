@@ -140,19 +140,20 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
 
     // No new request for a settled run: one refused at a prompt would take the service down.
     private fun isStartedAs(options: VpnOptions?): Boolean =
-        runState.value == RunState.STARTED && host.runtime?.vpn == options?.enable
+        runState.value == RunState.STARTED && host.runtime?.matches(options) == true
 
     // The intent is claimed before the Core is set up, so a second action that lands meanwhile
     // toggles this start off instead of racing a second setup against it.
     private suspend fun startFromPreferences() {
         val request = createRequest(running = true)
         sharedState = host.loadSharedState()
-        if (sharedState.setupParams == null || sharedState.vpnOptions == null) {
+        val options = sharedState.vpnOptions
+        if (options == null || (options.nativeConfigPath == null && sharedState.setupParams == null)) {
             host.showToast(MISSING_CONFIG_MESSAGE)
             abandon(request)
             return
         }
-        if (!setupCore()) {
+        if (options.nativeConfigPath == null && !setupCore()) {
             abandon(request)
         } else if (launchStart(request).await() == StartOutcome.FAILED) {
             host.showToast(START_FAILED_MESSAGE)
@@ -222,7 +223,15 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             host.log("Unable to process service start request: $error")
             false
         }
-        return if (started) StartOutcome.STARTED else abandon(request)
+        if (started) return StartOutcome.STARTED
+        // A rejected native preflight or a blocked handoff must leave the
+        // still-running owner intact, rather than abandoning it as a failed first start.
+        if (sharedState.vpnOptions?.nativeConfigPath != null && isCurrent(request) && host.runtime != null) {
+            publish()
+            host.showToast(START_FAILED_MESSAGE)
+            return StartOutcome.FAILED
+        }
+        return abandon(request)
     }
 
     private suspend fun abandon(request: RunRequest): StartOutcome {
@@ -249,7 +258,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return transitionLock.withLock {
             when {
                 !isCurrent(request) -> false
-                host.runtime?.vpn == options.enable -> true
+                host.runtime?.matches(options) == true -> true
                 else -> transitioning(RunState.STARTING) {
                     host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
                 }
@@ -259,7 +268,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
 
     // system/mixed hand TCP to the kernel via the tun subnet, which Android 17 gates as local network.
     private fun withLocalNetworkFallback(options: VpnOptions): VpnOptions {
-        if (!options.enable || options.stack !in KERNEL_TCP_STACKS ||
+        if (options.nativeConfigPath != null || !options.enable || options.stack !in KERNEL_TCP_STACKS ||
             host.isLocalNetworkPermissionGranted()
         ) {
             return options

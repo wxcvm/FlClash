@@ -14,6 +14,8 @@ import com.follow.clash.service.ManagedService
 import com.follow.clash.service.NetworkObserver
 import com.follow.clash.service.ProxyService
 import com.follow.clash.service.ServiceConfig
+import com.follow.clash.service.SingBoxVpnControl
+import java.io.File
 import com.follow.clash.service.VpnService
 import com.follow.clash.service.models.VpnOptions
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +73,10 @@ object ServiceController {
     }
 
     suspend fun start(options: VpnOptions): Boolean = lock.withLock {
+        if (options.nativeConfigPath != null) return@withLock startNative(options)
+        if (runtime?.nativeConfigPath != null) {
+            if (!stopForHandoff()) return@withLock false
+        }
         ServiceConfig.updateVpnOptions(options)
         val nextIntent = if (options.enable) {
             VpnService::class.intent
@@ -83,9 +89,9 @@ object ServiceController {
                 tearDownServices()
             }
             lateinit var nextBinding: ManagedServiceBinding
-            nextBinding = ManagedServiceBinding(nextIntent) { message ->
+            nextBinding = ManagedServiceBinding(nextIntent, { message ->
                 handleServiceDisconnected(nextBinding, message)
-            }
+            })
             binding = nextBinding
             nextBinding.bind().onFailure { error ->
                 GlobalState.log("Unable to bind background service: $error")
@@ -114,8 +120,72 @@ object ServiceController {
         true
     }
 
+    // Candidate preflight happens before disturbing the existing VPN. The native
+    // service uses its own process and does not initialize libbox in Flutter.
+    private suspend fun startNative(options: VpnOptions): Boolean {
+        val app = GlobalState.application
+        val path = options.nativeConfigPath ?: return false
+        if (!options.enable || !SingBoxVpnControl.isAvailable(app)) {
+            GlobalState.log("Native sing-box VPN is unavailable")
+            return false
+        }
+        val profile = File(path)
+        if (!profile.isFile) {
+            GlobalState.log("Native sing-box profile is missing")
+            return false
+        }
+        lateinit var candidate: ManagedServiceBinding
+        candidate = ManagedServiceBinding(
+            SingBoxVpnControl.bindIntent(app),
+            onDisconnected = { message -> handleServiceDisconnected(candidate, message) },
+            nativeProfile = profile,
+        )
+        val preflight = candidate.bind().mapCatching {
+            candidate.useService { service -> (service as NativeManagedService).validate() }.getOrThrow()
+        }
+        if (preflight.isFailure) {
+            candidate.unbind()
+            GlobalState.log("Native profile rejected: ${preflight.exceptionOrNull()}")
+            return false
+        }
+        if (!stopForHandoff()) {
+            candidate.unbind()
+            return false
+        }
+        binding = candidate
+        val result = candidate.useService { service -> service.start() }
+        if (result.isFailure) {
+            GlobalState.log("Native VPN start failed: ${result.exceptionOrNull()}")
+            candidate.stopIfConnected()
+            release()
+            return false
+        }
+        runtime = ServiceRuntime(
+            vpn = true,
+            startedAtMillis = System.currentTimeMillis(),
+            nativeConfigPath = path,
+        )
+        return true
+    }
+
+    // Unlike general shutdown, handoff must not ignore an old owner's stop error.
+    private suspend fun stopForHandoff(): Boolean {
+        val current = binding
+        if (current != null) {
+            val stopped = current.useService { service -> service.stop() }
+            if (stopped.isFailure) {
+                GlobalState.log("VPN handoff blocked: ${stopped.exceptionOrNull()}")
+                return false
+            }
+        }
+        release()
+        stopServices()
+        return true
+    }
+
     suspend fun stop() = lock.withLock {
         tearDownServices()
+        runCatching { GlobalState.application.stopService(SingBoxVpnControl.foregroundIntent(GlobalState.application)) }
         release()
     }
 
@@ -164,6 +234,7 @@ object ServiceController {
 private class ManagedServiceBinding(
     private val intent: Intent,
     private val onDisconnected: (String) -> Unit,
+    private val nativeProfile: File? = null,
 ) : ServiceConnection {
     val component: ComponentName?
         get() = intent.component
@@ -219,7 +290,9 @@ private class ManagedServiceBinding(
 
     override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
         runCatching {
-            when (binder) {
+            if (nativeProfile != null) {
+                NativeManagedService(requireNotNull(binder), nativeProfile)
+            } else when (binder) {
                 is VpnService.LocalBinder -> binder.service
                 is ProxyService.LocalBinder -> binder.service
                 null -> error("Binder is empty")
@@ -247,5 +320,26 @@ private class ManagedServiceBinding(
     private fun disconnect(message: String) {
         serviceState.value = Result.failure(IllegalStateException(message))
         onDisconnected(message)
+    }
+}
+
+/** Adapter for the existing binding/controller contract; native RPCs run off the UI thread. */
+private class NativeManagedService(
+    private val remote: IBinder,
+    private val profile: File,
+) : ManagedService {
+    fun validate() {
+        SingBoxVpnControl.validate(remote, profile)
+    }
+
+    override fun start() {
+        val app = GlobalState.application
+        app.startForegroundService(SingBoxVpnControl.foregroundIntent(app))
+        SingBoxVpnControl.start(remote, profile)
+        check(SingBoxVpnControl.isRunning(remote)) { "Native VPN did not start" }
+    }
+
+    override fun stop() {
+        SingBoxVpnControl.stop(remote)
     }
 }
