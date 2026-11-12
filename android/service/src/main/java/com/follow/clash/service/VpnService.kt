@@ -26,6 +26,9 @@ import android.net.VpnService as SystemVpnService
 class VpnService : SystemVpnService(), ManagedService {
     private val modules = ServiceModules(this)
     private val binder = LocalBinder()
+    private val control = MihomoServiceControl.binder(this, vpn = true) {
+        Build.VERSION.SDK_INT < 29 || (!isAlwaysOn && !isLockdownEnabled)
+    }
     private val tunnel = TunnelSession(MihomoTunnelEngine)
 
     override fun onDestroy() {
@@ -104,6 +107,8 @@ class VpnService : SystemVpnService(), ManagedService {
     override fun onBind(intent: Intent): IBinder? =
         if (intent.action == SystemVpnService.SERVICE_INTERFACE) {
             super.onBind(intent)
+        } else if (intent.action == MihomoServiceControl.ACTION) {
+            control
         } else {
             binder
         }

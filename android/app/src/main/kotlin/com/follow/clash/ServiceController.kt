@@ -13,6 +13,7 @@ import com.follow.clash.common.GlobalState
 import com.follow.clash.common.intent
 import com.follow.clash.core.Core
 import com.follow.clash.service.ManagedService
+import com.follow.clash.service.MihomoServiceControl
 import com.follow.clash.service.NetworkObserver
 import com.follow.clash.service.ProxyService
 import com.follow.clash.service.ServiceConfig
@@ -20,6 +21,7 @@ import com.follow.clash.service.SingBoxVpnControl
 import java.io.File
 import com.follow.clash.service.VpnService
 import com.follow.clash.service.models.VpnOptions
+import com.follow.clash.service.models.NotificationParams
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CancellationException
@@ -89,11 +91,11 @@ object ServiceController {
 
     private suspend fun startMihomoLocked(options: VpnOptions): Boolean {
         ServiceConfig.updateVpnOptions(options)
-        val nextIntent = if (options.enable) {
+        val nextIntent = (if (options.enable) {
             VpnService::class.intent
         } else {
             ProxyService::class.intent
-        }
+        }).apply { action = MihomoServiceControl.ACTION }
 
         if (binding?.component != nextIntent.component) {
             if (binding != null) {
@@ -236,7 +238,11 @@ object ServiceController {
         }
         if (current != null) {
             val stopped = if (hasNativeOwner) current.stopIfConnected() else current.useService { service ->
-                if (service is VpnService && Build.VERSION.SDK_INT >= 29) {
+                if (service is MihomoManagedService) {
+                    check(service.canHandoff()) {
+                        "Disable always-on/lockdown VPN before switching cores"
+                    }
+                } else if (service is VpnService && Build.VERSION.SDK_INT >= 29) {
                     check(!service.isAlwaysOn && !service.isLockdownEnabled) {
                         "Disable always-on/lockdown VPN before switching cores"
                     }
@@ -380,6 +386,8 @@ private class ManagedServiceBinding(
             if (nativeProfile != null) {
                 check(nativeOwner == null) { "Native process was replaced; request a new session" }
                 NativeManagedService(requireNotNull(binder), nativeProfile).also { nativeOwner = it }
+            } else if (intent.action == MihomoServiceControl.ACTION) {
+                MihomoManagedService(requireNotNull(binder))
             } else when (binder) {
                 is VpnService.LocalBinder -> binder.service
                 is ProxyService.LocalBinder -> binder.service
@@ -409,6 +417,20 @@ private class ManagedServiceBinding(
         serviceState.value = Result.failure(IllegalStateException(message))
         onDisconnected(message)
     }
+}
+
+/** The same lifecycle calls work with a local Binder or a remote BinderProxy. */
+private class MihomoManagedService(private val remote: IBinder) : ManagedService {
+    override fun start() {
+        MihomoServiceControl.start(
+            remote,
+            requireNotNull(ServiceConfig.vpnOptions),
+            ServiceConfig.notificationParams.value,
+        )
+    }
+
+    override fun stop() = MihomoServiceControl.stop(remote)
+    fun canHandoff(): Boolean = MihomoServiceControl.canHandoff(remote)
 }
 
 /** Adapter for the existing binding/controller contract; native RPCs run off the UI thread. */
