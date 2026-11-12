@@ -1,0 +1,132 @@
+name: Android preview
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-preview.yaml'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing fork preview release tag
+        required: true
+        default: v0.9.3-preview.1.1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-preview
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+  GO_VERSION: '1.27.1'
+  NDK_VERSION: r28c
+  RELEASE_TAG: ${{ inputs.release_tag || 'v0.9.3-preview.1.1' }}
+
+jobs:
+  android:
+    if: github.repository == 'wxcvm/FlClash' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate target release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+\.[0-9]+$ ]]
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft --jq '.isPrerelease and (.isDraft | not)')" = true
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          submodules: recursive
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: core/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+          link-to-sdk: true
+          add-to-path: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Fetch CA bundle
+        shell: bash
+        run: |
+          bundle=core/Clash.Meta/component/ca/ca-certificates.crt
+          curl -fsSL --retry 3 -o "$bundle" https://curl.se/ca/cacert-2026-09-25.pem
+          echo "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505  $bundle" | sha256sum -c -
+      - name: Configure Android signing
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$KEYSTORE" && -n "$KEY_ALIAS" && -n "$KEY_PASSWORD" && -n "$STORE_PASSWORD" ]]; then
+            printf '%s' "$KEYSTORE" | base64 --decode > android/app/keystore.jks
+            {
+              printf 'keyAlias=%s\n' "$KEY_ALIAS"
+              printf 'storePassword=%s\n' "$STORE_PASSWORD"
+              printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+            } >> android/local.properties
+            echo 'APK_SIGNING=release' >> "$GITHUB_ENV"
+          else
+            echo '::warning::No complete Android signing secrets; using the existing separate .dev package with CI debug signing. Future builds may require reinstall.'
+            echo 'APK_SIGNING=debug' >> "$GITHUB_ENV"
+          fi
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build ARM64 APK
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: flutter build apk --release --target-platform android-arm64 --split-per-abi --dart-define=APP_ENV=pre --dart-define=FLCLASH_PREVIEW_TAG="$RELEASE_TAG"
+      - name: Verify APK and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          test -s "$apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          test -n "$apksigner"
+          "$apksigner" verify --print-certs "$apk"
+          mkdir -p preview-assets
+          name="FlClash-${RELEASE_TAG#v}-android-arm64-v8a.apk"
+          cp "$apk" "preview-assets/$name"
+          gh release download "$RELEASE_TAG" --pattern SHA256SUMS --dir preview-assets
+          (
+            cd preview-assets
+            sed -i "/  $name\$/d" SHA256SUMS
+            sha256sum "$name" >> SHA256SUMS
+          )
+          gh release upload "$RELEASE_TAG" "preview-assets/$name" preview-assets/SHA256SUMS --clobber
+          gh release view "$RELEASE_TAG" --json body --jq '.body' > preview-notes.md
+          printf '\n\nAndroid ARM64 APK: %s\n' "$name" >> preview-notes.md
+          if [[ "$APK_SIGNING" == debug ]]; then
+            printf 'Android preview uses the separate com.follow.clash.dev package and CI debug signing; it can coexist with the official release, but later builds may require uninstall/reinstall. Back up profiles before reinstalling.\n' >> preview-notes.md
+          else
+            printf 'Android APK uses the configured repository release signing key. Existing apps signed with a different key cannot be upgraded in place.\n' >> preview-notes.md
+          fi
+          gh release edit "$RELEASE_TAG" --notes-file preview-notes.md
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlClash-Android-arm64-preview
+          path: preview-assets/*.apk
+          if-no-files-found: error
