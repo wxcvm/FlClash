@@ -20,10 +20,11 @@ class AndroidManager extends ConsumerStatefulWidget {
 }
 
 class _AndroidContainerState extends ConsumerState<AndroidManager>
-    with ServiceListener {
+    with ServiceListener, WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     ref.listenManual(appSettingProvider.select((state) => state.hidden), (
       prev,
       next,
@@ -91,6 +92,12 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
     try {
       await ref.read(coreActionProvider.notifier).initCore();
       if (!mounted || revision != _nativeRevision || service?.nativeOwnsRuntime == true) return;
+      // A retired Core reopened while idle needs the original stopped-state profile.
+      // On switch-back, the native controller already restored the running profile.
+      if (service?.nativeStatus.value?.engine == 'idle') {
+        await ref.read(setupActionProvider.notifier).applyProfile(force: true, silence: true);
+      }
+      if (!mounted || revision != _nativeRevision || service?.nativeOwnsRuntime == true) return;
       if (ref.read(appSettingProvider).openLogs) {
         await ref.read(coreHandlerProvider).startLog();
       }
@@ -113,7 +120,13 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_refreshNativeStatus());
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     debouncer.cancel(FunctionTag.reloadPackages);
     if (app?.onPackagesChanged == _reloadPackages) {
       app?.onPackagesChanged = null;

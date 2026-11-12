@@ -412,7 +412,7 @@ class ProxiesAction extends _$ProxiesAction {
     if (service?.nativeOwnsRuntime == true) return;
     final generation = _speedTestGeneration;
     try {
-      final groups = await retry(
+      final groups = await retry<List<Group>>(
         task: () async {
           if (service?.nativeOwnsRuntime == true) return [];
           final sortType = ref.read(

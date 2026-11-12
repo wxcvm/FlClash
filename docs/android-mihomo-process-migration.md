@@ -66,3 +66,14 @@ reinitializes Core without opening listeners. The core management screen exposes
 an explicit switch-back action. Device instrumentation now checks production Core
 retirement and a new PID on restart. Actual traffic, Android always-on, background
 polling UX, and memory/power measurement are still acceptance items.
+
+Stage 6: Android home selects the native dashboard when sing-box owns the VPN or
+retirement/cleanup is pending. The old Mihomo page tree is unmounted. Core RPCs
+are short-circuited before Flutter sends them, and the Mihomo traffic ticker,
+auto-speed tests and scheduled setup jobs pause. The native home samples only
+libbox CommandStatus after each four-second foreground interval, disconnecting
+the command client after every bounded read; background/covered pages do not
+poll, and full node/log snapshots remain on demand. Stale status and session
+responses are discarded. Explicit stop/switch-back restores the ordinary home;
+no automatic change of the original dashboard customization is saved. Flutter
+service tests cover ownership, concurrent replies and the status-only command.

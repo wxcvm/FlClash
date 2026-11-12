@@ -47,7 +47,6 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     _service.nativeStatus.addListener(_onNativeStatus);
     _onNativeStatus();
-    if (_service.nativeStatus.value?.engine == 'sing-box') unawaited(_refresh());
     _scheduleLive();
   }
 
@@ -72,6 +71,11 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
       _batchProgress = '';
     });
     _scheduleLive();
+    if (started != 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _sessionStartedAt == started && !_busy) unawaited(_refresh());
+      });
+    }
   }
 
   @override
