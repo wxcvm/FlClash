@@ -112,6 +112,7 @@ func loadConfigWithBaseSnapshot(base *SetupBase, configPath string) (*config.Con
 	if err := document.Decode(raw); err != nil {
 		return nil, configDigest{}, err
 	}
+	excludeSubscriptionInfoGroups(raw, document.Content[0])
 	digest, err := writeConfigDocumentSnapshot(configPath, document)
 	if err != nil {
 		return nil, configDigest{}, err

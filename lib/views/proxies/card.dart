@@ -8,6 +8,8 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'common.dart';
+
 void selectGroupProxy(
   WidgetRef ref, {
   required String groupName,
@@ -135,6 +137,7 @@ class ProxyCard extends ConsumerWidget {
     final delayText = _DelayText(
       proxy: proxy,
       testUrl: testUrl,
+      delayOnly: ProxyPickerScope.delayOnlyOf(context),
       alignment: isLoose ? Alignment.centerLeft : Alignment.centerRight,
     );
     final proxyNameText = _buildProxyNameText(context);
@@ -154,9 +157,20 @@ class ProxyCard extends ConsumerWidget {
         const SizedBox(height: 6),
         Row(
           children: [
-            delayText,
-            const SizedBox(width: 6),
-            Expanded(child: _DownloadSpeedText(proxyName: proxy.name)),
+            if (isSubscriptionInfoProxyName(proxy.name))
+              Expanded(
+                child: Text(
+                  '订阅信息 · 不参与测速',
+                  style: AppTextStyle.caption2.of(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )
+            else ...[
+              delayText,
+              const SizedBox(width: 6),
+              Expanded(child: _DownloadSpeedText(proxy: proxy)),
+            ],
           ],
         ),
       ],
@@ -249,11 +263,13 @@ class _DelayText extends ConsumerStatefulWidget {
     required this.proxy,
     required this.testUrl,
     required this.alignment,
+    required this.delayOnly,
   });
 
   final Proxy proxy;
   final String? testUrl;
   final Alignment alignment;
+  final bool delayOnly;
 
   @override
   ConsumerState<_DelayText> createState() => _DelayTextState();
@@ -287,9 +303,12 @@ class _DelayTextState extends ConsumerState<_DelayText> {
   }
 
   void _handleTestCurrentDelay() {
-    ref
-        .read(proxiesActionProvider.notifier)
-        .testProxyMetrics(widget.proxy, widget.testUrl);
+    final action = ref.read(proxiesActionProvider.notifier);
+    if (widget.delayOnly) {
+      action.proxyDelayTest(widget.proxy, widget.testUrl);
+    } else {
+      action.testProxyMetrics(widget.proxy, widget.testUrl);
+    }
   }
 
   Widget _withFocusRing(BuildContext context, Widget child) {
@@ -398,28 +417,39 @@ class _DelayTextState extends ConsumerState<_DelayText> {
 }
 
 class _DownloadSpeedText extends ConsumerWidget {
-  const _DownloadSpeedText({required this.proxyName});
+  const _DownloadSpeedText({required this.proxy});
 
-  final String proxyName;
+  final Proxy proxy;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sample = ref.watch(
-      downloadSpeedResultsProvider.select((results) => results[proxyName]),
+      downloadSpeedResultsProvider.select((results) => results[proxy.name]),
     );
     final label = switch (sample) {
-      null => '↓ —',
+      null => '↓ 待测速',
       (running: true, bytesPerSecond: _) => '↓ 测速中',
       (running: false, bytesPerSecond: 0) => '↓ 失败',
       (running: false, :final bytesPerSecond) =>
         '↓ ${formatDownloadSpeed(bytesPerSecond)}',
     };
-    return Text(
-      label,
-      textAlign: TextAlign.end,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: AppTextStyle.caption2.of(context, emphasized: true),
+    return HoverTooltip(
+      message: '点击测试真实下载速度（消耗测试流量）',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: sample?.running == true
+            ? null
+            : () => ref
+                  .read(proxiesActionProvider.notifier)
+                  .testProxyDownloadSpeed(proxy),
+        child: Text(
+          label,
+          textAlign: TextAlign.end,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyle.caption2.of(context, emphasized: true),
+        ),
+      ),
     );
   }
 }

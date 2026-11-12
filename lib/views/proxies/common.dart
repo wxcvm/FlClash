@@ -6,6 +6,28 @@ import 'package:prism_ui/typography.dart';
 
 const proxyGridSpacing = 8.0;
 
+// The node picker keeps delay probes lightweight. Explicit speed actions
+// still remain available on the main page.
+class ProxyPickerScope extends InheritedWidget {
+  const ProxyPickerScope({
+    super.key,
+    required this.delayOnly,
+    required super.child,
+  });
+
+  final bool delayOnly;
+
+  static bool delayOnlyOf(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<ProxyPickerScope>()
+          ?.delayOnly ??
+      false;
+
+  @override
+  bool updateShouldNotify(ProxyPickerScope oldWidget) =>
+      delayOnly != oldWidget.delayOnly;
+}
+
 double get listHeaderHeight {
   final measure = globalState.measure;
   return 20 +

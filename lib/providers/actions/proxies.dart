@@ -1,8 +1,13 @@
 part of '../action.dart';
 
-/// Keep a working incumbent unless the contender is at least 20% faster.
+/// Automatic selection keeps a working incumbent unless the contender is
+/// at least 20% faster. An explicit fastest-node request uses the top rate.
 /// Rates are conservative lower-of-two samples in bytes per second.
-String? chooseDownloadSpeedWinner(Map<String, int> rates, String incumbent) {
+String? chooseDownloadSpeedWinner(
+  Map<String, int> rates,
+  String incumbent, {
+  bool automatic = true,
+}) {
   String? winner;
   var best = 0;
   for (final entry in rates.entries) {
@@ -15,7 +20,7 @@ String? chooseDownloadSpeedWinner(Map<String, int> rates, String incumbent) {
     return null;
   }
   final current = rates[incumbent] ?? 0;
-  if (current > 0 && best * 5 < current * 6) {
+  if (automatic && current > 0 && best * 5 < current * 6) {
     return incumbent;
   }
   return winner;
@@ -171,7 +176,11 @@ class ProxiesAction extends _$ProxiesAction {
     }
     final name = ref.read(downloadSpeedAutoGroupProvider);
     final group = ref.read(groupsProvider).getGroup(name ?? '');
-    if (group == null || group.type != GroupType.URLTest) {
+    if (group == null) {
+      _scheduleAutoSpeed(delay: const Duration(seconds: 15));
+      return;
+    }
+    if (group.type != GroupType.URLTest) {
       return;
     }
     _autoSpeedRunning = true;
@@ -189,7 +198,9 @@ class ProxiesAction extends _$ProxiesAction {
         _speedTestGeneration == generation &&
         _currentSelectedName(group.name) == selection;
     try {
-      if (incumbent.isEmpty || reservedCustomProxyNames.contains(incumbent)) {
+      if (incumbent.isEmpty ||
+          reservedCustomProxyNames.contains(incumbent) ||
+          isSubscriptionInfoProxyName(incumbent)) {
         return;
       }
       if (!await _networkAllowsAutoSelection(isCurrent)) return;
@@ -277,7 +288,11 @@ class ProxiesAction extends _$ProxiesAction {
   ) async {
     final names = group.all
         .map((proxy) => proxy.name)
-        .where((name) => !reservedCustomProxyNames.contains(name))
+        .where(
+          (name) =>
+              !reservedCustomProxyNames.contains(name) &&
+              !isSubscriptionInfoProxyName(name),
+        )
         .toSet()
         .toList();
     final candidates = automaticSpeedCandidates(
@@ -472,9 +487,15 @@ class ProxiesAction extends _$ProxiesAction {
       );
       return;
     }
-    if (!result.changed) {
-      return;
+    if (result.changed) {
+      await _refreshSelectedConnections(groupName, proxyName);
     }
+  }
+
+  Future<void> _refreshSelectedConnections(
+    String groupName,
+    String proxyName,
+  ) async {
     try {
       if (ref.read(appSettingProvider).closeConnections) {
         await _core.closeConnections();
@@ -629,7 +650,11 @@ class ProxiesAction extends _$ProxiesAction {
       final names = group.all
           .whereMatches(query, (proxy) => proxy.searchFields)
           .map((proxy) => proxy.name)
-          .where((name) => !reservedCustomProxyNames.contains(name))
+          .where(
+            (name) =>
+                !reservedCustomProxyNames.contains(name) &&
+                !isSubscriptionInfoProxyName(name),
+          )
           .toSet()
           .toList();
       final candidates = automatic
@@ -712,7 +737,11 @@ class ProxiesAction extends _$ProxiesAction {
           if (stable.containsKey(proxy.name)) proxy.name: stable[proxy.name]!,
       };
       while (remaining.isNotEmpty && isCurrent()) {
-        final winner = chooseDownloadSpeedWinner(remaining, current);
+        final winner = chooseDownloadSpeedWinner(
+          remaining,
+          current,
+          automatic: automatic,
+        );
         if (winner == null || (automatic && winner == current)) {
           return;
         }
@@ -772,6 +801,9 @@ class ProxiesAction extends _$ProxiesAction {
         ref
             .read(profilesActionProvider.notifier)
             .updateCurrentSelectedMap(groupName, name);
+        if (result.changed) {
+          await _refreshSelectedConnections(groupName, name);
+        }
       }
       await updateGroups();
       return true;
@@ -825,7 +857,18 @@ class ProxiesAction extends _$ProxiesAction {
     return speed;
   }
 
-  Future<void> testProxyMetrics(Proxy proxy, [String? testUrl]) async {
+  Future<void> testProxyMetrics(Proxy proxy, [String? testUrl]) =>
+      _testProxyMetrics(proxy, testUrl: testUrl);
+
+  Future<void> testProxyDownloadSpeed(Proxy proxy) =>
+      _testProxyMetrics(proxy, testDelay: false);
+
+  Future<void> _testProxyMetrics(
+    Proxy proxy, {
+    String? testUrl,
+    bool testDelay = true,
+  }) async {
+    if (isSubscriptionInfoProxyName(proxy.name)) return;
     final epoch = ref.read(routeTrackerProvider).hostEpoch;
     final profile = ref.read(currentProfileIdProvider);
     final generation = _speedTestGeneration;
@@ -835,7 +878,7 @@ class ProxiesAction extends _$ProxiesAction {
         _speedTestGeneration == generation &&
         ref.read(routeTrackerProvider).hostEpoch == epoch &&
         ref.read(currentProfileIdProvider) == profile;
-    await proxyDelayTest(proxy, testUrl);
+    if (testDelay) await proxyDelayTest(proxy, testUrl);
     if (!isCurrent() || reservedCustomProxyNames.contains(proxy.name)) {
       return;
     }
@@ -925,7 +968,8 @@ class ProxiesAction extends _$ProxiesAction {
           groups: groups,
           selectedMap: selectedMap,
         );
-        if (state.proxyName.isEmpty) {
+        if (state.proxyName.isEmpty ||
+            isSubscriptionInfoProxyName(state.proxyName)) {
           continue;
         }
         final currentTestUrl = state.testUrl.takeFirstValid([fallbackTestUrl]);

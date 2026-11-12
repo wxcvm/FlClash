@@ -27,6 +27,8 @@ class CoreManager extends ConsumerStatefulWidget {
 class _CoreContainerState extends ConsumerState<CoreManager>
     with CoreEventListener {
   CoreController get _core => ref.read(coreHandlerProvider);
+  late final RouteTracker _routeTracker;
+  bool _watchingProxyRoutes = false;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +40,32 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     super.initState();
     coreEventManager.addListener(this);
     ref.read(updatingActionProvider.notifier);
+    _routeTracker = ref.read(routeTrackerProvider.notifier);
+    // The proxy page needs live selections even when the dashboard's
+    // route probes are not mounted. Release the watch when leaving it.
+    ref.listenManual(currentPageLabelProvider, (_, page) {
+      final watching = page == PageLabel.proxies;
+      if (watching == _watchingProxyRoutes) return;
+      _watchingProxyRoutes = watching;
+      if (watching) {
+        _routeTracker.attach();
+      } else {
+        _routeTracker.detach();
+      }
+    }, fireImmediately: true);
+    ref.listenManual(
+      routeTrackerProvider.select(
+        (state) => (state.coreEpoch, state.routeVersion, state.live),
+      ),
+      (_, next) {
+        if (_watchingProxyRoutes &&
+            next.$3 &&
+            ref.read(appVisibleProvider) &&
+            ref.read(coreStatusProvider) == CoreStatus.connected) {
+          ref.read(proxiesActionProvider.notifier).updateGroupsDebounce();
+        }
+      },
+    );
     // A rejected profile stays selected on purpose: silently reverting to
     // the previous one hides the error and looks like the switch was lost.
     ref.listenManual(currentProfileIdProvider, (prev, next) {
@@ -111,6 +139,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   @override
   void dispose() {
     coreEventManager.removeListener(this);
+    if (_watchingProxyRoutes) {
+      _routeTracker.detach();
+    }
     super.dispose();
   }
 

@@ -97,5 +97,13 @@ class SystemProxyQueue {
 
 String proxyEnvCommand(int port, {required bool isWindows}) {
   final url = 'http://127.0.0.1:$port';
-  return isWindows ? 'set \$env:all_proxy=$url' : 'export all_proxy=$url';
+  if (isWindows) {
+    return [
+      "\$env:HTTP_PROXY = '$url'",
+      "\$env:HTTPS_PROXY = '$url'",
+      "\$env:ALL_PROXY = '$url'",
+    ].join('; ');
+  }
+  return "export http_proxy='$url' https_proxy='$url' all_proxy='$url' "
+      "HTTP_PROXY='$url' HTTPS_PROXY='$url' ALL_PROXY='$url'";
 }

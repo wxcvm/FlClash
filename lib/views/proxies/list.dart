@@ -603,6 +603,7 @@ class ListHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final groupName = group.name;
+    final delayOnly = ProxyPickerScope.delayOnlyOf(context);
     final isDelayTesting = ref.watch(
       delayTestingGroupsProvider.select((state) => state.contains(groupName)),
     );
@@ -643,9 +644,12 @@ class ListHeader extends ConsumerWidget {
                 onScrollToSelected(groupName);
               },
               onDelayTest: () {
-                ref
-                    .read(proxiesActionProvider.notifier)
-                    .testPageGroupMetrics(groupName);
+                final action = ref.read(proxiesActionProvider.notifier);
+                if (delayOnly) {
+                  action.delayTestPageGroup(groupName);
+                } else {
+                  action.testPageGroupMetrics(groupName);
+                }
               },
               onSpeedSelect: () {
                 ref
