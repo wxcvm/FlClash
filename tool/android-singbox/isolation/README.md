@@ -79,3 +79,12 @@ native session, not a restart or a physical-network fallback. A failed retest
 leaves the VPN running so recovery can be tested. Repeated taps are coalesced;
 pressing Retest when stopped never starts the VPN. The endpoint may be blocked
 on some networks: an HTTPS failure alone is not a diagnosis of a core bug.
+
+## Offline emulator TCP smoke test
+
+The separate LocalVpnProbeService uses the same typed AndroidVpnRuntime as the
+manual HTTPS diagnostic. It routes only the test package and a synthetic /32
+through libbox to a local TCP echo server. It requires VPN consent and verifies
+socket protection callbacks. The CI emulator grants consent on its disposable
+instance, runs isolation instrumentation and two VPN cycles using raw Android
+instrumentation results. No internet endpoint is needed by this local test.

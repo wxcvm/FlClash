@@ -9,11 +9,12 @@ import java.io.IOException;
 public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHandler {
     private final VpnService service;
     private final AndroidPlatform platform;
+    private final AndroidTunBridge bridge;
     private final LibboxVpnSession session;
 
     public AndroidVpnRuntime(VpnService service) {
         this.service = service;
-        AndroidTunBridge bridge = new AndroidTunBridge(service);
+        bridge = new AndroidTunBridge(service);
         platform = new AndroidPlatform(service, bridge);
         session = new LibboxVpnSession(bridge, platform, this);
     }
@@ -21,6 +22,8 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
     public void start(String config) throws Exception {
         session.start(service, config);
     }
+
+    public int protectCount() { return bridge.protectCount(); }
 
     public void resetNetwork() { session.resetNetwork(); }
 

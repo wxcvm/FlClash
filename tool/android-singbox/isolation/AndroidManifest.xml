@@ -24,7 +24,14 @@
         </service>
         <service android:name=".ProbeService" android:process=":singbox"
             android:exported="false" />
+        <activity android:name=".VpnConsentActivity" android:exported="true" />
+        <service android:name=".LocalVpnProbeService" android:process=":singbox"
+            android:permission="android.permission.BIND_VPN_SERVICE" android:exported="false">
+            <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
+        </service>
     </application>
     <instrumentation android:name=".ProbeInstrumentation"
+        android:targetPackage="org.flclash.singboxprobe" />
+    <instrumentation android:name=".VpnProbeInstrumentation"
         android:targetPackage="org.flclash.singboxprobe" />
 </manifest>

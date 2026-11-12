@@ -20,6 +20,7 @@ import java.io.OutputStream;
 public final class AndroidTunBridge implements Closeable {
     private final VpnService service;
     private ParcelFileDescriptor tun;
+    private final java.util.concurrent.atomic.AtomicInteger protectedSockets = new java.util.concurrent.atomic.AtomicInteger();
 
     public AndroidTunBridge(VpnService service) {
         this.service = service;
@@ -67,7 +68,10 @@ public final class AndroidTunBridge implements Closeable {
 
     public void autoDetectInterfaceControl(int fd) throws IOException {
         if (!service.protect(fd)) throw new IOException("VPN socket protection failed");
+        protectedSockets.incrementAndGet();
     }
+
+    public int protectCount() { return protectedSockets.get(); }
 
     private static void addAddresses(VpnService.Builder builder, RoutePrefixIterator prefixes) {
         while (prefixes.hasNext()) {
