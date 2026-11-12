@@ -94,6 +94,8 @@ jobs:
           gofmt -w protocol/group/urltest.go protocol/group/flclash_failure_gate*.go
           go test -race protocol/group/flclash_failure_gate.go protocol/group/flclash_failure_gate_test.go
           go test ./protocol/group
+          # Build the real CLI with protocol tags and validate synthetic profiles without dialing.
+          go run -tags 'with_quic,with_utls' ./cmd/sing-box check -c ../tool/android-singbox/recovery/protocol-fixture.json
           git tag -f v1.14.4
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
