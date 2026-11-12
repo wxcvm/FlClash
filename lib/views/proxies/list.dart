@@ -639,7 +639,7 @@ class ListHeader extends ConsumerWidget {
               onDelayTest: () {
                 ref
                     .read(proxiesActionProvider.notifier)
-                    .delayTestPageGroup(groupName);
+                    .testPageGroupMetrics(groupName);
               },
               onSpeedSelect: () {
                 ref

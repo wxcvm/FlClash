@@ -340,7 +340,10 @@ class ProxiesAction extends _$ProxiesAction {
   }
 
   /// Measure real download throughput, then recheck the fastest three.
-  Future<void> selectByDownloadSpeed(String groupName) async {
+  Future<void> selectByDownloadSpeed(
+    String groupName, {
+    bool selectWinner = true,
+  }) async {
     if (!_speedTestingGroups.add(groupName)) {
       return;
     }
@@ -380,22 +383,8 @@ class ProxiesAction extends _$ProxiesAction {
         return;
       }
 
-      Future<int> measure(String name) async {
-        if (!isCurrent()) {
-          return 0;
-        }
-        try {
-          final result = await _core.testSpeed(name);
-          final value = result['bytes-per-second'];
-          return isCurrent() && value is num ? value.toInt() : 0;
-        } catch (error) {
-          commonPrint.log(
-            'Download speed test failed for $name: $error',
-            logLevel: coreFailureLogLevel(error),
-          );
-          return 0;
-        }
-      }
+      Future<int> measure(String name) =>
+          _measureDownloadSpeed(name, isCurrent);
 
       final first = <String, int>{};
       await Future.wait([
@@ -407,6 +396,10 @@ class ProxiesAction extends _$ProxiesAction {
             }
           }),
       ]);
+
+      if (!selectWinner) {
+        return;
+      }
 
       final ranked = first.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
@@ -425,6 +418,9 @@ class ProxiesAction extends _$ProxiesAction {
             final initial = first[name]!;
             if (second > 0) {
               stable[name] = second < initial ? second : initial;
+              ref
+                  .read(downloadSpeedResultsProvider.notifier)
+                  .finish(name, stable[name]!);
             }
           }),
       ]);
@@ -456,6 +452,69 @@ class ProxiesAction extends _$ProxiesAction {
     } finally {
       _speedTestingGroups.remove(groupName);
     }
+  }
+
+  Future<int> _measureDownloadSpeed(
+    String name,
+    bool Function() isCurrent,
+  ) async {
+    if (!isCurrent()) {
+      return 0;
+    }
+    final results = ref.read(downloadSpeedResultsProvider.notifier);
+    results.start(name);
+    var speed = 0;
+    try {
+      final result = await _core.testSpeed(name);
+      final value = result['bytes-per-second'];
+      if (value is num) {
+        speed = value.toInt();
+      }
+    } catch (error) {
+      commonPrint.log(
+        'Download speed test failed for $name: $error',
+        logLevel: coreFailureLogLevel(error),
+      );
+    }
+    if (!isCurrent()) {
+      if (ref.mounted) {
+        ref.read(downloadSpeedResultsProvider.notifier).discardRunning(name);
+      }
+      return 0;
+    }
+    ref.read(downloadSpeedResultsProvider.notifier).finish(name, speed);
+    return speed;
+  }
+
+  Future<void> testProxyMetrics(Proxy proxy, [String? testUrl]) async {
+    final epoch = ref.read(routeTrackerProvider).hostEpoch;
+    final profile = ref.read(currentProfileIdProvider);
+    final generation = _speedTestGeneration;
+    bool isCurrent() =>
+        ref.mounted &&
+        ref.read(coreStatusProvider) == CoreStatus.connected &&
+        _speedTestGeneration == generation &&
+        ref.read(routeTrackerProvider).hostEpoch == epoch &&
+        ref.read(currentProfileIdProvider) == profile;
+    await proxyDelayTest(proxy, testUrl);
+    if (!isCurrent() || reservedCustomProxyNames.contains(proxy.name)) {
+      return;
+    }
+    await _speedTestPool.run(
+      () => _measureDownloadSpeed(proxy.name, isCurrent),
+    );
+  }
+
+  Future<void> testPageGroupMetrics(String groupName) async {
+    final epoch = ref.read(routeTrackerProvider).hostEpoch;
+    final profile = ref.read(currentProfileIdProvider);
+    await delayTestPageGroup(groupName);
+    if (!ref.mounted ||
+        ref.read(routeTrackerProvider).hostEpoch != epoch ||
+        ref.read(currentProfileIdProvider) != profile) {
+      return;
+    }
+    await selectByDownloadSpeed(groupName, selectWinner: false);
   }
 
   Future<void> proxyDelayTest(Proxy proxy, [String? testUrl]) {
