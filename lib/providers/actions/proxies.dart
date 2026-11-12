@@ -189,7 +189,10 @@ class ProxiesAction extends _$ProxiesAction {
       final decision = _nodeHealth.record(incumbent, delay, DateTime.now());
       if (decision == NodeHealthDecision.wait) return;
       if (decision == NodeHealthDecision.failover) {
-        if (!await _networkAllowsAutoSelection(isCurrent, requireRecent: true)) {
+        if (!await _networkAllowsAutoSelection(
+          isCurrent,
+          requireRecent: true,
+        )) {
           return;
         }
         _nodeHealth.markOptimization(DateTime.now());

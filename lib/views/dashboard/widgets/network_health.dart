@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
@@ -143,24 +142,12 @@ class _NetworkHealthSheetState extends ConsumerState<NetworkHealthSheet> {
       'stopped' => _label(context, '核心未运行', 'Core not running'),
       'checking' => _label(context, '正在验证', 'Checking'),
       'reachable' => _label(context, '测试地址可达', 'Test endpoint reachable'),
-      'http-response' => _label(
-        context,
-        '服务返回异常状态',
-        'HTTP response received',
-      ),
+      'http-response' => _label(context, '服务返回异常状态', 'HTTP response received'),
       'dns-failure' => _label(context, 'DNS 解析失败', 'DNS lookup failed'),
-      'route-unreachable' => _label(
-        context,
-        '出口请求失败',
-        'Route request failed',
-      ),
+      'route-unreachable' => _label(context, '出口请求失败', 'Route request failed'),
       'invalid-test-url' => _label(context, '测试地址无效', 'Invalid test URL'),
       'inconclusive' => _label(context, '未能确认', 'Inconclusive'),
-      'unavailable' => _label(
-        context,
-        '诊断暂不可用',
-        'Diagnostics unavailable',
-      ),
+      'unavailable' => _label(context, '诊断暂不可用', 'Diagnostics unavailable'),
       _ => _label(context, '尚未检测', 'Not checked'),
     };
     final dns = switch (snapshot?['dns']) {

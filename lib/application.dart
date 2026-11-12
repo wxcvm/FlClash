@@ -197,19 +197,15 @@ class ApplicationState extends ConsumerState<Application> {
           _pendingDesktopRecovery = true;
         }
         final revision = ++_desktopNetworkRevision;
-        debouncer.call(
-          FunctionTag.networkChange,
-          () async {
-            await dnsSync;
-            if (!mounted || revision != _desktopNetworkRevision) return;
-            final recover = _pendingDesktopRecovery;
-            _pendingDesktopRecovery = false;
-            await ref
-                .read(coreActionProvider.notifier)
-                .reportNetworkChange(recover: recover);
-          },
-          duration: const Duration(milliseconds: 200),
-        );
+        debouncer.call(FunctionTag.networkChange, () async {
+          await dnsSync;
+          if (!mounted || revision != _desktopNetworkRevision) return;
+          final recover = _pendingDesktopRecovery;
+          _pendingDesktopRecovery = false;
+          await ref
+              .read(coreActionProvider.notifier)
+              .reportNetworkChange(recover: recover);
+        }, duration: const Duration(milliseconds: 200));
       }
     }
   }

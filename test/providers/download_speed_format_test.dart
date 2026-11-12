@@ -36,19 +36,27 @@ void main() {
       NetworkHealthGate.wait,
     );
     expect(
-      networkHealthGate({
-        'state': 'inconclusive',
-        'dns': 'untested',
-        'checked-at': now.millisecondsSinceEpoch,
-      }, now, requireRecent: true),
+      networkHealthGate(
+        {
+          'state': 'inconclusive',
+          'dns': 'untested',
+          'checked-at': now.millisecondsSinceEpoch,
+        },
+        now,
+        requireRecent: true,
+      ),
       NetworkHealthGate.wait,
     );
     expect(
-      networkHealthGate({
-        'state': 'route-unreachable',
-        'dns': 'resolved',
-        'checked-at': now.millisecondsSinceEpoch,
-      }, now, requireRecent: true),
+      networkHealthGate(
+        {
+          'state': 'route-unreachable',
+          'dns': 'resolved',
+          'checked-at': now.millisecondsSinceEpoch,
+        },
+        now,
+        requireRecent: true,
+      ),
       NetworkHealthGate.allow,
     );
   });
@@ -65,10 +73,11 @@ void main() {
       NetworkHealthGate.allow,
     );
     expect(
-      networkHealthGate({
-        ...health,
-        'dns': 'untested',
-      }, now, requireRecent: true),
+      networkHealthGate(
+        {...health, 'dns': 'untested'},
+        now,
+        requireRecent: true,
+      ),
       NetworkHealthGate.wait,
     );
   });
