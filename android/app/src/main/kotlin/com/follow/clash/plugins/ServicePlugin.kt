@@ -161,6 +161,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         "available" to SingBoxVpnControl.isAvailable(GlobalState.application),
         "engine" to (ServiceController.runtime?.let { if (it.nativeConfigPath != null) "sing-box" else "mihomo" } ?: "idle"),
         "nativeOwner" to ServiceController.hasNativeOwner,
+        "startedAt" to (ServiceController.runtime?.startedAtMillis ?: 0L),
         "state" to ServiceState.runState.value.name,
     )
 

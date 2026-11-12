@@ -129,6 +129,19 @@ class Service {
     return status;
   }
 
+  Future<void> startNativeQuality(String tag) async {
+    await methodChannel.invokeMethod<bool>('startNativeQuality', {'tag': tag});
+  }
+
+  Future<Map<String, dynamic>> getNativeQuality() async {
+    final data = await methodChannel.invokeMethod<String>('nativeQualitySnapshot');
+    return Map<String, dynamic>.from(jsonDecode(data ?? '{}') as Map);
+  }
+
+  Future<void> cancelNativeQuality() async {
+    await methodChannel.invokeMethod<bool>('cancelNativeQuality');
+  }
+
   Future<Map<String, dynamic>> getNativeSnapshot() async {
     final json = await methodChannel.invokeMethod<String>('nativeSnapshot');
     return Map<String, dynamic>.from(jsonDecode(json ?? '{}') as Map);
@@ -247,6 +260,7 @@ class AndroidNativeStatus {
     required this.engine,
     required this.nativeOwner,
     required this.state,
+    this.startedAt = 0,
   });
 
   factory AndroidNativeStatus.fromMap(Map<Object?, Object?> data) =>
@@ -255,12 +269,14 @@ class AndroidNativeStatus {
         engine: data['engine'] as String? ?? 'idle',
         nativeOwner: data['nativeOwner'] == true,
         state: data['state'] as String? ?? 'STOPPED',
+        startedAt: (data['startedAt'] as num?)?.toInt() ?? 0,
       );
 
   final bool available;
   final String engine;
   final bool nativeOwner;
   final String state;
+  final int startedAt;
 }
 
 class AndroidNativeStartResult {
