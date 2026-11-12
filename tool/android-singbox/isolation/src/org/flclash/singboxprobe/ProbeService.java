@@ -80,6 +80,11 @@ public final class ProbeService extends Service {
             throw new IllegalStateException("TUN bridge escaped its classloader");
         }
         tunBridge.getMethod("verifyDescriptorOwnership").invoke(null);
+        Class<?> session = Class.forName(
+            "org.flclash.singboxprobe.isolated.LibboxVpnSession", false, api.getClassLoader());
+        if (session.getClassLoader() != api.getClassLoader()) {
+            throw new IllegalStateException("VPN session escaped its classloader");
+        }
         return version;
     }
 

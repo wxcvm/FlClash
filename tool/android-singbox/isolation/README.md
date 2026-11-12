@@ -38,4 +38,10 @@ check runs through the isolated loader. OpenTun/protect are not yet invoked by a
 real VPN: the full PlatformInterface, consent and command-server lifecycle must
 be connected before testing traffic. Close the bridge only after native service
 stop; HTTP proxy options are explicitly rejected until supported.
+LibboxVpnSession adds the typed command server setup/start/reset/stop path,
+using a private Unix socket and app-private directories. It validates the
+native config before starting and closes the command server before releasing
+Java's TUN descriptor. It is compiled and classloader-checked by this probe,
+not started by the current instrumentation. A complete PlatformInterface
+implementation and VPN consent are still required.
 Next: full platform callbacks, single VPN owner, rollback and device memory tests.
