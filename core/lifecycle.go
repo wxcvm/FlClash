@@ -61,6 +61,9 @@ func handleStopListener() {
 	setRunning(false)
 	cancelRecoveryHealth()
 	listener.StopListener()
+	// Closing inbound listeners alone does not close existing tracked
+	// sessions. End them before releasing egress and DNS resources.
+	handleCloseConnections()
 	finishEgress()
 	resolver.ResetConnection()
 }

@@ -75,3 +75,23 @@ func TestNetworkChangeResetsResolverWithoutMovingRoute(t *testing.T) {
 		t.Errorf("network change moved route from (%d, %d) to (%d, %d)", beforeEpoch, beforeVersion, afterEpoch, afterVersion)
 	}
 }
+
+func TestStopListenerClosesTrackedConnections(t *testing.T) {
+	previous := isRunning.Load()
+	t.Cleanup(func() { isRunning.Store(previous) })
+	setRunning(true)
+	tracker := newPipeTracker(t)
+	if statistic.DefaultManager.Get(tracker.ID()) == nil {
+		t.Fatal("test connection was not tracked")
+	}
+	handleStopListener()
+	if isRunning.Load() {
+		t.Fatal("listener still running after stop")
+	}
+	if statistic.DefaultManager.Get(tracker.ID()) != nil {
+		t.Fatal("stopped listener retained a live connection")
+	}
+	if _, err := tracker.Write([]byte("closed")); err == nil {
+		t.Fatal("stopped listener left the tracked socket open")
+	}
+}
