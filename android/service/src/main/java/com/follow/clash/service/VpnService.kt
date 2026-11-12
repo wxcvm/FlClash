@@ -121,46 +121,49 @@ class VpnService : SystemVpnService(), ManagedService {
     }
 
     private fun handleStart(options: VpnOptions) {
-        val fd = with(Builder()) {
-            addAddressAndRoutes(options)
-            addDnsServers(options)
-            setMtu(options.tunMtu)
-            configureAccessControl(options)
-            setSession(getString(CommonR.string.app_name))
-            setBlocking(false)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                setMetered(false)
+        val stack = options.stack
+        val address = options.tunAddress
+        val dns = options.tunDns
+        val tunOptions = options.tunOptions
+        tunnel.start {
+            val fd = with(Builder()) {
+                addAddressAndRoutes(options)
+                addDnsServers(options)
+                setMtu(options.tunMtu)
+                configureAccessControl(options)
+                setSession(getString(CommonR.string.app_name))
+                setBlocking(false)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setMetered(false)
+                }
+                if (options.allowBypass) {
+                    allowBypass()
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && options.systemProxy) {
+                    GlobalState.log("Enable VPN HTTP proxy")
+                    setHttpProxy(
+                        ProxyInfo.buildDirectProxy(
+                            LOCAL_HOST,
+                            options.port,
+                            options.bypassDomain,
+                        ),
+                    )
+                }
+                establish()?.detachFd()
+                    ?: error("VPN establishment was rejected by the system")
             }
-            if (options.allowBypass) {
-                allowBypass()
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && options.systemProxy) {
-                GlobalState.log("Enable VPN HTTP proxy")
-                setHttpProxy(
-                    ProxyInfo.buildDirectProxy(
-                        LOCAL_HOST,
-                        options.port,
-                        options.bypassDomain,
-                    ),
-                )
-            }
-            establish()?.detachFd()
-                ?: error("VPN establishment was rejected by the system")
-        }
-        // A failed engine start must tear down the routes rather than report
-        // success with a TUN that nothing reads.
-        tunnel.start(
+            // The selected engine takes ownership of the detached descriptor.
             TunnelRequest(
                 fd = fd,
                 protect = this::protect,
                 resolveUid = this::resolveUid,
                 resolvePackage = this::resolvePackage,
-                stack = options.stack,
-                address = options.tunAddress,
-                dns = options.tunDns,
-                options = options.tunOptions,
-            ),
-        )
+                stack = stack,
+                address = address,
+                dns = dns,
+                options = tunOptions,
+            )
+        }
     }
 
     private fun Builder.addAddressAndRoutes(options: VpnOptions) {
