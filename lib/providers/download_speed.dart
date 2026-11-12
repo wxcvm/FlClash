@@ -181,7 +181,8 @@ NetworkHealthGate networkHealthGate(
     if (!recent) return NetworkHealthGate.refresh;
     if (state != 'reachable' &&
         state != 'http-response' &&
-        (state != 'route-unreachable' || health['dns'] != 'resolved')) {
+        (state != 'route-unreachable' ||
+            (health['dns'] != 'resolved' && health['dns'] != 'not-required'))) {
       return NetworkHealthGate.wait;
     }
   }

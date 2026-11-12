@@ -53,6 +53,26 @@ void main() {
     );
   });
 
+  test('IP endpoints do not need DNS to authorize node checks', () {
+    final now = DateTime(2026);
+    final health = {
+      'state': 'route-unreachable',
+      'dns': 'not-required',
+      'checked-at': now.millisecondsSinceEpoch,
+    };
+    expect(
+      networkHealthGate(health, now, requireRecent: true),
+      NetworkHealthGate.allow,
+    );
+    expect(
+      networkHealthGate({
+        ...health,
+        'dns': 'untested',
+      }, now, requireRecent: true),
+      NetworkHealthGate.wait,
+    );
+  });
+
   test('health checks require two failures and ignore unknown results', () {
     final health = NodeHealthHistory();
     final now = DateTime(2026);

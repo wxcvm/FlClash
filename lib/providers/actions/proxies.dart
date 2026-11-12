@@ -289,6 +289,9 @@ class ProxiesAction extends _$ProxiesAction {
       if (current == null || !current.all.any((proxy) => proxy.name == name)) {
         return;
       }
+      if (!await _networkAllowsAutoSelection(isCurrent, requireRecent: true)) {
+        return;
+      }
       if (await _selectVerifiedSpeed(
         group.name,
         name,

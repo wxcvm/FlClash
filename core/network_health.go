@@ -78,13 +78,14 @@ func handleCheckNetworkHealth() {
 }
 
 func recoveryDNSState(result recoveryHealthResult, host string) string {
+	if _, err := netip.ParseAddr(host); err == nil {
+		return "not-required"
+	}
 	switch result.state {
 	case "dns-failure":
 		return "failed"
 	case "route-unreachable":
-		if _, err := netip.ParseAddr(host); err != nil {
-			return "resolved"
-		}
+		return "resolved"
 	}
 	return "untested"
 }

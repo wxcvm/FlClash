@@ -105,7 +105,9 @@ func TestRecoveryHealthDNSRequiresSeparateLookup(t *testing.T) {
 	}{
 		{"reachable", "example.test", "untested"},
 		{"http-response", "example.test", "untested"},
-		{"route-unreachable", "192.0.2.1", "untested"},
+		{"route-unreachable", "192.0.2.1", "not-required"},
+		{"reachable", "2001:db8::1", "not-required"},
+		{"route-unreachable", "2001:db8::1", "not-required"},
 		{"route-unreachable", "example.test", "resolved"},
 		{"dns-failure", "example.test", "failed"},
 	} {

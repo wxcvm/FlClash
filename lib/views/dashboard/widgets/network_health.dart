@@ -166,6 +166,7 @@ class _NetworkHealthSheetState extends ConsumerState<NetworkHealthSheet> {
     final dns = switch (snapshot?['dns']) {
       'failed' => _label(context, '解析失败', 'Lookup failed'),
       'resolved' => _label(context, '解析成功', 'Resolved'),
+      'not-required' => _label(context, 'IP 地址无需解析', 'IP: no lookup needed'),
       _ => _label(context, '未单独检测', 'Not tested separately'),
     };
     final host = snapshot?['host'] as String? ?? '';

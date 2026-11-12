@@ -19,14 +19,20 @@ type speedGroupState struct {
 
 func speedSelectionState(proxy constant.Proxy) (speedGroupState, error) {
 	var state speedGroupState
+	if proxy.Type() == constant.Selector {
+		group, ok := adapterAs[pickableGroup](proxy)
+		if !ok {
+			return state, errGroupNotSelect
+		}
+		state.Now = group.Now()
+		state.Fixed = state.Now
+		return state, nil
+	}
 	data, err := proxy.Adapter().MarshalJSON()
 	if err != nil {
 		return state, err
 	}
 	err = json.Unmarshal(data, &state)
-	if proxy.Type() == constant.Selector {
-		state.Fixed = state.Now
-	}
 	return state, err
 }
 
