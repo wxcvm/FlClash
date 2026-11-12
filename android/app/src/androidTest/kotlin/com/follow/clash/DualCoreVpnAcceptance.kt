@@ -138,6 +138,8 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             try {
                 generation = JSONObject(ServiceController.nativeStatusSnapshot()).getLong("networkGeneration")
                 if (generation != before) latency = https(requireNotNull(vpn("172.19.0.1")), "172.19.0.1")
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (_: Exception) {
                 // The transition can temporarily have no underlying network.
             }

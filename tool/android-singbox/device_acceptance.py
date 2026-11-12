@@ -22,6 +22,10 @@ def summarize(report):
     for phase in report:
         samples = phase.get("samples", [])
         totals = [sum(p["pssKiB"] for p in sample) for sample in samples]
+        if phase["phase"] in EXPECTED[:-1] and len(samples) != 3:
+            raise ValueError("missing PSS samples for " + phase["phase"])
+        if samples and any(not sample or any(p["pssKiB"] <= 0 for p in sample) for sample in samples):
+            raise ValueError("invalid or unavailable PSS sample in " + phase["phase"])
         output.append({"phase": phase["phase"], "tlsMs": phase.get("tlsMs"),
                        "medianTotalPssKiB": statistics.median(totals) if totals else None,
                        "samples": samples})
@@ -56,7 +60,7 @@ def main():
         return subprocess.check_output(adb + ["shell", *cmd], text=True).strip()
     if "arm64-v8a" not in shell("getprop", "ro.product.cpu.abilist").split(","):
         parser.error("ARM64 Android device required")
-    if not shell("pm", "path", PACKAGE).startswith("package:"):
+    if not shell("pm", "path", PACKAGE).startswith("package:") or not shell("pm", "path", PACKAGE + ".test").startswith("package:"):
         parser.error("install the matching Debug app.apk and test.apk")
     always_on = shell("settings", "get", "secure", "always_on_vpn_app")
     lockdown = shell("settings", "get", "secure", "always_on_vpn_lockdown")
@@ -75,6 +79,7 @@ def main():
         code = proc.wait()
     log = "".join(lines)
     output = pathlib.Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.with_suffix(".log").write_text(log, encoding="utf-8")
     try:
         if code:
