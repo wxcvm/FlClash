@@ -14,6 +14,8 @@ import java.util.concurrent.TimeUnit;
 /** Explicitly consented, app-only VPN in the same isolated process as libbox. */
 public final class ProbeVpnService extends VpnService {
     private static final String TAG = "FlClashVpnProbe";
+    static final String STATUS = "org.flclash.singboxprobe.VPN_STATUS";
+    static final String STATUS_PERMISSION = "org.flclash.singboxprobe.permission.VPN_STATUS";
     static final String STOP = "org.flclash.singboxprobe.STOP_VPN";
     // Serialize even across rapid stop/start and let the worker expire while idle.
     private static final ThreadPoolExecutor WORKER = new ThreadPoolExecutor(
@@ -28,6 +30,14 @@ public final class ProbeVpnService extends VpnService {
         + "\"route\":{\"auto_detect_interface\":true,\"final\":\"direct\"}}";
 
     private boolean started;
+    private volatile String status = "Starting diagnostic VPN";
+
+    private void report(String message) {
+        status = message;
+        Log.i(TAG, message);
+        sendBroadcast(new Intent(STATUS).setPackage(getPackageName())
+            .putExtra("message", message), STATUS_PERMISSION);
+    }
     private volatile boolean destroyed;
     // Accessed only by WORKER.
     private AutoCloseable runtime;
@@ -37,10 +47,13 @@ public final class ProbeVpnService extends VpnService {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (started) return START_NOT_STICKY;
+        if (started) {
+            report(status);
+            return START_NOT_STICKY;
+        }
         started = true;
         if (prepare(this) != null) {
-            Log.e(TAG, "VPN consent is missing");
+            report("FAIL: VPN consent is missing");
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -67,9 +80,13 @@ public final class ProbeVpnService extends VpnService {
                     "org.flclash.singboxprobe.isolated.AndroidVpnRuntime", true, api.getClassLoader());
                 runtime = (AutoCloseable) type.getConstructor(VpnService.class).newInstance(this);
                 type.getMethod("start", String.class).invoke(runtime, CONFIG);
-                Log.i(TAG, "VPN runtime started");
+                if (destroyed) return;
+                report("VPN started; verifying actual HTTPS traffic...");
+                String result = ProbeVpnTraffic.verify(this, () -> destroyed);
+                if (!destroyed) report(result);
             } catch (Exception | LinkageError error) {
-                Log.e(TAG, "VPN runtime failed", error);
+                Log.e(TAG, "VPN runtime or traffic test failed", error);
+                if (!destroyed) report("FAIL: " + error.getMessage());
                 closeRuntime();
                 stopSelf();
             }
@@ -83,9 +100,11 @@ public final class ProbeVpnService extends VpnService {
         if (active == null) return;
         try {
             active.close();
-            Log.i(TAG, "VPN runtime stopped");
+            ProbeVpnTraffic.verifyRemoved(this);
+            report(status + "\nSTOP PASS: diagnostic VPN removed");
         } catch (Exception | LinkageError error) {
             Log.e(TAG, "VPN runtime cleanup failed", error);
+            report(status + "\nSTOP FAIL: " + error.getMessage());
         }
     }
 

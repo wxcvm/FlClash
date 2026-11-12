@@ -2,6 +2,10 @@ package org.flclash.singboxprobe;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.os.Build;
 import android.net.VpnService;
 import android.os.Bundle;
 import android.widget.Button;
@@ -11,6 +15,28 @@ import android.widget.TextView;
 /** Manual consent is required; installing the diagnostic never starts a VPN. */
 public final class ProbeVpnActivity extends Activity {
     private static final int CONSENT = 1;
+    private TextView status;
+    private final BroadcastReceiver receiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            String message = intent.getStringExtra("message");
+            if (message != null) status.setText(message);
+        }
+    };
+
+    @Override protected void onStart() {
+        super.onStart();
+        IntentFilter filter = new IntentFilter(ProbeVpnService.STATUS);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(receiver, filter, ProbeVpnService.STATUS_PERMISSION, null, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(receiver, filter, ProbeVpnService.STATUS_PERMISSION, null);
+        }
+    }
+
+    @Override protected void onStop() {
+        unregisterReceiver(receiver);
+        super.onStop();
+    }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         LinearLayout layout = new LinearLayout(this);
@@ -23,6 +49,10 @@ public final class ProbeVpnActivity extends Activity {
             + "This test routes only this diagnostic app's traffic to 1.1.1.1; "
             + "it does not use your FlClash profiles or start automatically.");
         layout.addView(description);
+        status = new TextView(this);
+        status.setText("Ready. Results appear here while the diagnostic is open.");
+        status.setTextIsSelectable(true);
+        layout.addView(status);
         Button start = new Button(this);
         start.setText("Authorize and start diagnostic VPN");
         start.setOnClickListener(view -> {
@@ -39,6 +69,7 @@ public final class ProbeVpnActivity extends Activity {
     }
 
     private void startProbe() {
+        status.setText("Starting diagnostic VPN...");
         startForegroundService(new Intent(this, ProbeVpnService.class));
     }
 
