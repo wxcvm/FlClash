@@ -258,9 +258,14 @@ class ProxiesAction extends _$ProxiesAction {
           !current.all.any((proxy) => proxy.name == name)) {
         return;
       }
-      await changeProxy(groupName: group.name, proxyName: name);
-      if (ref.mounted) await updateGroups();
-      return;
+      if (await _selectVerifiedSpeed(
+        group.name,
+        name,
+        isCurrent,
+        automatic: true,
+      )) {
+        return;
+      }
     }
   }
 
@@ -545,6 +550,15 @@ class ProxiesAction extends _$ProxiesAction {
       if (group == null) {
         return;
       }
+      if (selectWinner &&
+          group.type != GroupType.Selector &&
+          group.type != GroupType.URLTest) {
+        dialogs.showBanner(
+          '此策略组不支持固定下载速度优选节点',
+          level: BannerLevel.warning,
+        );
+        return;
+      }
       final initialProfileId = ref.read(currentProfileIdProvider);
       final initialSelection = ref
           .read(currentProfileProvider)
@@ -653,15 +667,35 @@ class ProxiesAction extends _$ProxiesAction {
       if (automatic && !stable.containsKey(current)) {
         return;
       }
-      final winner = chooseDownloadSpeedWinner(stable, current);
-      if (winner == null ||
-          winner == current ||
-          !currentGroup.all.any((proxy) => proxy.name == winner)) {
-        return;
+      final remaining = {
+        for (final proxy in currentGroup.all)
+          if (stable.containsKey(proxy.name)) proxy.name: stable[proxy.name]!,
+      };
+      while (remaining.isNotEmpty && isCurrent()) {
+        final winner = chooseDownloadSpeedWinner(remaining, current);
+        if (winner == null) {
+          return;
+        }
+        if (await _selectVerifiedSpeed(
+          groupName,
+          winner,
+          isCurrent,
+          automatic: automatic,
+        )) {
+          return;
+        }
+        // A healthy incumbent must not be discarded merely because its
+        // health-check endpoint failed during a speed optimization.
+        if (winner == current) {
+          return;
+        }
+        remaining.remove(winner);
       }
-      await changeProxy(groupName: groupName, proxyName: winner);
-      if (ref.mounted) {
-        await updateGroups();
+      if (isCurrent() && !automatic) {
+        dialogs.showBanner(
+          '下载测速完成，但没有节点通过策略组健康检查',
+          level: BannerLevel.warning,
+        );
       }
     } finally {
       _speedTestingGroups.remove(groupName);
@@ -669,6 +703,44 @@ class ProxiesAction extends _$ProxiesAction {
         ref.read(downloadSpeedTestingGroupsProvider.notifier).stop(groupName);
         _publishDownloadSpeedSort();
       }
+    }
+  }
+
+  Future<bool> _selectVerifiedSpeed(
+    String groupName,
+    String name,
+    bool Function() isCurrent, {
+    required bool automatic,
+  }) async {
+    if (!isCurrent()) {
+      return false;
+    }
+    try {
+      final result = await _core.selectSpeedProxy(
+        ChangeProxyParams(groupName: groupName, proxyName: name),
+      );
+      if (!isCurrent()) {
+        return false;
+      }
+      if (result.message.isNotEmpty) {
+        commonPrint.log('Speed selection rejected: ${result.message}');
+        return false;
+      }
+      // An automatic choice is runtime-only. Never overwrite the user's
+      // saved preference. One-click manual selection still persists.
+      if (!automatic) {
+        ref
+            .read(profilesActionProvider.notifier)
+            .updateCurrentSelectedMap(groupName, name);
+      }
+      await updateGroups();
+      return true;
+    } catch (error) {
+      commonPrint.log(
+        'Verified speed selection failed: $error',
+        logLevel: coreFailureLogLevel(error),
+      );
+      return false;
     }
   }
 

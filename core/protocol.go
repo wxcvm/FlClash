@@ -35,6 +35,7 @@ const (
 
 	proxyListMethod       CoreMethod = "proxy.list"
 	proxySelectMethod     CoreMethod = "proxy.select"
+	proxySelectSpeedMethod CoreMethod = "proxy.selectSpeed"
 	proxyDefinitionMethod CoreMethod = "proxy.definition"
 	proxyTestDelayMethod  CoreMethod = "proxy.testDelay"
 	proxyTestSpeedMethod  CoreMethod = "proxy.testSpeed"

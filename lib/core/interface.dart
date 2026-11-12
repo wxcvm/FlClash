@@ -177,6 +177,15 @@ abstract class CoreHandlerInterface {
     );
   }
 
+  Future<ChangeProxyResult> selectSpeedProxy(ChangeProxyParams params) {
+    return _query(
+      CoreMethod.proxySelectSpeed,
+      _model(ChangeProxyResult.fromJson),
+      arguments: params.toJson(),
+      timeout: const Duration(seconds: 15),
+    );
+  }
+
   Future<Map<String, dynamic>?> getProxyDefinition(String name) {
     return _find(CoreMethod.proxyDefinition, _json, arguments: {'name': name});
   }
