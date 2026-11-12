@@ -27,6 +27,18 @@ void main() {
       'sing-box-1.14.4-darwin-arm64.tar.gz',
     );
     expect(
+      nativeReleaseAssetName(NativeCoreKind.hysteria2, 'v2.13.0', Abi.linuxX64),
+      'hysteria-linux-amd64',
+    );
+    expect(
+      nativeReleaseAssetName(
+        NativeCoreKind.hysteria2,
+        'v2.13.0',
+        Abi.macosArm64,
+      ),
+      'hysteria-darwin-arm64',
+    );
+    expect(
       nativeReleaseAssetName(NativeCoreKind.xray, 'v26.11.9', Abi.linuxX64),
       'Xray-linux-64.zip',
     );
@@ -113,6 +125,25 @@ void main() {
       );
     },
   );
+
+  test('installs Hysteria binary with executable permission', () async {
+    final binary = [127, 69, 76, 70, 1, 2, 3];
+    final metadata = {
+      'tag_name': 'app/v2.13.0',
+      'assets': [
+        {
+          'name': 'hysteria-linux-amd64',
+          'size': binary.length,
+          'digest': 'sha256:${sha256.convert(binary)}',
+        },
+      ],
+    };
+    final manager = installer(Abi.linuxX64, metadata, binary);
+    final installed = await manager.installLatest(NativeCoreKind.hysteria2);
+    expect(p.basename(installed.executable), 'hysteria');
+    expect(await File(installed.executable).readAsBytes(), binary);
+    expect((await File(installed.executable).stat()).mode & 0x40, isNot(0));
+  });
 
   test('installs Linux Xray zip without losing geo resources', () async {
     final zip = Archive()

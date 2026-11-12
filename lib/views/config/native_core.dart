@@ -8,7 +8,7 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 
 /// Desktop-only control for native external cores.
-/// This does not claim the system proxy or the Mihomo-managed VPN/TUN.
+/// System proxy and process ownership are coordinated by NativeCoreHandoff.
 class NativeCoreView extends StatefulWidget {
   const NativeCoreView({super.key});
 
@@ -22,6 +22,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
       nativeCoreRuntime.activeSpec?.executable ??
       NativeCoreKind.singBox.executableName;
   String _configPath = nativeCoreRuntime.activeSpec?.configPath ?? '';
+  final Map<NativeCoreKind, String> _configPaths = {};
+  final Map<NativeCoreKind, String> _executablePaths = {};
   String _result = '';
   final List<String> _logs = [];
   StreamSubscription<String>? _logSubscription;
@@ -119,7 +121,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   }
 
   Future<String> _validate() async {
-    if (_configPath.trim().isEmpty) return '请先选择 JSON 配置文件';
+    if (_configPath.trim().isEmpty) return '请先选择配置文件';
     final result = await nativeCoreRuntime.validate(_spec);
     if (result.valid) {
       return result.details.isEmpty ? '配置验证通过' : result.details;
@@ -128,7 +130,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   }
 
   Future<String> _start() async {
-    if (_configPath.trim().isEmpty) return '请先选择 JSON 配置文件';
+    if (_configPath.trim().isEmpty) return '请先选择配置文件';
     await nativeCoreHandoff.activate(_spec);
     return nativeCoreHandoff.nativeTunConfigured
         ? '${_kind.label} 已启动；原生 JSON 已配置自动路由 TUN，实际路由状态未独立验证'
@@ -162,9 +164,12 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 value: _kind,
                 textBuilder: (kind) => kind.label,
                 onChanged: (kind) {
+                  _configPaths[_kind] = _configPath;
+                  _executablePaths[_kind] = _executable;
                   setState(() {
                     _kind = kind;
-                    _executable = kind.executableName;
+                    _executable = _executablePaths[kind] ?? kind.executableName;
+                    _configPath = _configPaths[kind] ?? '';
                   });
                   unawaited(_loadInstalledExecutable(kind));
                 },
@@ -193,7 +198,11 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 onTap: _busy ? null : _editExecutable,
               ),
               ListItem(
-                title: const Text('选择原生 JSON 配置'),
+                title: Text(
+                  _kind == NativeCoreKind.hysteria2
+                      ? '选择原生 YAML 配置'
+                      : '选择原生 JSON 配置',
+                ),
                 subtitle: Text(
                   _configPath.isEmpty ? '尚未选择' : _configPath,
                   maxLines: 2,
@@ -245,7 +254,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
             ],
             footer:
-                '启动时先停止 Mihomo 网络监听。若 sing-box 原生 JSON 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP/mixed 入口接管系统代理。异常退出后恢复原 Mihomo 状态，TUN 需要系统权限，页面不独立验证路由。',
+                '启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。异常退出后恢复原 Mihomo 状态；TUN 路由状态未独立验证。',
           ),
           if (_result.isNotEmpty)
             Padding(
