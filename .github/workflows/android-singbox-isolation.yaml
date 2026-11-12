@@ -9,6 +9,7 @@ on:
   push:
     branches:
       - feat/android-singbox-isolation-probe
+      - feat/android-libbox-vpn-bridge
     paths:
       - 'tool/android-singbox/isolation/**'
       - '.github/workflows/android-singbox-isolation.yaml'
