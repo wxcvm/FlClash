@@ -1,6 +1,8 @@
 package com.follow.clash.service
 
 import android.os.ParcelFileDescriptor
+import android.system.Os
+import android.system.OsConstants
 import java.io.ByteArrayOutputStream
 
 internal object NativeConfigReader {
@@ -8,6 +10,10 @@ internal object NativeConfigReader {
 
     fun read(config: ParcelFileDescriptor): String =
         ParcelFileDescriptor.AutoCloseInputStream(config).use { input ->
+            val stat = Os.fstat(config.fileDescriptor)
+            require(OsConstants.S_ISREG(stat.st_mode) && stat.st_size in 0..MAX_CONFIG_BYTES.toLong()) {
+                "Native config must be a regular file of at most 16 MiB"
+            }
             val bytes = ByteArrayOutputStream()
             val buffer = ByteArray(16384)
             while (true) {

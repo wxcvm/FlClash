@@ -19,27 +19,28 @@ internal class RemoteSingBoxEngine private constructor(
     private val app: Context,
     private val connection: ServiceConnection,
     private val remote: ISingBoxVpn,
+    private val owner: IBinder,
     val version: String,
     private val disconnected: AtomicBoolean,
 ) : CallbackTunnelEngine {
     private val released = AtomicBoolean()
 
     override fun validate() {
-        check(!released.get() && !disconnected.get() && remote.state() == "prepared") {
+        check(!released.get() && !disconnected.get() && remote.state(owner) == "prepared") {
             "Native VPN preflight is no longer valid"
         }
     }
 
     override fun start() {
         check(!released.get() && !disconnected.get()) { "Native VPN disconnected" }
-        remote.startVpn()
+        remote.startVpn(owner)
         check(remote.state() == "running") { "Native VPN failed to start" }
     }
 
     override fun stop() {
         if (released.get()) return
         try {
-            remote.stopVpn()
+            remote.stopVpn(owner)
         } catch (_: DeadObjectException) {
             // Process death closes its native descriptors; no old owner remains.
         }
@@ -84,7 +85,7 @@ internal class RemoteSingBoxEngine private constructor(
                 val version = ParcelFileDescriptor.open(config, ParcelFileDescriptor.MODE_READ_ONLY).use {
                     remote.prepare(it, events)
                 }
-                RemoteSingBoxEngine(app, connection, remote, version, disconnected)
+                RemoteSingBoxEngine(app, connection, remote, events.asBinder(), version, disconnected)
             } catch (error: Throwable) {
                 app.unbindService(connection)
                 throw error

@@ -4,7 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
-import android.net.VpnService
+import android.net.VpnService as SystemVpnService
 import android.os.Binder
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
@@ -13,16 +13,19 @@ import android.util.Log
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /**
  * Explicitly bound native VPN owner in :singbox. All lifecycle calls are
  * serialized off the main thread; no automatic system/always-on start.
  */
-class SingBoxVpnService : VpnService() {
+class SingBoxVpnService : SystemVpnService() {
     private var config: String? = null
     private var runtime: AutoCloseable? = null
     private var listener: ISingBoxVpnEvents? = null
+    @Volatile private var owner: IBinder? = null
     private var death: IBinder.DeathRecipient? = null
     private var state = "idle"
     @Volatile private var destroyed = false
@@ -45,8 +48,10 @@ class SingBoxVpnService : VpnService() {
                 val content = NativeConfigReader.read(config)
                 check(!destroyed && state == "idle") { "Native VPN already owned" }
                 val version = IsolatedLibbox.validateVpnConfig(this@SingBoxVpnService, content)
-                val recipient = IBinder.DeathRecipient { requestStop("VPN controller disconnected") }
-                events.asBinder().linkToDeath(recipient, 0)
+                val token = events.asBinder()
+                val recipient = IBinder.DeathRecipient { requestStop("VPN controller disconnected", token) }
+                token.linkToDeath(recipient, 0)
+                owner = token
                 listener = events
                 death = recipient
                 this@SingBoxVpnService.config = content
@@ -54,11 +59,14 @@ class SingBoxVpnService : VpnService() {
                 version
             }
 
-        override fun state(): String = serialized { this@SingBoxVpnService.state }
+        override fun state(owner: IBinder): String = serialized {
+            if (this@SingBoxVpnService.owner == owner) state else "idle"
+        }
 
-        override fun startVpn(): Unit = serialized {
+        override fun startVpn(owner: IBinder): Unit = serialized {
+            check(this@SingBoxVpnService.owner == owner) { "Native VPN lease is not owned" }
             check(!destroyed && state == "prepared") { "Native VPN is not prepared" }
-            check(VpnService.prepare(this@SingBoxVpnService) == null) { "Android VPN consent is required" }
+            check(SystemVpnService.prepare(this@SingBoxVpnService) == null) { "Android VPN consent is required" }
             val content = requireNotNull(config)
             state = "starting"
             try {
@@ -69,8 +77,8 @@ class SingBoxVpnService : VpnService() {
                     true,
                     api.classLoader,
                 )
-                val active = type.getConstructor(VpnService::class.java, Runnable::class.java)
-                    .newInstance(this@SingBoxVpnService, Runnable { requestStop("Native core requested stop") })
+                val active = type.getConstructor(SystemVpnService::class.java, Runnable::class.java)
+                    .newInstance(this@SingBoxVpnService, Runnable { requestStop("Native core requested stop", owner) })
                     as AutoCloseable
                 runtime = active
                 type.getMethod("start", String::class.java).invoke(active, content)
@@ -93,7 +101,10 @@ class SingBoxVpnService : VpnService() {
             }
         }
 
-        override fun stopVpn(): Unit = serialized { stopOwned() }
+        override fun stopVpn(owner: IBinder): Unit = serialized {
+            // A stale controller must never stop a replacement session.
+            if (this@SingBoxVpnService.owner == owner) stopOwned()
+        }
     }
 
     private fun promote() {
@@ -130,6 +141,7 @@ class SingBoxVpnService : VpnService() {
         val recipient = death
         listener = null
         death = null
+        owner = null
         if (callback != null && recipient != null) {
             callback.asBinder().unlinkToDeath(recipient, 0)
         }
@@ -137,8 +149,9 @@ class SingBoxVpnService : VpnService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
-    private fun requestStop(reason: String) {
+    private fun requestStop(reason: String, token: IBinder? = owner) {
         worker.execute {
+            if (token == null || owner != token) return@execute
             val callback = listener
             try {
                 stopOwned()
@@ -154,10 +167,10 @@ class SingBoxVpnService : VpnService() {
     }
 
     override fun onBind(intent: Intent): IBinder? =
-        if (intent.action == SERVICE_INTERFACE) super.onBind(intent) else binder
+        if (intent.action == SystemVpnService.SERVICE_INTERFACE) super.onBind(intent) else binder
 
     override fun onUnbind(intent: Intent): Boolean {
-        if (intent.action != SERVICE_INTERFACE) requestStop("VPN controller unbound")
+        if (intent.action != SystemVpnService.SERVICE_INTERFACE) requestStop("VPN controller unbound")
         return false
     }
 
@@ -175,6 +188,6 @@ class SingBoxVpnService : VpnService() {
         private const val TAG = "FlClashSingBox"
         private const val CHANNEL = "flclash-native-vpn"
         private const val NOTIFICATION_ID = 2
-        private val worker = Executors.newSingleThreadExecutor()
+        private val worker = ThreadPoolExecutor(0, 1, 10, TimeUnit.SECONDS, LinkedBlockingQueue())
     }
 }
