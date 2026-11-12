@@ -2,14 +2,14 @@ name: Android optional sing-box package
 on:
   workflow_dispatch:
   push:
-    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui]
+    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe]
     paths:
       - 'android/**'
       - 'lib/**'
       - 'tool/android-singbox/isolation/libbox-src/**'
       - '.github/workflows/android-singbox-package.yaml'
   pull_request:
-    branches: [main]
+    branches: [main, feat/android-singbox-core-ui]
     paths:
       - 'android/**'
       - 'lib/**'
@@ -24,7 +24,7 @@ permissions:
   actions: read
 jobs:
   package:
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'feat/android-singbox-'))
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || github.head_ref == 'feat/android-mihomo-process-probe'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -121,6 +121,24 @@ jobs:
         with:
           name: flclash-android-singbox-dev
           path: native-app-apk/*.apk
+          retention-days: 7
+      - name: Build isolated Mihomo device test APK
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
+        run: |
+          cd android
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Ptarget-platform=android-arm64 -PflclashMihomoProcessProbe=true
+          cd ..
+          mkdir -p mihomo-process-test
+          app=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
+          test_apk=$(find build/app/outputs/apk/androidTest/debug -name '*.apk' -print -quit)
+          test -n "$app" && test -n "$test_apk"
+          cp "$app" mihomo-process-test/app.apk
+          cp "$test_apk" mihomo-process-test/test.apk
+      - uses: actions/upload-artifact@v4
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
+        with:
+          name: mihomo-process-device-test
+          path: mihomo-process-test/*.apk
           retention-days: 7
       - name: Verify default build omits runtime
         run: |
