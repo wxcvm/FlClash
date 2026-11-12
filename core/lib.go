@@ -212,29 +212,19 @@ func handleStartTun(callbacks TunCallbacks, fd int, stack, address, dns, options
 	return false
 }
 
-var (
-	dnsUpdateMu  sync.Mutex
-	dnsUpdateSeq atomic.Uint64
-)
-
 func handleUpdateDns(value string) {
-	// mihomo turns the [""] that Split returns for no servers into a "udp://:"
-	// nameserver, which keeps the system resolver off its default fallback.
+	// NetworkObserver calls this before requesting a network rebuild. Apply the
+	// servers synchronously on its worker thread; independent goroutines could
+	// otherwise rebuild the resolver using the previous network's servers.
 	var addr []string
 	if value != "" {
 		addr = strings.Split(value, ",")
 	}
-	seq := dnsUpdateSeq.Add(1)
-	safeGo("updateDns", func() {
-		dnsUpdateMu.Lock()
-		defer dnsUpdateMu.Unlock()
-		if seq != dnsUpdateSeq.Load() {
-			return
-		}
-		log.Infoln("[DNS] updateDns %s", value)
-		dns.UpdateSystemDNS(addr)
-		dns.FlushCacheWithDefaultResolver()
-	})
+	configMu.Lock()
+	defer configMu.Unlock()
+	log.Infoln("[DNS] updateDns %s", value)
+	dns.UpdateSystemDNS(addr)
+	dns.FlushCacheWithDefaultResolver()
 }
 
 // gobind runs an export on the caller's thread and turns no panic into a Java

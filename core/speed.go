@@ -7,10 +7,9 @@ import (
 )
 
 const (
-	downloadSpeedURL      = "https://speed.cloudflare.com/__down?bytes=3145728"
-	downloadSpeedMaxBytes = 2 * 1024 * 1024
-	downloadSpeedMinBytes = 256 * 1024
-	downloadSpeedTimeout  = 12 * time.Second
+	downloadSpeedURL     = "https://speed.cloudflare.com/__down?bytes=2097152"
+	downloadSpeedBytes   = 2 * 1024 * 1024
+	downloadSpeedTimeout = 12 * time.Second
 )
 
 type SpeedTestParams struct {
@@ -42,13 +41,13 @@ func handleTestSpeed(params *SpeedTestParams) *SpeedTestResult {
 	}
 
 	epoch, version := routeStamp()
-	start := time.Now()
 	probe := runProbe(context.Background(), probeRequest{
-		method:    http.MethodGet,
-		url:       downloadSpeedURL,
-		proxyName: params.ProxyName,
-		timeout:   downloadSpeedTimeout,
-		maxBody:   downloadSpeedMaxBytes,
+		method:        http.MethodGet,
+		url:           downloadSpeedURL,
+		proxyName:     params.ProxyName,
+		timeout:       downloadSpeedTimeout,
+		downloadBytes: downloadSpeedBytes,
+		noRedirect:    true,
 		headers: map[string]string{
 			"Accept-Encoding": "identity",
 			"Cache-Control":   "no-cache",
@@ -65,12 +64,12 @@ func handleTestSpeed(params *SpeedTestParams) *SpeedTestResult {
 	afterEpoch, afterVersion := routeStamp()
 	if afterEpoch != epoch || afterVersion != version ||
 		probe.StatusCode != http.StatusOK ||
-		len(probe.Body) < downloadSpeedMinBytes {
+		probe.DownloadBytes != downloadSpeedBytes {
 		result.Error = probeErrorFailed
 		return result
 	}
 
-	result.Bytes = int64(len(probe.Body))
-	result.BytesPerSecond = downloadBytesPerSecond(result.Bytes, time.Since(start).Milliseconds())
+	result.Bytes = probe.DownloadBytes
+	result.BytesPerSecond = downloadBytesPerSecond(result.Bytes, probe.DownloadMillis)
 	return result
 }

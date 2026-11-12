@@ -27,8 +27,9 @@ import (
 )
 
 var (
-	configMu      sync.Mutex
-	currentConfig *config.Config
+	configMu            sync.Mutex
+	currentConfig       *config.Config
+	appliedConfigDigest *configDigest
 
 	errConfigNotApplied = errors.New("config is not applied")
 	errNotInitialized   = errors.New("not initialized")
@@ -105,10 +106,23 @@ func handleDecryptConfig(params DecryptConfigParams) (string, error) {
 var systemTimeWritable = runtime.GOOS != "android"
 
 func loadConfig(path string) (*config.Config, error) {
+	cfg, _, err := loadConfigSnapshot(path)
+	return cfg, err
+}
+
+func loadConfigSnapshot(path string) (*config.Config, configDigest, error) {
 	buf, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, configDigest{}, err
 	}
+	cfg, err := parseConfigBytes(buf)
+	if err != nil {
+		return nil, configDigest{}, err
+	}
+	return cfg, digestConfigBytes(buf), nil
+}
+
+func parseConfigBytes(buf []byte) (*config.Config, error) {
 	cfg, err := executor.ParseWithBytes(buf)
 	if err != nil {
 		return nil, err
@@ -129,11 +143,16 @@ func runningConfigPath() string {
 }
 
 func loadSetupConfig(params *SetupParams) (*config.Config, error) {
+	cfg, _, err := loadSetupConfigSnapshot(params)
+	return cfg, err
+}
+
+func loadSetupConfigSnapshot(params *SetupParams) (*config.Config, configDigest, error) {
 	path := runningConfigPath()
 	if params.Base != nil {
-		return loadConfigWithBase(params.Base, path)
+		return loadConfigWithBaseSnapshot(params.Base, path)
 	}
-	return loadConfig(path)
+	return loadConfigSnapshot(path)
 }
 
 func applyConfig(params *SetupParams) error {
@@ -142,7 +161,7 @@ func applyConfig(params *SetupParams) error {
 	defer configMu.Unlock()
 
 	applyOptions(params.Options)
-	cfg, err := loadSetupConfig(params)
+	cfg, digest, err := loadSetupConfigSnapshot(params)
 	if err != nil {
 		// The fallback is what keeps the listeners serving while the host
 		// reports the error, but it applies a config with no proxies in it.
@@ -161,6 +180,12 @@ func applyConfig(params *SetupParams) error {
 	}
 
 	currentConfig = cfg
+	// Only a successfully applied profile can be rebuilt during handover.
+	// A rejected profile may have written config.yaml before parsing failed.
+	appliedConfigDigest = nil
+	if err == nil {
+		appliedConfigDigest = &digest
+	}
 	hub.ApplyConfig(prepareEgress(cfg))
 	patchSelectGroup(params.SelectedMap)
 	bumpRouteEpoch()
@@ -237,6 +262,7 @@ func updateConfig(params *UpdateParams) error {
 		setGeoResourceUrl(geoType, link)
 	}
 	syncGeoUpdater(params.GeoAutoUpdate, params.GeoUpdateInterval)
+	snapshotGeoSettings(general)
 	if routeChange != routeUnchanged {
 		changeRoute(routeChange)
 	}

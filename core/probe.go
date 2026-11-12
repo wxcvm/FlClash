@@ -229,13 +229,14 @@ func probeErrorKind(err error) string {
 }
 
 type probeRequest struct {
-	method    string
-	url       string
-	proxyName string
-	headers   map[string]string
-	body      []byte
-	timeout   time.Duration
-	maxBody   int64
+	method        string
+	url           string
+	proxyName     string
+	headers       map[string]string
+	body          []byte
+	timeout       time.Duration
+	maxBody       int64
+	downloadBytes int64
 
 	// A followed redirect loses the Location that Netflix names its region in.
 	noRedirect bool
@@ -247,15 +248,17 @@ type probeRequest struct {
 }
 
 type ProbeResult struct {
-	StatusCode   int
-	Delay        int64
-	Body         string
-	Url          string
-	Chains       []string
-	Error        string
-	Message      string
-	CoreEpoch    uint64
-	RouteVersion uint64
+	StatusCode     int
+	Delay          int64
+	Body           string
+	Url            string
+	Chains         []string
+	Error          string
+	Message        string
+	CoreEpoch      uint64
+	RouteVersion   uint64
+	DownloadBytes  int64
+	DownloadMillis int64
 
 	header    http.Header
 	lowerBody string
@@ -347,7 +350,15 @@ func runProbe(parent context.Context, req probeRequest) *ProbeResult {
 	if route := dialer.route(); route != nil {
 		result.Chains = route.chains
 	}
-	if req.maxBody > 0 {
+	if req.downloadBytes > 0 && response.StatusCode == http.StatusOK {
+		start := time.Now()
+		n, err := io.CopyN(io.Discard, response.Body, req.downloadBytes)
+		if err != nil {
+			return fail(err)
+		}
+		result.DownloadBytes = n
+		result.DownloadMillis = max(1, time.Since(start).Milliseconds())
+	} else if req.maxBody > 0 {
 		result.Body = readProbeBody(response.Body, req.maxBody, req.until)
 	}
 	return result
