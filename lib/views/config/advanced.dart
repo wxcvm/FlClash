@@ -132,11 +132,18 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
   Future<void> _refresh() async {
     try {
       final status = await service?.nativeStatus() ?? const {};
+      final folder = await appPath.profilesPath;
+      final imported = File('$folder/android-singbox.json');
+      final hasImported = await imported.exists();
       if (!mounted) return;
       setState(() {
         _available = status['available'] == true;
         _active = status['active'] == true;
-        if (_active) _path = status['path'] as String? ?? _path;
+        if (_active) {
+          _path = status['path'] as String? ?? _path;
+        } else if (_path.isEmpty && hasImported) {
+          _path = imported.path;
+        }
       });
     } catch (error) {
       if (mounted) setState(() => _message = error.toString());

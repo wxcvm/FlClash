@@ -88,6 +88,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             arbiter.resetToStopped(token).also { publish() }
         }
         if (dropped) {
+            clearNativeSelection()
             host.notifyStopped()
         }
     }
@@ -121,12 +122,14 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     }
 
     @Volatile private var nativeSelection: String? = null
+    @Volatile private var ordinaryOptions: VpnOptions? = null
 
     fun requestNativeStart(path: String): Deferred<Boolean> {
         require(path.isNotBlank()) { "Select a sing-box JSON profile" }
         val options = sharedState.vpnOptions ?: host.loadSharedState().vpnOptions
             ?: return CompletableDeferred(false)
-        if (host.runtime?.nativeConfigPath != null) return CompletableDeferred(false)
+        if (host.runtime?.nativeConfigPath != null || nativeSelection != null) return CompletableDeferred(false)
+        ordinaryOptions = options
         nativeSelection = path
         sharedState = sharedState.copy(vpnOptions = options.copy(enable = true, nativeConfigPath = path))
         val outcome = requestStart()
@@ -138,8 +141,10 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     }
 
     private fun clearNativeSelection() {
+        if (nativeSelection == null) return
         nativeSelection = null
-        sharedState = sharedState.copy(vpnOptions = sharedState.vpnOptions?.copy(nativeConfigPath = null))
+        sharedState = sharedState.copy(vpnOptions = ordinaryOptions)
+        ordinaryOptions = null
     }
 
     fun requestStart(): Deferred<Boolean> {
@@ -158,8 +163,9 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
 
     fun syncSharedState(state: SharedState) {
         val path = nativeSelection
+        if (path != null && state.vpnOptions != null) ordinaryOptions = state.vpnOptions
         sharedState = if (path == null) state else state.copy(
-            vpnOptions = state.vpnOptions?.copy(enable = true, nativeConfigPath = path),
+            vpnOptions = ordinaryOptions?.copy(enable = true, nativeConfigPath = path),
         )
         applySharedState()
     }

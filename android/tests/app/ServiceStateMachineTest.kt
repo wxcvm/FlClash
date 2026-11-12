@@ -916,4 +916,37 @@ class ServiceStateMachineTest {
         assertTrue(machine.isRunRequested)
         assertEquals(null, host.runtime?.nativeConfigPath)
     }
+
+    @Test
+    fun `native entry retains selection through ordinary state sync and restores normal mode on stop`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState(enable = false))
+        assertTrue(machine.requestStart().await())
+        assertTrue(machine.requestNativeStart("/files/native.json").await())
+        assertEquals("/files/native.json", host.lastStartOptions?.nativeConfigPath)
+        assertTrue(host.lastStartOptions?.enable == true)
+        machine.syncSharedState(configuredState(enable = false))
+        assertTrue(machine.requestStart().await())
+        assertEquals(2, host.startCalls)
+        assertTrue(machine.requestStop().await())
+        assertTrue(machine.requestStart().await())
+        assertEquals(null, host.lastStartOptions?.nativeConfigPath)
+        assertFalse(host.lastStartOptions!!.enable)
+    }
+
+    @Test
+    fun `native entry failure retains original proxy mode`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState(enable = false))
+        assertTrue(machine.requestStart().await())
+        host.startSucceeds = false
+        assertFalse(machine.requestNativeStart("/files/bad.json").await())
+        assertEquals(RunState.STARTED, machine.runState.value)
+        host.startSucceeds = true
+        assertTrue(machine.requestStart().await())
+        assertEquals(2, host.startCalls)
+        assertFalse(host.runtime!!.vpn)
+    }
 }

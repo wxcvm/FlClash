@@ -120,15 +120,16 @@ class Service {
   Future<bool> startNative(String path) async {
     final previous = _startRequested;
     _startRequested = true;
+    final revision = ++_commandRevision;
     try {
       final started = await methodChannel.invokeMethod<bool>('startNative', {
         'path': path,
-        'revision': ++_commandRevision,
+        'revision': revision,
       }) ?? false;
-      if (!started) _startRequested = previous;
+      if (!started && revision == _commandRevision) _startRequested = previous;
       return started;
     } catch (_) {
-      _startRequested = previous;
+      if (revision == _commandRevision) _startRequested = previous;
       rethrow;
     }
   }
