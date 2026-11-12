@@ -72,6 +72,9 @@ class ProxiesAction extends _$ProxiesAction {
   @override
   void build() {
     ref.onDispose(() => _delayFlushTimer?.cancel());
+    ref.listen(currentProfileIdProvider, (previous, next) {
+      if (previous != next) _speedTestGeneration++;
+    });
     ref.listen(coreStatusProvider, (_, next) {
       if (next != CoreStatus.connected) {
         cancelDelayTests();
@@ -343,6 +346,7 @@ class ProxiesAction extends _$ProxiesAction {
   Future<void> selectByDownloadSpeed(
     String groupName, {
     bool selectWinner = true,
+    bool matchSearch = false,
   }) async {
     if (!_speedTestingGroups.add(groupName)) {
       return;
@@ -373,18 +377,19 @@ class ProxiesAction extends _$ProxiesAction {
               initialSelection;
       // Test the actual group members, not resolved leaves of nested groups.
       // A resolved leaf may not be a selectable member of this group.
+      final query = SearchQuery(
+        matchSearch ? ref.read(queryProvider(QueryTag.proxies)) : '',
+      );
       final candidates = group.all
+          .whereMatches(query, (proxy) => proxy.searchFields)
           .map((proxy) => proxy.name)
-          .where((name) {
-            return !const {'DIRECT', 'REJECT', 'REJECT-DROP'}.contains(name);
-          })
+          .where((name) => !reservedCustomProxyNames.contains(name))
           .toSet();
       if (candidates.isEmpty) {
         return;
       }
 
-      Future<int> measure(String name) =>
-          _measureDownloadSpeed(name, isCurrent);
+      Future<int> measure(String name) => _measureDownloadSpeed(name, isCurrent);
 
       final first = <String, int>{};
       await Future.wait([
@@ -508,13 +513,19 @@ class ProxiesAction extends _$ProxiesAction {
   Future<void> testPageGroupMetrics(String groupName) async {
     final epoch = ref.read(routeTrackerProvider).hostEpoch;
     final profile = ref.read(currentProfileIdProvider);
+    final generation = _speedTestGeneration;
     await delayTestPageGroup(groupName);
     if (!ref.mounted ||
+        _speedTestGeneration != generation ||
         ref.read(routeTrackerProvider).hostEpoch != epoch ||
         ref.read(currentProfileIdProvider) != profile) {
       return;
     }
-    await selectByDownloadSpeed(groupName, selectWinner: false);
+    await selectByDownloadSpeed(
+      groupName,
+      selectWinner: false,
+      matchSearch: true,
+    );
   }
 
   Future<void> proxyDelayTest(Proxy proxy, [String? testUrl]) {
