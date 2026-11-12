@@ -25,8 +25,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
   int _sessionStartedAt = 0;
   bool _qualityRunning = false;
   bool _qualityRequested = false;
-  Timer? _qualityTimer;
-  bool _qualityReading = false;
+  bool _cancelRequested = false;
+  String _batchProgress = '';
+  final Map<String, Map<String, dynamic>> _latestQuality = {};
 
   @override
   void initState() {
@@ -41,81 +42,117 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
     final started = status?.engine == 'sing-box' ? status!.startedAt : 0;
     if (started == _sessionStartedAt) return;
     _sessionStartedAt = started;
-    _qualityTimer?.cancel();
+    _cancelRequested = true;
     _qualityRequested = false;
     _ranking.clear();
+    _latestQuality.clear();
     if (mounted) setState(() {
       _quality = null;
       _qualityRunning = false;
       _snapshot = null;
+      _batchProgress = '';
     });
   }
 
   @override
   void dispose() {
     _service.nativeStatus.removeListener(_onNativeStatus);
-    _qualityTimer?.cancel();
+    _cancelRequested = true;
     if (_qualityRequested) {
       unawaited(_service.cancelNativeQuality().catchError((Object _) {}));
     }
     super.dispose();
   }
 
-  Future<void> _startQuality(String tag) => _perform(() async {
-    final session = _sessionStartedAt;
-    _qualityRequested = true;
-    try {
-      await _service.startNativeQuality(tag);
-    } catch (_) {
-      _qualityRequested = false;
-      rethrow;
-    }
-    if (!mounted || session != _sessionStartedAt) {
-      if (session == _sessionStartedAt) await _service.cancelNativeQuality();
-      return '测速已取消';
-    }
-    setState(() => _qualityRunning = true);
-    await _readQuality();
-    if (_qualityRunning) {
-      _qualityTimer?.cancel();
-      _qualityTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        unawaited(_readQuality());
-      });
-    }
-    return '已开始指定节点的真实网络质量测试';
-  });
+  Future<void> _startQuality(String tag) => _runQuality([tag]);
 
-  Future<void> _readQuality() async {
-    if (_qualityReading || !mounted) return;
-    _qualityReading = true;
-    final session = _sessionStartedAt;
-    try {
-      final result = await _service.getNativeQuality();
-      if (!mounted || session != _sessionStartedAt) return;
-      final sample = NativeQualitySample.fromMap(result);
-      _ranking.record(sample);
-      setState(() {
-        _quality = result;
-        _qualityRunning = sample.state == 'running';
-      });
-      if (!_qualityRunning) {
-        _qualityRequested = false;
-        _qualityTimer?.cancel();
-      }
-    } catch (error) {
-      if (!mounted || session != _sessionStartedAt) return;
-      _qualityTimer?.cancel();
-      setState(() => _message = '测速状态读取失败：$error；可取消或手动刷新');
-    } finally {
-      _qualityReading = false;
+  static bool _isProxy(Map<String, dynamic> item) =>
+      !const {'direct', 'block', 'dns', 'selector', 'urltest', 'reject'}
+          .contains(item['type']) &&
+      item['tag'] is String && (item['tag'] as String).isNotEmpty;
+
+  List<String> _candidates(Map<String, dynamic> group) {
+    final items = _rows(group['items']).where(_isProxy).toList();
+    double delay(Map<String, dynamic> item) {
+      final value = item['delay'];
+      return value is num && value > 0 ? value.toDouble() : double.infinity;
     }
+    items.sort((a, b) => delay(a).compareTo(delay(b)));
+    return items.map((item) => item['tag'] as String).toSet().take(3).toList();
   }
 
-  Future<void> _cancelQuality() => _perform(() async {
-    await _service.cancelNativeQuality();
-    await _readQuality();
-    return '测速已取消';
+  Future<void> _runQuality(List<String> tags) => _perform(() async {
+    if (tags.isEmpty) return '没有可测速的代理节点';
+    final session = _sessionStartedAt;
+    _cancelRequested = false;
+    _qualityRequested = true;
+    bool active() => mounted && session == _sessionStartedAt &&
+        !_cancelRequested;
+    try {
+      for (var index = 0; index < tags.length && active(); index++) {
+        final tag = tags[index];
+        setState(() {
+          _qualityRunning = true;
+          _quality = {'tag': tag, 'state': 'running'};
+          _batchProgress = '${index + 1}/${tags.length} · $tag';
+        });
+        await _service.startNativeQuality(tag);
+        if (!active()) break;
+        final clock = Stopwatch()..start();
+        while (active()) {
+          final result = await _service.getNativeQuality();
+          if (!active()) break;
+          final sample = NativeQualitySample.fromMap(result);
+          if (sample.tag != tag) {
+            throw StateError('测速返回了其他节点的结果');
+          }
+          setState(() => _quality = result);
+          if (sample.state != 'running') {
+            _ranking.record(sample);
+            _latestQuality[tag] = result;
+            break;
+          }
+          if (clock.elapsed > const Duration(seconds: 45)) {
+            await _service.cancelNativeQuality();
+            if (!active()) break;
+            setState(() => _quality = {
+              ...result, 'state': 'failed', 'error': '等待测速结果超时',
+            });
+            _ranking.record(NativeQualitySample.fromMap(_quality!));
+            _latestQuality[tag] = _quality!;
+            break;
+          }
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+      }
+      return active() ? '测速完成，可查看策略组中的实测推荐' : '测速已取消';
+    } finally {
+      // Stop the native stream before releasing this page's single-test slot.
+      if (session == _sessionStartedAt) {
+        try {
+          await _service.cancelNativeQuality();
+        } finally {
+          _qualityRequested = false;
+          if (mounted) setState(() {
+            _qualityRunning = false;
+            _batchProgress = '';
+            if (_cancelRequested && _quality?['state'] == 'running') {
+              _quality = {..._quality!, 'state': 'canceled'};
+            }
+          });
+        }
+      }
+    }
   });
+
+  Future<void> _cancelQuality() async {
+    _cancelRequested = true;
+    try {
+      await _service.cancelNativeQuality();
+    } catch (error) {
+      if (mounted) setState(() => _message = '取消请求失败：$error');
+    }
+  }
 
   String _bitrate(Object? value) =>
       value is num && value > 0
@@ -271,15 +308,14 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
                         title: Text('↓ ${_bitrate(quality['downloadBps'])}  ↑ ${_bitrate(quality['uploadBps'])}'),
                         subtitle: Text('空闲延迟 ${quality['latencyMs'] ?? '—'} ms · 下载 RPM ${quality['downloadRpm'] ?? '—'}'),
                       ),
+                    if (_batchProgress.isNotEmpty)
+                      ListItem(title: Text('候选进度：$_batchProgress')),
                     if (_qualityRunning)
                       ListItem(
                         title: const Text('取消测速'),
-                        onTap: enabled ? () => unawaited(_cancelQuality()) : null,
+                        onTap: running && !_cancelRequested
+                            ? () => unawaited(_cancelQuality()) : null,
                       ),
-                    ListItem(
-                      title: const Text('刷新测速状态'),
-                      onTap: enabled ? () => unawaited(_readQuality()) : null,
-                    ),
                   ],
                   footer: '实际消耗网络流量，单次测试最长目标 30 秒；不切换当前节点。'
                       '移动数据或限额网络请谨慎使用。',
@@ -298,6 +334,13 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
                             ? () => unawaited(_test(group['tag'] as String))
                             : null,
                       ),
+                      if (group['selectable'] == true && _candidates(group).isNotEmpty)
+                        ListItem(
+                          title: const Text('智能优选 · 实测候选'),
+                          subtitle: Text('按延迟初筛最多 3 个代理：${_candidates(group).join('、')}；依次测带宽，不自动切换'),
+                          onTap: enabled && !_qualityRunning
+                              ? () => unawaited(_runQuality(_candidates(group))) : null,
+                        ),
                       if (group['selectable'] == true)
                         for (final best in [_ranking.recommend(
                           _rows(group['items']).map((item) => item['tag'] as String),
@@ -343,10 +386,12 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard> {
                   title: '出站节点 · 真实测速',
                   items: [
                     for (final item in outbounds)
-                      if (!const {'direct', 'block', 'dns', 'selector', 'urltest'}.contains(item['type']))
+                      if (_isProxy(item))
                         ListItem(
                           title: Text(item['tag'] as String),
-                          subtitle: Text('${item['type']} · 点击进行带宽测试'),
+                          subtitle: Text(_latestQuality[item['tag']] == null
+                              ? '${item['type']} · 点击进行带宽测试'
+                              : '${item['type']} · ↓ ${_bitrate(_latestQuality[item['tag']]?['downloadBps'])} · ${_latestQuality[item['tag']]?['state'] == 'done' ? '完成' : '失败'}'),
                           onTap: enabled && !_qualityRunning
                               ? () => unawaited(_startQuality(item['tag'] as String))
                               : null,
