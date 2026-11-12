@@ -40,7 +40,7 @@ public final class ProbeService extends Service {
                 bytes.write(buffer, 0, n);
             }
         }
-        // Do not delegate to the APK classloader, which owns the host go.Seq.
+        // Do not delegate to the APK classloader, which owns the host Mihomo go.Seq.
         // The platform parent still exposes android.* and java.*.
         ClassLoader host = getClassLoader();
         ClassLoader isolated = new InMemoryDexClassLoader(
@@ -50,7 +50,7 @@ public final class ProbeService extends Service {
         );
         Class<?> bridge = Class.forName("go.Seq", false, isolated);
         if (bridge == go.Seq.class || bridge.getClassLoader() != isolated) {
-            throw new IllegalStateException("libbox resolved the host Go bridge");
+            throw new IllegalStateException("libbox resolved the host Mihomo Go bridge");
         }
         return isolated;
     }

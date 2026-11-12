@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.Process;
+import com.follow.clash.core.mobile.Mobile;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -37,6 +38,8 @@ public final class ProbeInstrumentation extends Instrumentation {
         };
         boolean bound = false;
         try {
+            Mobile.touch();
+            Mobile.forceGC();
             bound = context.bindService(
                 new Intent(context, ProbeService.class), connection, Context.BIND_AUTO_CREATE);
             if (!bound || !connected.await(15, TimeUnit.SECONDS)) {
@@ -69,7 +72,8 @@ public final class ProbeInstrumentation extends Instrumentation {
                     reply.recycle();
                 }
             }
-            result.putString("stream", "PASS: isolated libbox " + firstVersion
+            Mobile.forceGC();
+            result.putString("stream", "PASS: real Mihomo + isolated libbox " + firstVersion
                 + ", remote PID " + firstPid + ", 2/2 Binder calls\n");
             finish(Activity.RESULT_OK, result);
         } catch (Exception | LinkageError error) {
