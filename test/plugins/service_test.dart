@@ -108,37 +108,58 @@ void main() {
 
   group('native ownership', () {
     const native = {
-      'available': true, 'engine': 'sing-box', 'nativeOwner': true,
-      'mihomoSuspended': true, 'startedAt': 1234, 'state': 'STARTED',
+      'available': true,
+      'engine': 'sing-box',
+      'nativeOwner': true,
+      'mihomoSuspended': true,
+      'startedAt': 1234,
+      'state': 'STARTED',
     };
 
     Future<void> emitStatus(Map<String, Object?> status) async {
       await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .handlePlatformMessage(
             channelName,
-            codec.encodeMethodCall(MethodCall('nativeCoreStatusChanged', status)),
+            codec.encodeMethodCall(
+              MethodCall('nativeCoreStatusChanged', status),
+            ),
             null,
           );
     }
 
-    test('native ownership blocks Mihomo traffic before any channel call', () async {
-      await emitStatus(native);
-      expect(Service().nativeOwnsRuntime, isTrue);
-      await expectLater(
-        Service().invokeMethod(const CoreMethodCall(method: CoreMethod.trafficCurrent)),
-        throwsA(isA<CoreMethodException>().having((e) => e.code, 'code', 'core_unavailable')),
-      );
-      expect(calls, isEmpty);
-      await emitStatus({'engine': 'mihomo', 'state': 'STARTED'});
-      mockCoreChannel((_) async => utf8.encode(json.encode(
-        const CoreMethodResponse(id: '1', result: {'up': 1}).toJson(),
-      )));
-      final result = await Service().invokeMethod(
-        const CoreMethodCall(id: '1', method: CoreMethod.trafficCurrent),
-      );
-      expect(result.result, {'up': 1});
-      expect(calls.single.method, 'invokeMethod');
-    });
+    test(
+      'native ownership blocks Mihomo traffic before any channel call',
+      () async {
+        await emitStatus(native);
+        expect(Service().nativeOwnsRuntime, isTrue);
+        await expectLater(
+          Service().invokeMethod(
+            const CoreMethodCall(method: CoreMethod.trafficCurrent),
+          ),
+          throwsA(
+            isA<CoreMethodException>().having(
+              (e) => e.code,
+              'code',
+              'core_unavailable',
+            ),
+          ),
+        );
+        expect(calls, isEmpty);
+        await emitStatus({'engine': 'mihomo', 'state': 'STARTED'});
+        mockCoreChannel(
+          (_) async => utf8.encode(
+            json.encode(
+              const CoreMethodResponse(id: '1', result: {'up': 1}).toJson(),
+            ),
+          ),
+        );
+        final result = await Service().invokeMethod(
+          const CoreMethodCall(id: '1', method: CoreMethod.trafficCurrent),
+        );
+        expect(result.result, {'up': 1});
+        expect(calls.single.method, 'invokeMethod');
+      },
+    );
 
     test('an old status read cannot overwrite a newer native event', () async {
       final response = Completer<Object?>();
@@ -164,9 +185,24 @@ void main() {
     });
 
     test('cleanup and suspended state remain owned without a runtime', () {
-      expect(AndroidNativeStatus.fromMap({'engine': 'idle', 'nativeOwner': true}).ownsRuntime, isTrue);
-      expect(AndroidNativeStatus.fromMap({'engine': 'idle', 'mihomoSuspended': true}).ownsRuntime, isTrue);
-      expect(AndroidNativeStatus.fromMap({'engine': 'idle'}).ownsRuntime, isFalse);
+      expect(
+        AndroidNativeStatus.fromMap({
+          'engine': 'idle',
+          'nativeOwner': true,
+        }).ownsRuntime,
+        isTrue,
+      );
+      expect(
+        AndroidNativeStatus.fromMap({
+          'engine': 'idle',
+          'mihomoSuspended': true,
+        }).ownsRuntime,
+        isTrue,
+      );
+      expect(
+        AndroidNativeStatus.fromMap({'engine': 'idle'}).ownsRuntime,
+        isFalse,
+      );
     });
 
     test('native overview uses the status-only command', () async {

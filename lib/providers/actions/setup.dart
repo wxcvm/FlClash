@@ -69,7 +69,9 @@ class SetupAction extends _$SetupAction {
     debouncer.cancel(FunctionTag.suspend);
     _pendingForceApply = false;
     _startTime = status.ownsRuntime || status.engine == 'mihomo'
-        ? (status.startedAt > 0 ? DateTime.fromMillisecondsSinceEpoch(status.startedAt) : null)
+        ? (status.startedAt > 0
+              ? DateTime.fromMillisecondsSinceEpoch(status.startedAt)
+              : null)
         : null;
     ref.read(trafficsProvider.notifier).clear();
     ref.read(totalTrafficProvider.notifier).value = const Traffic();
@@ -325,7 +327,9 @@ class SetupAction extends _$SetupAction {
     if (_androidNativeOwned) return;
     debouncer.call(FunctionTag.suspend, () {
       return _listenerScheduler.run(() async {
-        if (_androidNativeOwned || !ref.read(isStartProvider) || ref.read(safeModeProvider)) {
+        if (_androidNativeOwned ||
+            !ref.read(isStartProvider) ||
+            ref.read(safeModeProvider)) {
           return;
         }
         try {

@@ -53,37 +53,41 @@ Future<YamlMap> _dnsOf({
 }
 
 void main() {
-  test('encrypted upstream hostnames are real-IP exceptions in generated config', () async {
-    const upstream = 'https://private.example/account-token/dns-query?key=secret';
-    final dns = await _dnsOf(
-      rawConfig: {
-        'dns': {
-          'enable': true,
-          'enhanced-mode': 'fake-ip',
-          'nameserver': [upstream, 'tls://1.1.1.1:853'],
-          'fallback': ['h3://fallback.example/dns-query'],
-          'proxy-server-nameserver': ['tls://bootstrap.example:853'],
-          'nameserver-policy': {
-            '+.example.org': ['quic://policy.example:853', '223.5.5.5'],
+  test(
+    'encrypted upstream hostnames are real-IP exceptions in generated config',
+    () async {
+      const upstream =
+          'https://private.example/account-token/dns-query?key=secret';
+      final dns = await _dnsOf(
+        rawConfig: {
+          'dns': {
+            'enable': true,
+            'enhanced-mode': 'fake-ip',
+            'nameserver': [upstream, 'tls://1.1.1.1:853'],
+            'fallback': ['h3://fallback.example/dns-query'],
+            'proxy-server-nameserver': ['tls://bootstrap.example:853'],
+            'nameserver-policy': {
+              '+.example.org': ['quic://policy.example:853', '223.5.5.5'],
+            },
+            'direct-nameserver': ['https://private.example/other'],
+            'fake-ip-filter': ['*.lan'],
           },
-          'direct-nameserver': ['https://private.example/other'],
-          'fake-ip-filter': ['*.lan'],
         },
-      },
-      keys: {},
-    );
-    expect(dns['fake-ip-filter'], [
-      '*.lan',
-      'private.example',
-      'fallback.example',
-      'bootstrap.example',
-      'policy.example',
-    ]);
-    expect(dns['nameserver'], [upstream, 'tls://1.1.1.1:853']);
-    expect(dns['nameserver-policy'], {
-      '+.example.org': ['quic://policy.example:853', '223.5.5.5'],
-    });
-  });
+        keys: {},
+      );
+      expect(dns['fake-ip-filter'], [
+        '*.lan',
+        'private.example',
+        'fallback.example',
+        'bootstrap.example',
+        'policy.example',
+      ]);
+      expect(dns['nameserver'], [upstream, 'tls://1.1.1.1:853']);
+      expect(dns['nameserver-policy'], {
+        '+.example.org': ['quic://policy.example:853', '223.5.5.5'],
+      });
+    },
+  );
 
   test('explicit whitelist and rule modes are not modified', () async {
     for (final mode in ['whitelist', 'rule']) {
@@ -112,7 +116,10 @@ void main() {
         'dns': {
           'enable': true,
           'enhanced-mode': 'fake-ip',
-          'nameserver': ['https://1.1.1.1/dns-query', 'tls://[2606:4700:4700::1111]:853'],
+          'nameserver': [
+            'https://1.1.1.1/dns-query',
+            'tls://[2606:4700:4700::1111]:853',
+          ],
         },
       },
       keys: {},

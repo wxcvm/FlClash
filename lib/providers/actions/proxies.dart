@@ -440,9 +440,13 @@ class ProxiesAction extends _$ProxiesAction {
             return [];
           }
         },
-        retryIf: (res) => service?.nativeOwnsRuntime != true && generation == _speedTestGeneration && res.isEmpty,
+        retryIf: (res) =>
+            service?.nativeOwnsRuntime != true &&
+            generation == _speedTestGeneration &&
+            res.isEmpty,
       );
-      if (service?.nativeOwnsRuntime != true && generation == _speedTestGeneration) {
+      if (service?.nativeOwnsRuntime != true &&
+          generation == _speedTestGeneration) {
         ref.read(groupsProvider.notifier).value = groups;
       }
     } catch (e) {

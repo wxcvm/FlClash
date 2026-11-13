@@ -148,7 +148,9 @@ class Service {
   }
 
   Future<Map<String, dynamic>> getNativeQuality() async {
-    final data = await methodChannel.invokeMethod<String>('nativeQualitySnapshot');
+    final data = await methodChannel.invokeMethod<String>(
+      'nativeQualitySnapshot',
+    );
     return Map<String, dynamic>.from(jsonDecode(data ?? '{}') as Map);
   }
 
@@ -157,7 +159,9 @@ class Service {
   }
 
   Future<Map<String, dynamic>> getNativeStatusSnapshot() async {
-    final json = await methodChannel.invokeMethod<String>('nativeStatusSnapshot');
+    final json = await methodChannel.invokeMethod<String>(
+      'nativeStatusSnapshot',
+    );
     return Map<String, dynamic>.from(jsonDecode(json ?? '{}') as Map);
   }
 
@@ -170,7 +174,11 @@ class Service {
     await methodChannel.invokeMethod<bool>('resetNativeNetwork');
   }
 
-  Future<void> selectNativeOutbound(String group, String tag, {int generation = -1}) async {
+  Future<void> selectNativeOutbound(
+    String group,
+    String tag, {
+    int generation = -1,
+  }) async {
     await methodChannel.invokeMethod<bool>('selectNativeOutbound', {
       'group': group,
       'tag': tag,
@@ -211,9 +219,9 @@ class Service {
     final revision = ++_commandRevision;
     _startRequested = true;
     try {
-      return await methodChannel.invokeMethod<bool>(
-            'startMihomoCore', {'revision': revision},
-          ) ??
+      return await methodChannel.invokeMethod<bool>('startMihomoCore', {
+            'revision': revision,
+          }) ??
           false;
     } finally {
       if (revision == _commandRevision) {
@@ -229,10 +237,9 @@ class Service {
     final revision = ++_commandRevision;
     _startRequested = false;
     try {
-      return await methodChannel.invokeMethod<bool>(
-            'stopNativeCore',
-            {'revision': revision},
-          ) ??
+      return await methodChannel.invokeMethod<bool>('stopNativeCore', {
+            'revision': revision,
+          }) ??
           false;
     } finally {
       if (revision == _commandRevision) {
@@ -325,7 +332,8 @@ class AndroidNativeStatus {
   final int startedAt;
   final bool mihomoSuspended;
 
-  bool get ownsRuntime => engine == 'sing-box' || nativeOwner || mihomoSuspended;
+  bool get ownsRuntime =>
+      engine == 'sing-box' || nativeOwner || mihomoSuspended;
 }
 
 class AndroidNativeStartResult {

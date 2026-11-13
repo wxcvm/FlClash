@@ -61,7 +61,10 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
     try {
       await service?.getNativeStatus();
     } catch (error) {
-      commonPrint.log('Android native status: $error', logLevel: LogLevel.debug);
+      commonPrint.log(
+        'Android native status: $error',
+        logLevel: LogLevel.debug,
+      );
     }
   }
 
@@ -69,7 +72,12 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
     if (!mounted) return;
     final status = service?.nativeStatus.value;
     if (status == null) return;
-    final signature = (status.engine, status.state, status.startedAt, status.ownsRuntime);
+    final signature = (
+      status.engine,
+      status.state,
+      status.startedAt,
+      status.ownsRuntime,
+    );
     if (_lastNativeState == signature) return;
     _lastNativeState = signature;
     final wasNative = _wasNative;
@@ -91,18 +99,29 @@ class _AndroidContainerState extends ConsumerState<AndroidManager>
   Future<void> _restoreMihomoView(int revision) async {
     try {
       await ref.read(coreActionProvider.notifier).initCore();
-      if (!mounted || revision != _nativeRevision || service?.nativeOwnsRuntime == true) return;
+      if (!mounted ||
+          revision != _nativeRevision ||
+          service?.nativeOwnsRuntime == true)
+        return;
       // A retired Core reopened while idle needs the original stopped-state profile.
       // On switch-back, the native controller already restored the running profile.
       if (service?.nativeStatus.value?.engine == 'idle') {
-        await ref.read(setupActionProvider.notifier).applyProfile(force: true, silence: true);
+        await ref
+            .read(setupActionProvider.notifier)
+            .applyProfile(force: true, silence: true);
       }
-      if (!mounted || revision != _nativeRevision || service?.nativeOwnsRuntime == true) return;
+      if (!mounted ||
+          revision != _nativeRevision ||
+          service?.nativeOwnsRuntime == true)
+        return;
       if (ref.read(appSettingProvider).openLogs) {
         await ref.read(coreHandlerProvider).startLog();
       }
     } catch (error) {
-      commonPrint.log('Restore Mihomo view: $error', logLevel: coreFailureLogLevel(error));
+      commonPrint.log(
+        'Restore Mihomo view: $error',
+        logLevel: coreFailureLogLevel(error),
+      );
     }
   }
 

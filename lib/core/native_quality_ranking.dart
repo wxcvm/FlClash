@@ -81,13 +81,17 @@ class NativeQualityRanking {
 
   double? _score(String tag, int now) {
     final samples = (_samples[tag] ?? const <NativeQualitySample>[])
-        .where((s) =>
-            now >= s.startedAt && now - s.startedAt <= maxAge.inMilliseconds)
+        .where(
+          (s) =>
+              now >= s.startedAt && now - s.startedAt <= maxAge.inMilliseconds,
+        )
         .toList();
     if (samples.isEmpty || samples.last.state != 'done') return null;
     final valid = samples
-        .where((s) =>
-            s.state == 'done' && s.downloadBps.isFinite && s.downloadBps > 0)
+        .where(
+          (s) =>
+              s.state == 'done' && s.downloadBps.isFinite && s.downloadBps > 0,
+        )
         .toList();
     if (valid.isEmpty || valid.last != samples.last) return null;
     final rates = valid.map((s) => s.downloadBps).toList()..sort();

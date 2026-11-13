@@ -67,7 +67,9 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
       throw const FormatException('原生配置超过 16 MiB');
     }
     final generated = buildNativeAutoRecovery(await source.readAsString());
-    final directory = await Directory(await appPath.homeDirPath).createTemp('singbox-auto-');
+    final directory = await Directory(
+      await appPath.homeDirPath,
+    ).createTemp('singbox-auto-');
     final copy = File('${directory.path}/config.json');
     try {
       await copy.writeAsString(generated.json, flush: true);
@@ -99,9 +101,7 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
   }
 
   Future<String> _switchToMihomo() async =>
-      await _service.startMihomoCore()
-          ? '已切回 Mihomo'
-          : '切换未完成，请检查当前 VPN 状态与配置';
+      await _service.startMihomoCore() ? '已切回 Mihomo' : '切换未完成，请检查当前 VPN 状态与配置';
 
   Future<String> _stop() async =>
       await _service.stopNativeCore() ? 'VPN 已停止' : '停止未完成，请重试';
@@ -140,16 +140,16 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                   ),
                   ListItem(
                     title: const Text('Mihomo'),
-                    subtitle: Text(status?.mihomoSuspended == true
-                        ? '已暂停 Core 请求 · 使用 sing-box 运行管理'
-                        : '内置 · 默认内核'),
+                    subtitle: Text(
+                      status?.mihomoSuspended == true
+                          ? '已暂停 Core 请求 · 使用 sing-box 运行管理'
+                          : '内置 · 默认内核',
+                    ),
                   ),
                   ListItem(
                     title: const Text('sing-box'),
                     subtitle: Text(
-                      available
-                          ? '原生内核可用 · ARM64'
-                          : '当前 APK 未包含可用原生内核',
+                      available ? '原生内核可用 · ARM64' : '当前 APK 未包含可用原生内核',
                     ),
                   ),
                   ListItem(
@@ -213,7 +213,8 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                         : null,
                   ),
                 ],
-                footer: '使用带 TUN 的 sing-box 原生 JSON；不会转换 Clash 订阅。'
+                footer:
+                    '使用带 TUN 的 sing-box 原生 JSON；不会转换 Clash 订阅。'
                     '启动失败时尝试恢复先前的 Mihomo VPN。'
                     '节点、流量与日志可在运行管理查看；选择原生自动组后由内核重新选路。',
               ),

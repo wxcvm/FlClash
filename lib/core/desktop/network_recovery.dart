@@ -1,6 +1,7 @@
 import 'dart:async';
 
-Future<void> _waitForHealth() => Future<void>.delayed(const Duration(seconds: 1));
+Future<void> _waitForHealth() =>
+    Future<void>.delayed(const Duration(seconds: 1));
 
 /// Use only a fresh final failure from the core's existing two-attempt probe.
 /// A successful HTTP response, invalid URL or inconclusive check does not

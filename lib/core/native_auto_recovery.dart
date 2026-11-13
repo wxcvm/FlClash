@@ -23,7 +23,8 @@ NativeAutoRecoveryConfig buildNativeAutoRecovery(String source) {
     if (item is! Map<String, dynamic>) continue;
     final tag = item['tag'];
     if (tag is String && tag.isNotEmpty) {
-      if (!occupied.add(tag)) throw const FormatException('Duplicate outbound tag');
+      if (!occupied.add(tag))
+        throw const FormatException('Duplicate outbound tag');
       byTag[tag] = item;
     }
   }
@@ -40,8 +41,19 @@ NativeAutoRecoveryConfig buildNativeAutoRecovery(String source) {
 
   // A proxy must represent a remote server, not a direct/block/nested group.
   const proxyTypes = {
-    'shadowsocks', 'vmess', 'vless', 'trojan', 'hysteria', 'hysteria2',
-    'tuic', 'socks', 'http', 'ssh', 'anytls', 'naive', 'mieru',
+    'shadowsocks',
+    'vmess',
+    'vless',
+    'trojan',
+    'hysteria',
+    'hysteria2',
+    'tuic',
+    'socks',
+    'http',
+    'ssh',
+    'anytls',
+    'naive',
+    'mieru',
   };
   final additions = <Map<String, dynamic>>[];
   for (final selector in byTag.values) {
@@ -49,11 +61,18 @@ NativeAutoRecoveryConfig buildNativeAutoRecovery(String source) {
     final members = selector['outbounds'];
     if (members is! List) continue;
     if (members.any((tag) => byTag[tag]?['type'] == 'urltest')) continue;
-    final eligible = members.whereType<String>().where((tag) {
-      final proxy = byTag[tag];
-      return proxy != null && proxyTypes.contains(proxy['type']) &&
-          proxy['server'] is String && (proxy['server'] as String).isNotEmpty;
-    }).toSet().take(5).toList();
+    final eligible = members
+        .whereType<String>()
+        .where((tag) {
+          final proxy = byTag[tag];
+          return proxy != null &&
+              proxyTypes.contains(proxy['type']) &&
+              proxy['server'] is String &&
+              (proxy['server'] as String).isNotEmpty;
+        })
+        .toSet()
+        .take(5)
+        .toList();
     if (eligible.length < 2) continue;
     final base = 'FlClash Auto · ${selector['tag']}';
     var tag = base;
@@ -74,7 +93,9 @@ NativeAutoRecoveryConfig buildNativeAutoRecovery(String source) {
     selector['outbounds'] = [...members, tag];
   }
   if (additions.isEmpty) {
-    throw const FormatException('No selector with at least two eligible proxies and no existing auto group');
+    throw const FormatException(
+      'No selector with at least two eligible proxies and no existing auto group',
+    );
   }
   decoded['outbounds'] = [...outbounds, ...additions];
   return NativeAutoRecoveryConfig(
