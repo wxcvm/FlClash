@@ -7,6 +7,8 @@ class CoreAction extends _$CoreAction {
   int _requestedRestartRevision = 0;
   Future<bool>? _restartOperation;
   int _networkEventRevision = 0;
+  int _networkVerifications = 0;
+  DateTime? _lastWatchdogRefresh;
 
   @override
   void build() {
@@ -14,6 +16,18 @@ class CoreAction extends _$CoreAction {
     ref.listen(suspendProvider, (_, _) => _networkEventRevision++);
     ref.listen(coreStatusProvider, (_, _) => _networkEventRevision++);
     ref.listen(currentProfileIdProvider, (_, _) => _networkEventRevision++);
+    if (system.isWindows) {
+      final timer = Timer.periodic(const Duration(minutes: 1), (_) {
+        if (_networkVerifications != 0 ||
+            !ref.read(isStartProvider) ||
+            ref.read(suspendProvider) ||
+            nativeCoreRuntime.blocksMihomoStart) {
+          return;
+        }
+        unawaited(verifyNetworkAfterResume(watchdog: true));
+      });
+      ref.onDispose(timer.cancel);
+    }
   }
 
   Future<void> initCore() async {
@@ -103,7 +117,10 @@ class CoreAction extends _$CoreAction {
 
   /// Wake and same-transport reconnects do not prove that connections are
   /// broken. Reuse the core's bounded route health probe before resetting.
-  Future<void> verifyNetworkAfterResume({bool refreshPath = false}) async {
+  Future<void> verifyNetworkAfterResume({
+    bool refreshPath = false,
+    bool watchdog = false,
+  }) async {
     final revision = ++_networkEventRevision;
     final route = ref.read(routeTrackerProvider);
     bool current() =>
@@ -113,8 +130,17 @@ class CoreAction extends _$CoreAction {
         !ref.read(suspendProvider) &&
         ref.read(coreStatusProvider) == CoreStatus.connected &&
         ref.read(routeTrackerProvider).hostEpoch == route.hostEpoch &&
-        service?.nativeOwnsRuntime != true;
+        service?.nativeOwnsRuntime != true &&
+        !(system.isDesktop && nativeCoreRuntime.blocksMihomoStart);
     if (!current()) return;
+    if (watchdog) {
+      final last = _lastWatchdogRefresh;
+      if (last != null &&
+          DateTime.now().difference(last) < const Duration(minutes: 2)) {
+        return;
+      }
+    }
+    _networkVerifications++;
     try {
       final recover = await verifyDesktopNetwork(
         check: _core.checkNetworkHealth,
@@ -124,13 +150,22 @@ class CoreAction extends _$CoreAction {
         refreshPath: refreshPath ? _core.reportNetworkChange : null,
       );
       if (recover && current()) {
-        await reportNetworkChange(recover: true);
+        if (watchdog) {
+          // One endpoint is not proof that all traffic is broken. Refresh
+          // resolver transports without closing live connections.
+          _lastWatchdogRefresh = DateTime.now();
+          await reportNetworkChange();
+        } else {
+          await reportNetworkChange(recover: true);
+        }
       }
     } catch (error) {
       commonPrint.log(
         'Wake network verification failed: $error',
         logLevel: coreFailureLogLevel(error),
       );
+    } finally {
+      _networkVerifications--;
     }
   }
 

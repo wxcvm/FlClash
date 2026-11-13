@@ -353,11 +353,15 @@ func runProbe(parent context.Context, req probeRequest) *ProbeResult {
 	if req.downloadBytes > 0 && response.StatusCode == http.StatusOK {
 		start := time.Now()
 		n, err := io.CopyN(io.Discard, response.Body, req.downloadBytes)
+		// Retain bytes received before the deadline for time-bounded speed
+		// samples. An early EOF or other transport error is still rejected.
+		if err == nil || probeErrorKind(err) == probeErrorTimeout {
+			result.DownloadBytes = n
+			result.DownloadMillis = max(1, time.Since(start).Milliseconds())
+		}
 		if err != nil {
 			return fail(err)
 		}
-		result.DownloadBytes = n
-		result.DownloadMillis = max(1, time.Since(start).Milliseconds())
 	} else if req.maxBody > 0 {
 		result.Body = readProbeBody(response.Body, req.maxBody, req.until)
 	}
