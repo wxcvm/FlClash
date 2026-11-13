@@ -66,7 +66,9 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
     if (await source.length() > 16 * 1024 * 1024) {
       throw const FormatException('原生配置超过 16 MiB');
     }
-    final generated = buildNativeAutoRecovery(await source.readAsString());
+    final NativeAutoRecoveryConfig generated = buildNativeAutoRecovery(
+      await source.readAsString(),
+    );
     final directory = await Directory(
       await appPath.homeDirPath,
     ).createTemp('singbox-auto-');

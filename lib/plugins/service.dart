@@ -44,6 +44,8 @@ class Service {
   final ObserverList<ServiceListener> _listeners =
       ObserverList<ServiceListener>();
 
+  // The process-wide Service singleton relays native status for the entire
+  // app lifetime, including when no Android dashboard is mounted.
   final nativeStatus = ValueNotifier<AndroidNativeStatus?>(null);
 
   int _commandRevision = 0;
