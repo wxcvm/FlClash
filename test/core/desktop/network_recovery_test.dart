@@ -56,10 +56,7 @@ void main() {
       ]),
       isFalse,
     );
-    expect(
-      await verify([health('route-unreachable', failures: 1)]),
-      isFalse,
-    );
+    expect(await verify([health('route-unreachable', failures: 1)]), isFalse);
     expect(
       await verify([
         {...health('dns-failure')}..remove('confirmed-failures'),
