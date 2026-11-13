@@ -31,6 +31,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   StreamSubscription<String>? _logSubscription;
   StreamSubscription<String>? _handoffSubscription;
   bool _busy = false;
+  bool _advanced = false;
 
   @override
   void initState() {
@@ -106,7 +107,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
       _executable = _executablePaths[kind] ?? kind.executableName;
     });
     await _loadInstalledExecutable(kind);
-    return '已识别 ${kind.label}，请检查配置后启动';
+    return '已识别 ${kind.label}，启动时自动准备内核';
   }
 
   Future<void> _editExecutable() async {
@@ -153,6 +154,11 @@ class _NativeCoreViewState extends State<NativeCoreView> {
 
   Future<String> _start() async {
     if (_configPath.trim().isEmpty) return '请先选择配置文件';
+    if (_executable == _kind.executableName && nativeCoreInstaller.supported) {
+      final installed = await nativeCoreInstaller.installedExecutable(_kind);
+      _executable = installed ?? (await nativeCoreInstaller.installLatest(_kind)).executable;
+      if (mounted) setState(() {});
+    }
     await nativeCoreHandoff.activate(_spec);
     return nativeCoreHandoff.nativeTunConfigured
         ? '${_kind.label} 已启动；原生 JSON 已配置自动路由 TUN，实际路由状态未独立验证'
@@ -178,15 +184,20 @@ class _NativeCoreViewState extends State<NativeCoreView> {
         ),
         children: [
           generateSection(
-            title: '独立内核与配置',
+            title: '内核与配置',
             items: [
               ListItem(
                 title: const Text('自动识别内核配置'),
-                subtitle: const Text('导入原生配置，自动选择对应内核'),
+                subtitle: const Text('导入原生配置，启动时自动准备对应内核'),
                 onTap: _busy || active != null
                     ? null
                     : () => _perform(_detectConfig),
               ),
+              ListItem(
+                title: Text(_advanced ? '收起高级设置' : '展开高级设置'),
+                onTap: _busy ? null : () => setState(() => _advanced = !_advanced),
+              ),
+              if (_advanced) ...[
               ListItem<NativeCoreKind>.options(
                 title: const Text('内核'),
                 options: NativeCoreKind.values,
@@ -240,6 +251,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 ),
                 onTap: _busy ? null : _chooseConfig,
               ),
+              ],
             ],
           ),
           generateSection(
