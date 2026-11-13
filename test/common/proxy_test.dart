@@ -143,7 +143,7 @@ void main() {
     },
   );
 
-  test('native activation exception releases ownership and cleans up', () async {
+  test('native activation exception releases ownership', () async {
     final proxy = _FakeProxy();
     final queue = SystemProxyQueue(proxy);
     proxy.failure = StateError('channel gone');
