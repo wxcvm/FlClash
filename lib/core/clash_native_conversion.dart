@@ -281,10 +281,16 @@ Map<String, dynamic> convertClashDns(Map<String, dynamic> dns) {
     'nameserver',
     'default-nameserver',
   };
+  final unsupported = dns.keys.where((key) => !supported.contains(key));
+  if (unsupported.isNotEmpty) {
+    throw FormatException('Unsupported DNS fields: ${unsupported.join(', ')}');
+  }
+  if (dns['enhanced-mode'] == 'fake-ip') {
+    throw const FormatException('Fake-IP DNS requires Mihomo for now');
+  }
   final servers = dns['nameserver'];
   if (dns['enable'] != true ||
       dns['enhanced-mode'] != 'redir-host' ||
-      dns.keys.any((key) => !supported.contains(key)) ||
       servers is! List ||
       servers.length != 1 ||
       servers.single is! String) {
