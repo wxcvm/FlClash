@@ -31,25 +31,33 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Require successful main CI for this exact commit
+      - name: Require main CI checks for this exact commit
         shell: bash
         run: |
           set -euo pipefail
           runs=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/build.yaml/runs" -f branch=main -f head_sha="$GITHUB_SHA" -f event=push -f per_page=100)
-          run=$(jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | max_by(.run_number) // {} | select(.status == "completed" and .conclusion == "success") | .id // empty' <<< "$runs")
+          run=$(jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | max_by(.run_number) // {} | select(.status == "completed" and (.conclusion == "success" or .conclusion == "failure")) | .id // empty' <<< "$runs")
           if [[ -z "$run" ]]; then
-            echo '::error::The exact main commit must pass its full build workflow before packaging.'
+            echo '::error::The exact main commit must finish its build workflow before packaging.'
             exit 1
           fi
           jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=latest&per_page=100")
+          # This preview ships Windows and Android only. An unavailable macOS
+          # runner must not block those packages; an actual macOS failure still
+          # blocks publication, as does any missing or unsuccessful required job.
           jq -e '
             .jobs as $jobs |
-            ["Dart","Plugins","Desktop linux","Desktop windows","Desktop macos","Go core","Android unit tests","Windows helper test","Rust"] |
-            all(.[]; . as $name | any($jobs[]; .name == $name and .status == "completed" and .conclusion == "success"))
+            (["Dart","Plugins","Desktop linux","Desktop windows","Go core","Android unit tests","Windows helper test","Rust"] |
+              all(.[]; . as $name | any($jobs[]; .name == $name and .status == "completed" and .conclusion == "success"))) and
+            any($jobs[]; .name == "Desktop macos" and .status == "completed" and (.conclusion == "success" or .conclusion == "cancelled")) and
+            all($jobs[]; .status == "completed" and (.conclusion == "success" or .conclusion == "skipped" or (.name == "Desktop macos" and .conclusion == "cancelled")))
           ' <<< "$jobs" >/dev/null || {
             echo '::error::Required main CI jobs did not all succeed.'
             exit 1
           }
+          if jq -e 'any(.jobs[]; .name == "Desktop macos" and .conclusion == "cancelled")' <<< "$jobs" >/dev/null; then
+            echo '::warning::macOS build was cancelled; this Windows/Android-only preview does not ship macOS.'
+          fi
           echo "Verified main CI run $run for $GITHUB_SHA."
       - uses: actions/checkout@v4
         with:
