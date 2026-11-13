@@ -4,9 +4,7 @@ import 'dart:io';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/native_auto_recovery.dart';
 import 'package:fl_clash/plugins/service.dart';
-import 'package:fl_clash/views/config/general.dart';
 import 'package:fl_clash/views/config/android_native_dashboard.dart';
-import 'package:fl_clash/views/config/network.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 
@@ -22,6 +20,7 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
   String _configPath = '';
   String _result = '';
   bool _busy = false;
+  bool _advanced = false;
 
   @override
   void initState() {
@@ -110,7 +109,6 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
 
   @override
   Widget build(BuildContext context) {
-    final l = context.appLocalizations;
     return BaseScaffold(
       title: '内核管理',
       body: ValueListenableBuilder<AndroidNativeStatus?>(
@@ -175,7 +173,7 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                 title: 'sing-box 原生配置',
                 items: [
                   ListItem(
-                    title: const Text('选择 JSON 配置'),
+                    title: const Text('导入 sing-box 配置'),
                     subtitle: Text(
                       _configPath.isEmpty ? '尚未选择' : _configPath,
                       maxLines: 2,
@@ -184,18 +182,26 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                     onTap: canConfigure ? () => _perform(_choose) : null,
                   ),
                   ListItem(
-                    title: const Text('检查配置'),
-                    onTap: canConfigure && _configPath.isNotEmpty
-                        ? () => _perform(_validate)
-                        : null,
+                    title: Text(_advanced ? '收起高级设置' : '展开高级设置'),
+                    onTap: busy
+                        ? null
+                        : () => setState(() => _advanced = !_advanced),
                   ),
-                  ListItem(
-                    title: const Text('生成自动恢复配置副本'),
-                    subtitle: const Text('最多 5 个原有代理组成原生自动组；不改原文件或默认路由'),
-                    onTap: canConfigure && _configPath.isNotEmpty
-                        ? () => _perform(_createAutoProfile)
-                        : null,
-                  ),
+                  if (_advanced)
+                    ListItem(
+                      title: const Text('检查配置'),
+                      onTap: canConfigure && _configPath.isNotEmpty
+                          ? () => _perform(_validate)
+                          : null,
+                    ),
+                  if (_advanced)
+                    ListItem(
+                      title: const Text('生成自动恢复配置副本'),
+                      subtitle: const Text('最多 5 个原有代理组成原生自动组；不改原文件或默认路由'),
+                      onTap: canConfigure && _configPath.isNotEmpty
+                          ? () => _perform(_createAutoProfile)
+                          : null,
+                    ),
                   ListItem(
                     title: const Text('启动 / 切换到 sing-box'),
                     onTap: canConfigure && _configPath.isNotEmpty
@@ -230,22 +236,6 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: SelectableText(_result),
                 ),
-              generateSection(
-                title: 'Mihomo 配置',
-                items: [
-                  ListItem.open(
-                    title: Text(l.general),
-                    widget: const GeneralView(),
-                  ),
-                  ListItem.open(
-                    title: Text(l.network),
-                    widget: BaseScaffold(
-                      title: l.network,
-                      body: const NetworkListView(),
-                    ),
-                  ),
-                ],
-              ),
             ],
           );
         },
