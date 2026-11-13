@@ -2,14 +2,15 @@ name: Android optional sing-box package
 on:
   workflow_dispatch:
   push:
-    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/windows-fakeip-doh-compatibility]
+    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/windows-fakeip-doh-compatibility, feat/mihomo-failure-recovery]
     paths:
       - 'android/**'
       - 'lib/**'
+      - 'tool/mihomo-recovery/**'
       - 'tool/android-singbox/isolation/libbox-src/**'
       - '.github/workflows/android-singbox-package.yaml'
   pull_request:
-    branches: [main, feat/android-singbox-core-ui, feat/android-mihomo-process-probe]
+    branches: [main, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/windows-fakeip-doh-compatibility]
     paths:
       - 'android/**'
       - 'lib/**'
@@ -24,7 +25,7 @@ permissions:
   actions: read
 jobs:
   package:
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || (github.head_ref == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/windows-fakeip-doh-compatibility')))
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || (github.head_ref == 'feat/android-mihomo-process-probe' || (github.head_ref == 'feat/windows-fakeip-doh-compatibility' || github.head_ref == 'feat/mihomo-failure-recovery'))))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -73,6 +74,23 @@ jobs:
           mkdir -p /tmp/flclash-lease-test
           javac --release 8 -d /tmp/flclash-lease-test android/service/src/main/java/com/follow/clash/service/NativeConfigLease.java android/tests/service/NativeConfigLeaseCheck.java
           java -cp /tmp/flclash-lease-test com.follow.clash.service.NativeConfigLeaseCheck
+      - name: Apply and test Mihomo recovery source extension
+        if: github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery'
+        run: |
+          python3 tool/mihomo-recovery/apply.py core/Clash.Meta
+          cd core/Clash.Meta
+          gofmt -w adapter/outboundgroup/{groupbase,urltest,fallback,loadbalance,flclash_failure_gate,flclash_failure_gate_test}.go
+          go test -race adapter/outboundgroup/flclash_failure_gate.go adapter/outboundgroup/flclash_failure_gate_test.go
+          go test ./adapter/outboundgroup
+          cd ..
+          CGO_ENABLED=0 go test -run 'TestNetworkChange|TestRecoveryHealth' .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../mihomo-recovery-windows.exe ./cmd/core
+      - uses: actions/upload-artifact@v4
+        if: github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery'
+        with:
+          name: mihomo-recovery-windows-core-dev
+          path: mihomo-recovery-windows.exe
+          retention-days: 7
       - name: Obtain verified official ARM64 AAR
         run: |
           gh run download 43219145718 --repo "$GITHUB_REPOSITORY" --name sing-box-v1.14.4-arm64-probe --dir libbox-input
@@ -142,7 +160,7 @@ jobs:
           path: native-app-apk/*.apk
           retention-days: 7
       - name: Build isolated Mihomo device test APK
-        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery'
         run: |
           cd android
           ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Ptarget-platform=android-arm64 -PflclashMihomoProcessProbe=true -PflclashMihomoIsolated=true -PflclashSingBoxAar="$LIBBOX_AAR"
@@ -163,7 +181,7 @@ jobs:
           cp "$app" mihomo-process-test/app.apk
           cp "$test_apk" mihomo-process-test/test.apk
       - uses: actions/upload-artifact@v4
-        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery'
         with:
           name: mihomo-process-device-test
           path: mihomo-process-test/

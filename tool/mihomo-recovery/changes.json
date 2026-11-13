@@ -1,0 +1,50 @@
+{
+  "groupbase.go": [
+    [
+      "\t\"github.com/metacubex/mihomo/common/atomic\"\n",
+      ""
+    ],
+    [
+      "\tfailedTestMux     sync.Mutex\n\tfailedTimes       int\n\tfailedTime        time.Time\n\tfailedTesting     atomic.Bool\n",
+      "\tfailureGate       flclashFailureGate\n"
+    ],
+    [
+      "\t\tfailedTesting:     atomic.NewBool(false),\n",
+      ""
+    ],
+    [
+      "func (gb *GroupBase) onDialFailed(adapterType C.AdapterType, err error, fn func()) {\n\tif adapterType == C.Direct || adapterType == C.Compatible || adapterType == C.Reject || adapterType == C.Pass || adapterType == C.RejectDrop {\n\t\treturn\n\t}\n\n\tif errors.Is(err, C.ErrNotSupport) {\n\t\treturn\n\t}\n\n\tgo func() {\n\t\tif strings.Contains(err.Error(), \"connection refused\") {\n\t\t\tfn()\n\t\t\treturn\n\t\t}\n\n\t\tgb.failedTestMux.Lock()\n\t\tdefer gb.failedTestMux.Unlock()\n\n\t\tgb.failedTimes++\n\t\tif gb.failedTimes == 1 {\n\t\t\tlog.Debugln(\"ProxyGroup: %s first failed\", gb.Name())\n\t\t\tgb.failedTime = time.Now()\n\t\t} else {\n\t\t\tif time.Since(gb.failedTime) > time.Duration(gb.testTimeout)*time.Millisecond {\n\t\t\t\tgb.failedTimes = 0\n\t\t\t\treturn\n\t\t\t}\n\n\t\t\tlog.Debugln(\"ProxyGroup: %s failed count: %d\", gb.Name(), gb.failedTimes)\n\t\t\tif gb.failedTimes >= gb.maxFailedTimes {\n\t\t\t\tlog.Warnln(\"because %s failed multiple times, activate health check\", gb.Name())\n\t\t\t\tfn()\n\t\t\t}\n\t\t}\n\t}()\n}\n\nfunc (gb *GroupBase) healthCheck() {\n\tif gb.failedTesting.Load() {\n\t\treturn\n\t}\n\n\tgb.failedTesting.Store(true)\n\twg := sync.WaitGroup{}\n\tfor _, proxyProvider := range gb.providers {\n\t\twg.Add(1)\n\t\tproxyProvider := proxyProvider\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tproxyProvider.HealthCheck()\n\t\t}()\n\t}\n\n\twg.Wait()\n\tgb.failedTesting.Store(false)\n\tgb.failedTimes = 0\n}\n\nfunc (gb *GroupBase) onDialSuccess() {\n\tif !gb.failedTesting.Load() {\n\t\tgb.failedTimes = 0\n\t}\n}\n",
+      "func (gb *GroupBase) onDialFailed(proxy C.Proxy, network string, err error, fn func()) {\n\tadapterType := proxy.Type()\n\tif adapterType == C.Direct || adapterType == C.Compatible || adapterType == C.Reject || adapterType == C.Pass || adapterType == C.RejectDrop {\n\t\treturn\n\t}\n\tif err == nil || errors.Is(err, C.ErrNotSupport) || errors.Is(err, context.Canceled) {\n\t\treturn\n\t}\n\t// Preserve the configured failure threshold/window and the existing fast\n\t// path for connection refusal, but admit at most one health check.\n\tif !gb.failureGate.failure(network, proxy.Name(), time.Now(),\n\t\ttime.Duration(gb.testTimeout)*time.Millisecond, gb.maxFailedTimes,\n\t\tstrings.Contains(err.Error(), \"connection refused\")) {\n\t\treturn\n\t}\n\tgo func() {\n\t\tdefer gb.failureGate.finish()\n\t\tlog.Warnln(\"because %s failed multiple times, activate health check\", gb.Name())\n\t\tfn()\n\t}()\n}\n\nfunc (gb *GroupBase) healthCheck() {\n\tvar wg sync.WaitGroup\n\tfor _, proxyProvider := range gb.providers {\n\t\tproxyProvider := proxyProvider\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tproxyProvider.HealthCheck()\n\t\t}()\n\t}\n\twg.Wait()\n}\n\nfunc (gb *GroupBase) onDialSuccess(proxy C.Proxy, network string) {\n\tgb.failureGate.success(network, proxy.Name())\n}\n"
+    ]
+  ],
+  "urltest.go": [
+    [
+      "func (u *URLTest) DialContext(ctx context.Context, metadata *C.Metadata) (c C.Conn, err error) {\n\tproxy := u.fast(true)\n\tc, err = proxy.DialContext(ctx, metadata)\n\tif err == nil {\n\t\tc.AppendToChains(u)\n\t} else {\n\t\tu.onDialFailed(proxy.Type(), err, u.healthCheck)\n\t}\n\n\tif N.NeedHandshake(c) {\n\t\tc = callback.NewFirstWriteCallBackConn(c, func(err error) {\n\t\t\tif err == nil {\n\t\t\t\tu.onDialSuccess()\n\t\t\t} else {\n\t\t\t\tu.onDialFailed(proxy.Type(), err, u.healthCheck)\n\t\t\t}\n\t\t})\n\t}\n\n\treturn c, err\n}\n\n",
+      "func (u *URLTest) DialContext(ctx context.Context, metadata *C.Metadata) (c C.Conn, err error) {\n\tproxy := u.fast(true)\n\tc, err = proxy.DialContext(ctx, metadata)\n\tif err == nil {\n\t\tc.AppendToChains(u)\n\t} else {\n\t\tu.onDialFailed(proxy, \"tcp\", err, u.healthCheck)\n\t}\n\n\tif err == nil && !N.NeedHandshake(c) {\n\t\tu.onDialSuccess(proxy, \"tcp\")\n\t}\n\tif err == nil && N.NeedHandshake(c) {\n\t\tc = callback.NewFirstWriteCallBackConn(c, func(err error) {\n\t\t\tif err == nil {\n\t\t\t\tu.onDialSuccess(proxy, \"tcp\")\n\t\t\t} else {\n\t\t\t\tu.onDialFailed(proxy, \"tcp\", err, u.healthCheck)\n\t\t\t}\n\t\t})\n\t}\n\n\treturn c, err\n}\n\n"
+    ],
+    [
+      "\tif err == nil {\n\t\tpc.AppendToChains(u)\n\t} else {\n\t\tu.onDialFailed(proxy.Type(), err, u.healthCheck)\n\t}",
+      "\tif err == nil {\n\t\tpc.AppendToChains(u)\n\t\tu.onDialSuccess(proxy, \"udp\")\n\t} else {\n\t\tu.onDialFailed(proxy, \"udp\", err, u.healthCheck)\n\t}"
+    ]
+  ],
+  "fallback.go": [
+    [
+      "func (f *Fallback) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {\n\tproxy := f.findAliveProxy(true)\n\tc, err := proxy.DialContext(ctx, metadata)\n\tif err == nil {\n\t\tc.AppendToChains(f)\n\t} else {\n\t\tf.onDialFailed(proxy.Type(), err, f.healthCheck)\n\t}\n\n\tif N.NeedHandshake(c) {\n\t\tc = callback.NewFirstWriteCallBackConn(c, func(err error) {\n\t\t\tif err == nil {\n\t\t\t\tf.onDialSuccess()\n\t\t\t} else {\n\t\t\t\tf.onDialFailed(proxy.Type(), err, f.healthCheck)\n\t\t\t}\n\t\t})\n\t}\n\n\treturn c, err\n}\n\n",
+      "func (f *Fallback) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {\n\tproxy := f.findAliveProxy(true)\n\tc, err := proxy.DialContext(ctx, metadata)\n\tif err == nil {\n\t\tc.AppendToChains(f)\n\t} else {\n\t\tf.onDialFailed(proxy, \"tcp\", err, f.healthCheck)\n\t}\n\n\tif err == nil && !N.NeedHandshake(c) {\n\t\tf.onDialSuccess(proxy, \"tcp\")\n\t}\n\tif err == nil && N.NeedHandshake(c) {\n\t\tc = callback.NewFirstWriteCallBackConn(c, func(err error) {\n\t\t\tif err == nil {\n\t\t\t\tf.onDialSuccess(proxy, \"tcp\")\n\t\t\t} else {\n\t\t\t\tf.onDialFailed(proxy, \"tcp\", err, f.healthCheck)\n\t\t\t}\n\t\t})\n\t}\n\n\treturn c, err\n}\n\n"
+    ],
+    [
+      "\tif err == nil {\n\t\tpc.AppendToChains(f)\n\t}",
+      "\tif err == nil {\n\t\tpc.AppendToChains(f)\n\t\tf.onDialSuccess(proxy, \"udp\")\n\t} else {\n\t\tf.onDialFailed(proxy, \"udp\", err, f.healthCheck)\n\t}"
+    ]
+  ],
+  "loadbalance.go": [
+    [
+      "func (lb *LoadBalance) DialContext(ctx context.Context, metadata *C.Metadata) (c C.Conn, err error) {\n\tproxy := lb.Unwrap(metadata, true)\n\tc, err = proxy.DialContext(ctx, metadata)\n\n\tif err == nil {\n\t\tc.AppendToChains(lb)\n\t} else {\n\t\tlb.onDialFailed(proxy.Type(), err, lb.healthCheck)\n\t}\n\n\tif N.NeedHandshake(c) {\n\t\tc = callback.NewFirstWriteCallBackConn(c, func(err error) {\n\t\t\tif err == nil {\n\t\t\t\tlb.onDialSuccess()\n\t\t\t} else {\n\t\t\t\tlb.onDialFailed(proxy.Type(), err, lb.healthCheck)\n\t\t\t}\n\t\t})\n\t}\n\n\treturn\n}\n\n",
+      "func (lb *LoadBalance) DialContext(ctx context.Context, metadata *C.Metadata) (c C.Conn, err error) {\n\tproxy := lb.Unwrap(metadata, true)\n\tc, err = proxy.DialContext(ctx, metadata)\n\n\tif err == nil {\n\t\tc.AppendToChains(lb)\n\t} else {\n\t\tlb.onDialFailed(proxy, \"tcp\", err, lb.healthCheck)\n\t}\n\n\tif err == nil && !N.NeedHandshake(c) {\n\t\tlb.onDialSuccess(proxy, \"tcp\")\n\t}\n\tif err == nil && N.NeedHandshake(c) {\n\t\tc = callback.NewFirstWriteCallBackConn(c, func(err error) {\n\t\t\tif err == nil {\n\t\t\t\tlb.onDialSuccess(proxy, \"tcp\")\n\t\t\t} else {\n\t\t\t\tlb.onDialFailed(proxy, \"tcp\", err, lb.healthCheck)\n\t\t\t}\n\t\t})\n\t}\n\n\treturn\n}\n\n"
+    ],
+    [
+      "\tproxy := lb.Unwrap(metadata, true)\n\treturn proxy.ListenPacketContext(ctx, metadata)",
+      "\tproxy := lb.Unwrap(metadata, true)\n\tpc, err = proxy.ListenPacketContext(ctx, metadata)\n\tif err == nil {\n\t\tlb.onDialSuccess(proxy, \"udp\")\n\t} else {\n\t\tlb.onDialFailed(proxy, \"udp\", err, lb.healthCheck)\n\t}\n\treturn"
+    ]
+  ]
+}
