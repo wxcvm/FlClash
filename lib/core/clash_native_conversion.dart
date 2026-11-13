@@ -44,6 +44,24 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
       for (final key in ['username', 'password']) {
         if (proxy.containsKey(key)) result[key] = requiredString(key);
       }
+    case 'trojan':
+    case 'hysteria2':
+    case 'anytls':
+      allowed.addAll(['password', 'sni', 'skip-cert-verify']);
+      result.addAll({
+        'type': type,
+        'password': requiredString('password'),
+        'tls': {
+          'enabled': true,
+          'server_name': requiredString('sni'),
+          if (proxy.containsKey('skip-cert-verify'))
+            'insecure': proxy['skip-cert-verify'],
+        },
+      });
+      if (proxy.containsKey('skip-cert-verify') &&
+          proxy['skip-cert-verify'] is! bool) {
+        throw const FormatException('Invalid TLS verification option');
+      }
     case 'vless':
       allowed.addAll([
         'uuid',
@@ -77,7 +95,9 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
       if (proxy.containsKey('reality-opts')) {
         final reality = proxy['reality-opts'];
         if (reality is! Map ||
-            reality.keys.any((key) => key != 'public-key' && key != 'short-id') ||
+            reality.keys.any(
+              (key) => key != 'public-key' && key != 'short-id',
+            ) ||
             reality['public-key'] is! String ||
             reality['short-id'] is! String ||
             !tls.containsKey('utls')) {
