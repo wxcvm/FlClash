@@ -11,6 +11,7 @@ final class NetworkEpoch<T> {
             this.fingerprint = fingerprint;
             this.generation = generation;
         }
+        boolean isReady() { return network != null; }
     }
 
     private T candidate;

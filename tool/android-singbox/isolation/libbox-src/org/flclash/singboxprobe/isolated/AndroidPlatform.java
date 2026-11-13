@@ -41,7 +41,8 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
         DnsQuery(NetworkEpoch.Snapshot<Network> path) { this.path = path; }
     }
 
-    long networkGeneration() { return networks.snapshot().generation; }
+    NetworkEpoch.Snapshot<Network> networkPath() { return networks.snapshot(); }
+    long networkGeneration() { return networkPath().generation; }
     private volatile ConnectivityManager.NetworkCallback callback;
     private HandlerThread monitorThread;
 

@@ -28,12 +28,16 @@ public final class NetworkEpochTest {
         NetworkEpoch<String> epoch = new NetworkEpoch<>();
         Object first = new Object();
         epoch.begin(first);
+        check(!epoch.snapshot().isReady(), "monitor starts without an available path");
         check(!epoch.select(first, "wifi"), "first candidate is not a loss");
+        check(!epoch.snapshot().isReady(), "candidate is not yet a published path");
         check(epoch.publish(first, "wifi", "wlan0/3/dns1"), "publish initial Wi-Fi");
         NetworkEpoch.Snapshot<String> wifi = epoch.snapshot();
+        check(wifi.isReady(), "published path permits measurement");
         check(!epoch.publish(first, "wifi", "wlan0/3/dns1"), "duplicate callback");
         check(epoch.isCurrent(wifi), "duplicate does not invalidate DNS");
         check(epoch.select(first, "cell"), "handover invalidates old path");
+        check(!epoch.snapshot().isReady(), "handover gap must not start a measurement");
         check(!epoch.isCurrent(wifi), "old DNS response rejected");
         check(!epoch.lose(first, "wifi"), "late old network loss ignored");
         check(epoch.publish(first, "cell", "rmnet0/5/dns2"), "cellular publishes");
@@ -48,7 +52,9 @@ public final class NetworkEpochTest {
         check(epoch.invalidate(first, "wifi2"), "suspended network invalidates");
         check(!epoch.isCurrent(beforeSuspend), "suspension rejects pending DNS");
         check(!epoch.invalidate(first, "wifi2"), "repeated suspension is a no-op");
+        check(!epoch.snapshot().isReady(), "suspended path is unavailable");
         check(epoch.publish(first, "wifi2", "wlan0/3/dns1"), "same handle resumes");
+        check(epoch.snapshot().isReady(), "resumed path permits measurement");
         check(!epoch.invalidate(first, "cell"), "old handle cannot suspend current network");
         epoch.clear();
         check(!epoch.select(first, "old"), "closed callback cannot restore path");

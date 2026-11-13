@@ -184,6 +184,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
             ModalRoute.of(context)?.isCurrent == false) {
           return '自动优选已暂停，等待当前网络重新评估';
         }
+        if (_snapshot?['networkReady'] != true) {
+          return '底层网络尚未恢复，暂停测速，等待网络重新可用';
+        }
         final matches = _rows(_snapshot?['groups']).where((g) => g['tag'] == key);
         if (matches.isEmpty || !_canAutoApply(matches.first)) {
           _stopContinuous();
@@ -356,6 +359,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
       final generation = _networkGeneration!;
       final snapshot = await _service.getNativeSnapshot();
       if (!active() || !_foreground ||
+          snapshot['networkReady'] != true ||
           snapshot['networkGeneration'] != generation) {
         return '网络或会话已变化，未自动切换';
       }
@@ -564,6 +568,11 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                       onTap: _stopContinuous,
                     ),
                   if (running && _liveError != null) ListItem(title: Text(_liveError!)),
+                  if (running && live?['networkReady'] == false)
+                    const ListItem(
+                      title: Text('底层网络尚未恢复'),
+                      subtitle: Text('暂停自动测速，等待系统网络重新可用'),
+                    ),
                   if (running && live != null) ...[
                     ListItem(
                       title: const Text('实时流量'),

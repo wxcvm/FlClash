@@ -24,7 +24,15 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
         session.start(service, config);
     }
 
-    public void startQuality(String tag) throws Exception { quality.start(tag); }
+    public void startQuality(String tag) throws Exception {
+        NetworkEpoch.Snapshot<?> path = platform.networkPath();
+        if (!path.isReady()) throw new IOException("Underlying network unavailable; retry after recovery");
+        quality.start(tag);
+        if (path.generation != platform.networkGeneration()) {
+            quality.cancel();
+            throw new IOException("Underlying network changed while starting measurement");
+        }
+    }
     public String qualitySnapshot() throws Exception { return quality.snapshot(); }
     public void cancelQuality() throws Exception { quality.cancel(); }
 
@@ -32,15 +40,18 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
     public String statusSnapshot() throws Exception { return snapshot(true); }
 
     private String snapshot(boolean statusOnly) throws Exception {
-        long generation = platform.networkGeneration();
+        NetworkEpoch.Snapshot<?> path = platform.networkPath();
+        long generation = path.generation;
         org.json.JSONObject data = new org.json.JSONObject(statusOnly ? NativeTelemetry.statusSnapshot() : NativeTelemetry.snapshot());
         if (generation != platform.networkGeneration()) {
             throw new IOException("Network changed while reading status; refresh again");
         }
-        return data.put("networkGeneration", generation).toString();
+        return data.put("networkGeneration", generation)
+            .put("networkReady", path.isReady()).toString();
     }
     public void selectOutbound(String group, String tag, long expectedGeneration) throws Exception {
-        if (expectedGeneration >= 0 && expectedGeneration != platform.networkGeneration()) {
+        NetworkEpoch.Snapshot<?> path = platform.networkPath();
+        if (expectedGeneration >= 0 && (!path.isReady() || expectedGeneration != path.generation)) {
             throw new IOException("Underlying network changed; retest before applying recommendation");
         }
         NativeTelemetry.select(group, tag);
