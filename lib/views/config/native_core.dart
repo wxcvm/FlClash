@@ -156,7 +156,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
     if (_configPath.trim().isEmpty) return '请先选择配置文件';
     if (_executable == _kind.executableName && nativeCoreInstaller.supported) {
       final installed = await nativeCoreInstaller.installedExecutable(_kind);
-      _executable = installed ?? (await nativeCoreInstaller.installLatest(_kind)).executable;
+      _executable =
+          installed ?? (await nativeCoreInstaller.installLatest(_kind)).executable;
       if (mounted) setState(() {});
     }
     await nativeCoreHandoff.activate(_spec);
@@ -198,59 +199,59 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 onTap: _busy ? null : () => setState(() => _advanced = !_advanced),
               ),
               if (_advanced) ...[
-              ListItem<NativeCoreKind>.options(
-                title: const Text('内核'),
-                options: NativeCoreKind.values,
-                value: _kind,
-                textBuilder: (kind) => kind.label,
-                onChanged: (kind) {
-                  if (_busy || active != null) return;
-                  _configPaths[_kind] = _configPath;
-                  _executablePaths[_kind] = _executable;
-                  setState(() {
-                    _kind = kind;
-                    _executable = _executablePaths[kind] ?? kind.executableName;
-                    _configPath = _configPaths[kind] ?? '';
-                  });
-                  unawaited(_loadInstalledExecutable(kind));
-                },
-              ),
-              ListItem(
-                title: const Text('下载 / 更新官方稳定版'),
-                subtitle: Text(
-                  nativeCoreInstaller.supported
-                      ? 'Windows / Linux / macOS，自动校验 SHA-256'
-                      : '当前平台请手动选择内核程序',
+                ListItem<NativeCoreKind>.options(
+                  title: const Text('内核'),
+                  options: NativeCoreKind.values,
+                  value: _kind,
+                  textBuilder: (kind) => kind.label,
+                  onChanged: (kind) {
+                    if (_busy || active != null) return;
+                    _configPaths[_kind] = _configPath;
+                    _executablePaths[_kind] = _executable;
+                    setState(() {
+                      _kind = kind;
+                      _executable = _executablePaths[kind] ?? kind.executableName;
+                      _configPath = _configPaths[kind] ?? '';
+                    });
+                    unawaited(_loadInstalledExecutable(kind));
+                  },
                 ),
-                onTap:
-                    _busy ||
-                        nativeCoreRuntime.isRunning ||
-                        !nativeCoreInstaller.supported
-                    ? null
-                    : () => _perform(_installOfficialCore),
-              ),
-              ListItem(
-                title: const Text('选择内核程序'),
-                subtitle: Text(_executable),
-                onTap: _busy ? null : _chooseExecutable,
-              ),
-              ListItem(
-                title: const Text('手动填写程序路径'),
-                onTap: _busy ? null : _editExecutable,
-              ),
-              ListItem(
-                title: Text(
-                  _kind == NativeCoreKind.hysteria2
-                      ? '选择原生 YAML 配置'
-                      : '选择原生 JSON 配置',
+                ListItem(
+                  title: const Text('下载 / 更新官方稳定版'),
+                  subtitle: Text(
+                    nativeCoreInstaller.supported
+                        ? 'Windows / Linux / macOS，自动校验 SHA-256'
+                        : '当前平台请手动选择内核程序',
+                  ),
+                  onTap:
+                      _busy ||
+                          nativeCoreRuntime.isRunning ||
+                          !nativeCoreInstaller.supported
+                      ? null
+                      : () => _perform(_installOfficialCore),
                 ),
-                subtitle: Text(
-                  _configPath.isEmpty ? '尚未选择' : _configPath,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                ListItem(
+                  title: const Text('选择内核程序'),
+                  subtitle: Text(_executable),
+                  onTap: _busy ? null : _chooseExecutable,
                 ),
-                onTap: _busy ? null : _chooseConfig,
-              ),
+                ListItem(
+                  title: const Text('手动填写程序路径'),
+                  onTap: _busy ? null : _editExecutable,
+                ),
+                ListItem(
+                  title: Text(
+                    _kind == NativeCoreKind.hysteria2
+                        ? '选择原生 YAML 配置'
+                        : '选择原生 JSON 配置',
+                  ),
+                  subtitle: Text(
+                    _configPath.isEmpty ? '尚未选择' : _configPath,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: _busy ? null : _chooseConfig,
+                ),
               ],
             ],
           ),
