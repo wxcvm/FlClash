@@ -168,7 +168,9 @@ enum NetworkHealthGate { allow, wait, refresh }
 
 /// The core already discards snapshots from old routes. DNS failures pause
 /// automatic switching until a fresh diagnostic clears them; an old failure
-/// requests a new check instead of blocking permanently. A failed endpoint
+/// requests a new check instead of blocking permanently. Failed DNS is
+/// rechecked on the next normal 30-second health-monitor cycle, rather than
+/// waiting for the full diagnostic freshness window. A failed endpoint
 /// with successful DNS still needs the independent node health checks.
 NetworkHealthGate networkHealthGate(
   Map<String, dynamic> health,
@@ -183,7 +185,9 @@ NetworkHealthGate networkHealthGate(
   final age = checked is int ? now.millisecondsSinceEpoch - checked : -1;
   final recent = age >= 0 && age <= const Duration(minutes: 1).inMilliseconds;
   if (health['dns'] == 'failed') {
-    return recent ? NetworkHealthGate.wait : NetworkHealthGate.refresh;
+    return age >= 0 && age < const Duration(seconds: 30).inMilliseconds
+        ? NetworkHealthGate.wait
+        : NetworkHealthGate.refresh;
   }
   if (requireRecent) {
     if (!recent) return NetworkHealthGate.refresh;

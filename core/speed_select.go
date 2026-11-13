@@ -69,6 +69,7 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	member := speedGroupMember(group, params.ProxyName)
 	before, err := speedSelectionState(groupProxy)
 	epoch, _ := routeStamp()
+	pathGeneration := networkPathGeneration
 	selectMu.Unlock()
 	configMu.Unlock()
 	if err != nil {
@@ -98,7 +99,8 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	selectMu.Lock()
 	defer selectMu.Unlock()
 	currentEpoch, _ := routeStamp()
-	if currentEpoch != epoch || lookupProxy(params.GroupName) != groupProxy ||
+	if currentEpoch != epoch || networkPathGeneration != pathGeneration ||
+		lookupProxy(params.GroupName) != groupProxy ||
 		speedGroupMember(group, params.ProxyName) != member {
 		return fail(errors.New("speed selection changed during health check"))
 	}

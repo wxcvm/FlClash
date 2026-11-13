@@ -4,6 +4,7 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outbound"
@@ -73,6 +74,38 @@ func TestNetworkChangeResetsResolverWithoutMovingRoute(t *testing.T) {
 	afterEpoch, afterVersion := routeStamp()
 	if afterEpoch != beforeEpoch || afterVersion != beforeVersion {
 		t.Errorf("network change moved route from (%d, %d) to (%d, %d)", beforeEpoch, beforeVersion, afterEpoch, afterVersion)
+	}
+}
+
+func TestPassiveNetworkChangeWaitsForRecovery(t *testing.T) {
+	previous := resetNetworkResolver
+	reset := make(chan struct{})
+	done := make(chan struct{})
+	resetNetworkResolver = func() { close(reset) }
+	t.Cleanup(func() { resetNetworkResolver = previous })
+
+	networkResetMu.Lock()
+	go func() {
+		handleNetworkChanged()
+		close(done)
+	}()
+	select {
+	case <-reset:
+		networkResetMu.Unlock()
+		<-done
+		t.Fatal("passive DNS reset interrupted recovery")
+	case <-time.After(50 * time.Millisecond):
+		networkResetMu.Unlock()
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("passive DNS reset did not resume")
+	}
+	select {
+	case <-reset:
+	default:
+		t.Fatal("resolver was not reset")
 	}
 }
 

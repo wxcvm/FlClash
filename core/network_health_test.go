@@ -116,3 +116,27 @@ func TestRecoveryHealthDNSRequiresSeparateLookup(t *testing.T) {
 		}
 	}
 }
+
+func TestRecoveryHealthCountsOnlyConfirmedFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		states []string
+		want   int
+	}{
+		{"busy then failed", []string{"inconclusive", "dns-failure"}, 1},
+		{"failed then busy", []string{"route-unreachable", "inconclusive"}, 1},
+		{"two failures", []string{"dns-failure", "route-unreachable"}, 2},
+		{"busy twice", []string{"inconclusive", "inconclusive"}, 0},
+		{"recovered", []string{"dns-failure", "reachable"}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var snapshot NetworkHealthSnapshot
+			for _, state := range tc.states {
+				snapshot.recordFailure(recoveryHealthResult{state: state})
+			}
+			if snapshot.Failures != tc.want {
+				t.Fatalf("confirmed failures = %d, want %d", snapshot.Failures, tc.want)
+			}
+		})
+	}
+}

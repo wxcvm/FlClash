@@ -103,6 +103,19 @@ void main() {
     expect(proxy.calls, ['start 7890', 'stop']);
   });
 
+  test('failed Mihomo start rolls back immediately', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    proxy.held = Future.value(false);
+
+    await queue.apply(_state(isStart: true));
+    expect(proxy.calls, ['start 7890', 'stop']);
+
+    await queue.apply(_state(isStart: true));
+    await queue.apply(_state(isStart: false));
+    expect(proxy.calls, ['start 7890', 'stop', 'start 7890', 'stop']);
+  });
+
   test('leaves a proxy it never set alone', () async {
     final proxy = _FakeProxy();
     final queue = SystemProxyQueue(proxy);
@@ -142,6 +155,18 @@ void main() {
       expect(proxy.calls, ['start 8090', 'stop', 'start 7890']);
     },
   );
+
+  test('native activation exception releases ownership', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    proxy.failure = StateError('channel gone');
+
+    expect(await queue.activateNative(8090, const []), isFalse);
+    await queue.apply(_state(isStart: true));
+    await queue.apply(_state(isStart: false));
+
+    expect(proxy.calls, ['start 8090', 'stop', 'start 7890', 'stop']);
+  });
 
   test('closing the queue stops the native proxy owner', () async {
     final proxy = _FakeProxy();

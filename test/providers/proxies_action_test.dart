@@ -110,6 +110,51 @@ void main() {
     return container;
   }
 
+  group('network change', () {
+    test('discards delay results from the previous path', () async {
+      final release = Completer<Delay>();
+      when(
+        () => core.testDelay(_delayTest(_testUrl, 'HK-01')),
+      ).thenAnswer((_) => release.future);
+      final container = _delayContainer(buildContainer);
+      final action = actionOf(container);
+      final run = action.proxyDelayTest(_proxy);
+      expect(container.read(pendingDelayTestsProvider), isNotEmpty);
+
+      action.onAutoSpeedNetworkChange(false);
+      expect(container.read(pendingDelayTestsProvider), isEmpty);
+      release.complete(const Delay(name: 'HK-01', url: _testUrl, value: 128));
+      await run;
+
+      expect(container.read(delayDataSourceProvider)[_testUrl]?['HK-01'], null);
+      expect(container.read(pendingDelayTestsProvider), isEmpty);
+    });
+
+    test('stops active download testing when the path changes', () async {
+      final release = Completer<Map<String, dynamic>>();
+      when(() => core.testSpeed('HK-01')).thenAnswer((_) => release.future);
+      when(core.stopSpeedTests).thenAnswer((_) async {});
+      final container = buildContainer();
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
+      final action = actionOf(container);
+      final run = action.testProxyDownloadSpeed(_proxy);
+      await Future<void>.delayed(Duration.zero);
+      verify(() => core.testSpeed('HK-01')).called(1);
+
+      action.onAutoSpeedNetworkChange(false);
+      verify(core.stopSpeedTests).called(1);
+      release.complete({'bytes-per-second': 1024});
+      await run;
+    });
+
+    test('does not send a stop command without active downloads', () {
+      final container = buildContainer();
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
+      actionOf(container).onAutoSpeedNetworkChange(true);
+      verifyNever(core.stopSpeedTests);
+    });
+  });
+
   group('updateGroups', () {
     test('publishes the groups derived from core proxy data', () async {
       when(core.getProxies).thenAnswer(

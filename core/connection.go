@@ -60,12 +60,25 @@ func handleClearDnsCache() {
 // duplicate resets and may close sockets opened on the new network.
 var resetNetworkResolver = dns.ClearAll
 
+// Guarded by configMu. Passive network changes leave the route epoch intact,
+// but invalidate network-dependent selection checks already in flight.
+var networkPathGeneration uint64
+
 // handleNetworkChanged is how the desktop host reports a new network, which
 // Android's NetworkObserver reports through handleResetNetwork.
 func handleNetworkChanged() {
+	networkResetMu.Lock()
+	defer networkResetMu.Unlock()
+	resetNetworkPath()
+}
+
+// Caller holds networkResetMu so passive notifications cannot interrupt an
+// outbound rebuild or invalidate its health check before it is published.
+func resetNetworkPath() {
 	cancelRecoveryHealth()
 	configMu.Lock()
 	defer configMu.Unlock()
+	networkPathGeneration++
 	resetNetworkResolver()
 	// The host already invalidates its probe cache on connectivity changes.
 }
@@ -80,7 +93,7 @@ func handleResetNetwork() {
 	networkResetMu.Lock()
 	defer networkResetMu.Unlock()
 	handleCloseConnections()
-	handleNetworkChanged()
+	resetNetworkPath()
 	rebuilt := reloadOutboundsOnNetworkChange()
 	if isRunning.Load() {
 		scheduleRecoveryHealth(rebuilt)

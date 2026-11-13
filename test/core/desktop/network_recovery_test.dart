@@ -1,10 +1,16 @@
 import 'package:fl_clash/core/desktop/network_recovery.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Map<String, dynamic> health(String state, {int at = 100, int attempt = 2}) => {
+Map<String, dynamic> health(
+  String state, {
+  int at = 100,
+  int attempt = 2,
+  int? failures,
+}) => {
   'state': state,
   'checked-at': at,
   'attempt': attempt,
+  'confirmed-failures': failures ?? attempt,
   'source': 'manual',
 };
 
@@ -40,6 +46,23 @@ void main() {
       );
     }
     expect(await verify([health('dns-failure', attempt: 1)]), isFalse);
+  });
+
+  test('inconclusive attempts do not authorize recovery', () async {
+    expect(
+      await verify([
+        health('checking', attempt: 1, failures: 0),
+        health('dns-failure', failures: 1),
+      ]),
+      isFalse,
+    );
+    expect(await verify([health('route-unreachable', failures: 1)]), isFalse);
+    expect(
+      await verify([
+        {...health('dns-failure')}..remove('confirmed-failures'),
+      ]),
+      isFalse,
+    );
   });
 
   test('handover verification cannot trigger a duplicate reset', () async {
