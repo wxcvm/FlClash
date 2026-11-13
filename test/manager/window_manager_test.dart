@@ -26,8 +26,8 @@ class _RecordingCoreAction extends CoreAction {
   static final recoveries = <bool>[];
 
   @override
-  Future<void> reportNetworkChange({bool recover = false}) async {
-    recoveries.add(recover);
+  Future<void> verifyNetworkAfterResume() async {
+    recoveries.add(true);
   }
 }
 

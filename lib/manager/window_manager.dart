@@ -118,7 +118,7 @@ class _WindowContainerState extends ConsumerState<WindowManager>
       unawaited(
         ref
             .read(coreActionProvider.notifier)
-            .reportNetworkChange(recover: true),
+            .verifyNetworkAfterResume(),
       );
     });
   }

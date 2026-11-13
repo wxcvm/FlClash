@@ -70,3 +70,16 @@ prevents the delayed reset from closing newly opened resolver connections after
 handover. Any previous network-health result is invalidated on passive desktop
 network changes as well as explicit recovery. Fake-IP mappings remain untouched.
 This does not change the current route or restart the VPN on a passive event.
+
+## Sleep / same-transport reconnect
+
+The system wake callback waits two seconds, then asks the existing core health
+probe to verify the configured test URL on the actual route. A same-transport
+Windows connectivity event also verifies after the passive resolver reset.
+A reachable endpoint or any HTTP response preserves established connections;
+only a fresh final DNS/route failure after the core's two attempts requests
+one connection and outbound recovery. A stopped/suspended run, newer network
+event or changed host epoch invalidates the pending decision. An overlapping
+handover verification cannot authorize a second teardown. This does not
+change Windows DNS settings, AdGuard settings or the selected route. An
+endpoint-specific failure is not proof that the whole internet is offline.

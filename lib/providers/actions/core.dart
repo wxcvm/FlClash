@@ -6,9 +6,15 @@ class CoreAction extends _$CoreAction {
 
   int _requestedRestartRevision = 0;
   Future<bool>? _restartOperation;
+  int _networkEventRevision = 0;
 
   @override
-  void build() {}
+  void build() {
+    ref.listen(isStartProvider, (_, _) => _networkEventRevision++);
+    ref.listen(suspendProvider, (_, _) => _networkEventRevision++);
+    ref.listen(coreStatusProvider, (_, _) => _networkEventRevision++);
+    ref.listen(currentProfileIdProvider, (_, _) => _networkEventRevision++);
+  }
 
   Future<void> initCore() async {
     if (service?.nativeOwnsRuntime == true) return;
@@ -76,6 +82,7 @@ class CoreAction extends _$CoreAction {
   }
 
   Future<void> reportNetworkChange({bool recover = false}) async {
+    _networkEventRevision++;
     if (service?.nativeOwnsRuntime == true) return;
     if (ref.read(coreStatusProvider) != CoreStatus.connected) {
       return;
@@ -89,6 +96,38 @@ class CoreAction extends _$CoreAction {
     } catch (error) {
       commonPrint.log(
         'reportNetworkChange error: $error',
+        logLevel: coreFailureLogLevel(error),
+      );
+    }
+  }
+
+  /// Wake and same-transport reconnects do not prove that connections are
+  /// broken. Reuse the core's bounded route health probe before resetting.
+  Future<void> verifyNetworkAfterResume() async {
+    final revision = ++_networkEventRevision;
+    final route = ref.read(routeTrackerProvider);
+    bool current() =>
+        ref.mounted &&
+        revision == _networkEventRevision &&
+        ref.read(isStartProvider) &&
+        !ref.read(suspendProvider) &&
+        ref.read(coreStatusProvider) == CoreStatus.connected &&
+        ref.read(routeTrackerProvider).hostEpoch == route.hostEpoch &&
+        service?.nativeOwnsRuntime != true;
+    if (!current()) return;
+    try {
+      final recover = await verifyDesktopNetwork(
+        check: _core.checkNetworkHealth,
+        read: _core.getNetworkHealth,
+        isCurrent: current,
+        startedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+      if (recover && current()) {
+        await reportNetworkChange(recover: true);
+      }
+    } catch (error) {
+      commonPrint.log(
+        'Wake network verification failed: $error',
         logLevel: coreFailureLogLevel(error),
       );
     }
