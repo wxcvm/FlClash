@@ -2,18 +2,18 @@ name: Android optional sing-box package
 on:
   workflow_dispatch:
   push:
-    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe]
+    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/android-singbox-failure-recovery]
     paths:
       - 'android/**'
       - 'lib/**'
-      - 'tool/android-singbox/isolation/libbox-src/**'
+      - 'tool/android-singbox/**'
       - '.github/workflows/android-singbox-package.yaml'
   pull_request:
-    branches: [main, feat/android-singbox-core-ui]
+    branches: [main, feat/android-singbox-core-ui, feat/android-mihomo-process-probe]
     paths:
       - 'android/**'
       - 'lib/**'
-      - 'tool/android-singbox/isolation/**'
+      - 'tool/android-singbox/**'
       - 'test/native_*'
       - '.github/workflows/android-singbox-package.yaml'
 concurrency:
@@ -26,7 +26,7 @@ jobs:
   package:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || github.head_ref == 'feat/android-mihomo-process-probe'))
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -73,7 +73,46 @@ jobs:
           mkdir -p /tmp/flclash-lease-test
           javac --release 8 -d /tmp/flclash-lease-test android/service/src/main/java/com/follow/clash/service/NativeConfigLease.java android/tests/service/NativeConfigLeaseCheck.java
           java -cp /tmp/flclash-lease-test com.follow.clash.service.NativeConfigLeaseCheck
+      - name: Checkout pinned sing-box for recovery build
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: c005f35300ce76427dc285481ec5695f5b179cd2
+          path: upstream-sing-box
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
+        with:
+          go-version: '1.26.10'
+          cache: false
+          cache-dependency-path: upstream-sing-box/go.sum
+      - name: Build and test recovery-enabled ARM64 libbox
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
+        run: |
+          python3 tool/android-singbox/recovery/apply.py upstream-sing-box
+          cd upstream-sing-box
+          gofmt -w protocol/group/urltest.go protocol/group/flclash_failure_gate*.go route/conn.go route/flclash_route_observer_test.go
+          go test -race protocol/group/flclash_failure_gate.go protocol/group/flclash_failure_gate_test.go
+          go test ./protocol/group
+          go test ./route -run '^TestFlClashRouteObserver$'
+          # Build the real CLI with protocol tags and validate synthetic profiles without dialing.
+          go run -tags 'with_quic,with_utls' ./cmd/sing-box check -c ../tool/android-singbox/recovery/protocol-fixture.json
+          git tag -f v1.14.4
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/arm64
+          unzip -t libbox.aar
+          echo "LIBBOX_AAR=$(realpath libbox.aar)" >> "$GITHUB_ENV"
+          sha256sum libbox.aar > libbox.sha256
+      - uses: actions/setup-go@v5
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
+        with:
+          go-version: '1.27.1'
+          cache: false
+          cache-dependency-path: core/go.sum
       - name: Obtain verified official ARM64 AAR
+        if: github.ref_name != 'feat/android-singbox-failure-recovery' && github.head_ref != 'feat/android-singbox-failure-recovery'
         run: |
           gh run download 43219145718 --repo "$GITHUB_REPOSITORY" --name sing-box-v1.14.4-arm64-probe --dir libbox-input
           aar="$(find libbox-input -name libbox.aar -print -quit)"
@@ -135,7 +174,7 @@ jobs:
           path: native-app-apk/*.apk
           retention-days: 7
       - name: Build isolated Mihomo device test APK
-        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
         run: |
           cd android
           ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Ptarget-platform=android-arm64 -PflclashMihomoProcessProbe=true -PflclashMihomoIsolated=true -PflclashSingBoxAar="$LIBBOX_AAR"
@@ -156,7 +195,7 @@ jobs:
           cp "$app" mihomo-process-test/app.apk
           cp "$test_apk" mihomo-process-test/test.apk
       - uses: actions/upload-artifact@v4
-        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe'
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery'
         with:
           name: mihomo-process-device-test
           path: mihomo-process-test/

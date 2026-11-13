@@ -1,0 +1,81 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "protocol-reality",
+      "server": "192.0.2.1",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "example.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+          "short_id": "0123456789abcdef"
+        }
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "protocol-hy2",
+      "server": "192.0.2.2",
+      "server_port": 443,
+      "password": "fixture-password",
+      "obfs": {
+        "type": "salamander",
+        "password": "fixture-obfs-password"
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "example.com"
+      }
+    },
+    {
+      "type": "tuic",
+      "tag": "protocol-tuic",
+      "server": "192.0.2.3",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000002",
+      "password": "fixture-password",
+      "congestion_control": "bbr",
+      "tls": {
+        "enabled": true,
+        "server_name": "example.com"
+      }
+    },
+    {
+      "type": "urltest",
+      "tag": "FlClash Auto · fixture",
+      "outbounds": [
+        "protocol-reality",
+        "protocol-hy2",
+        "protocol-tuic"
+      ],
+      "interval": "3m",
+      "idle_timeout": "15m",
+      "tolerance": 100,
+      "interrupt_exist_connections": false
+    },
+    {
+      "type": "selector",
+      "tag": "fixture",
+      "outbounds": [
+        "protocol-reality",
+        "FlClash Auto · fixture"
+      ],
+      "default": "protocol-reality"
+    }
+  ],
+  "route": {
+    "final": "fixture"
+  }
+}
