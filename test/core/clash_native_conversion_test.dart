@@ -70,4 +70,72 @@ void main() {
       throwsFormatException,
     );
   });
+  test('preserves selector order and selected member', () {
+    expect(
+      convertClashSelector({
+        'name': 'Proxy',
+        'type': 'select',
+        'proxies': ['a', 'b'],
+      }, {'a', 'b'}, selected: 'b'),
+      {
+        'type': 'selector',
+        'tag': 'Proxy',
+        'outbounds': ['a', 'b'],
+        'default': 'b',
+      },
+    );
+  });
+
+  test('preserves ordered domain rules and final route', () {
+    expect(
+      convertClashDomainRoutes([
+        'DOMAIN,example.com,DIRECT',
+        'DOMAIN-SUFFIX,example.org,Proxy',
+        'MATCH,Proxy',
+      ], {'DIRECT', 'Proxy'}),
+      {
+        'rules': [
+          {
+            'domain': ['example.com'],
+            'action': 'route',
+            'outbound': 'DIRECT',
+          },
+          {
+            'domain_suffix': ['example.org'],
+            'action': 'route',
+            'outbound': 'Proxy',
+          },
+        ],
+        'final': 'Proxy',
+      },
+    );
+  });
+
+  test('rejects unsupported rule instead of dropping it', () {
+    expect(
+      () => convertClashDomainRoutes([
+        'GEOIP,CN,DIRECT',
+        'MATCH,Proxy',
+      ], {'DIRECT', 'Proxy'}),
+      throwsFormatException,
+    );
+  });
+
+  test('converts basic TLS password protocols', () {
+    for (final type in ['trojan', 'hysteria2', 'anytls']) {
+      final result = convertClashOutbound({
+        ...endpoint,
+        'type': type,
+        'password': 'secret',
+        'sni': 'example.com',
+        'skip-cert-verify': false,
+      });
+      expect(result['type'], type);
+      expect(result['tls'], {
+        'enabled': true,
+        'server_name': 'example.com',
+        'insecure': false,
+      });
+    }
+  });
 }
