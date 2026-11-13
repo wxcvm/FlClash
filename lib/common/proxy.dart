@@ -44,6 +44,13 @@ class SystemProxyQueue {
     });
   }
 
+  /// Explicit handoff must know whether the previous proxy was released.
+  Future<void> releaseMihomo() => _enqueue(() async {
+    if (_nativeOwner || !await _stop()) {
+      throw StateError('Could not release Mihomo system proxy');
+    }
+  }, propagate: true);
+
   /// Native cores own the system proxy until releaseNative() is called.
   /// Mihomo state-watch updates are queued but cannot overwrite that owner.
   Future<bool> activateNative(int port, List<String> bypassDomain) async {
@@ -56,9 +63,8 @@ class SystemProxyQueue {
         success = await _proxy.startProxy(port, bypassDomain);
       } finally {
         if (!success) {
-          _nativeOwner = false;
           _logFailure();
-          await _stop();
+          if (await _stop()) _nativeOwner = false;
         }
       }
     });
@@ -67,9 +73,11 @@ class SystemProxyQueue {
 
   Future<void> releaseNative() => _enqueue(() async {
     if (!_nativeOwner) return;
+    if (!await _stop()) {
+      throw StateError('Could not release native system proxy');
+    }
     _nativeOwner = false;
-    await _stop();
-  });
+  }, propagate: true);
 
   Future<void> close() {
     _closed = true;
@@ -79,28 +87,34 @@ class SystemProxyQueue {
     });
   }
 
-  Future<void> _stop() async {
+  Future<bool> _stop() async {
     if (!_applied) {
-      return;
+      return true;
     }
     if (!await _proxy.stopProxy()) {
       _logFailure();
-      return;
+      return false;
     }
     _applied = false;
+    return true;
   }
 
   void _logFailure() {
     commonPrint.log('update system proxy failed', logLevel: LogLevel.warning);
   }
 
-  Future<void> _enqueue(Future<void> Function() task) {
-    return _tail = _tail.then((_) => task()).catchError((Object error) {
+  Future<void> _enqueue(
+    Future<void> Function() task, {
+    bool propagate = false,
+  }) {
+    final operation = _tail.then((_) => task());
+    _tail = operation.catchError((Object error) {
       commonPrint.log(
         'update system proxy failed: $error',
         logLevel: LogLevel.warning,
       );
     });
+    return propagate ? operation : _tail;
   }
 }
 

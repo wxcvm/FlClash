@@ -376,6 +376,60 @@ void main() {
     await tunHandoff.close();
   });
 
+  test(
+    'Mihomo proxy release failure aborts native handoff and restores',
+    () async {
+      final proxyHandoff = NativeCoreHandoff(
+        runtime: runtime,
+        isMihomoRunning: () => mihomoRunning,
+        setMihomoRunning: (value) async {
+          calls.add('mihomo:$value');
+          mihomoRunning = value;
+          return true;
+        },
+        releaseMihomoProxy: () async => throw StateError('release failed'),
+      );
+      await expectLater(proxyHandoff.activate(spec), throwsStateError);
+      expect(calls, ['mihomo:false', 'mihomo:true']);
+      expect(runtime.isRunning, isFalse);
+      expect(mihomoRunning, isTrue);
+      expect(runtime.blocksMihomoStart, isFalse);
+      await proxyHandoff.close();
+    },
+  );
+
+  test('failed native proxy release can be retried after core stop', () async {
+    var releases = 0;
+    final proxyHandoff = NativeCoreHandoff(
+      runtime: runtime,
+      isMihomoRunning: () => mihomoRunning,
+      setMihomoRunning: (value) async {
+        mihomoRunning = value;
+        return true;
+      },
+      releaseMihomoProxy: () async {},
+      useNativeSystemProxy: () => true,
+      detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+      isHttpPortAvailable: (_) async => true,
+      waitForHttpEndpoint: (_) async => true,
+      activateNativeProxy: (_) async => true,
+      releaseNativeProxy: () async {
+        if (++releases == 1) throw StateError('release failed');
+      },
+    );
+    await proxyHandoff.activate(spec);
+    await expectLater(proxyHandoff.deactivate(), throwsStateError);
+    expect(runtime.isRunning, isFalse);
+    expect(proxyHandoff.ownsNativeSystemProxy, isTrue);
+    expect(proxyHandoff.blocksMihomoStart, isTrue);
+    expect(mihomoRunning, isFalse);
+    await proxyHandoff.deactivate();
+    expect(proxyHandoff.ownsNativeSystemProxy, isFalse);
+    expect(mihomoRunning, isTrue);
+    expect(releases, 2);
+    await proxyHandoff.close();
+  });
+
   test('an originally stopped Mihomo is not started on native exit', () async {
     mihomoRunning = false;
     await handoff.activate(spec);

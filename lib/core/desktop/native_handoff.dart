@@ -62,10 +62,10 @@ final class NativeCoreHandoff {
   /// This is not an independent assertion of OS route or DNS health.
   bool get nativeTunConfigured => _nativeTunConfigured;
 
-  bool get blocksMihomoStart => _busy || runtime.isRunning;
+  bool get blocksMihomoStart => _busy || runtime.isRunning || _nativeProxyOwned;
 
   Future<void> activate(NativeCoreSpec spec) async {
-    if (_busy || runtime.isRunning || _restoreMihomo) {
+    if (_busy || runtime.isRunning || _restoreMihomo || _nativeProxyOwned) {
       throw StateError('An external core is active or switching');
     }
     _busy = true;
@@ -136,15 +136,15 @@ final class NativeCoreHandoff {
         }
       } catch (error, stackTrace) {
         // The external core failed: put the previous route back.
-        await _releaseProxy();
         if (runtime.isRunning) await runtime.stop();
         _nativeTunConfigured = false;
+        await _releaseProxy();
         await _restore();
         Error.throwWithStackTrace(error, stackTrace);
       }
     } finally {
       _busy = false;
-      if (!runtime.isRunning && !_restoreMihomo) {
+      if (!runtime.isRunning && !_restoreMihomo && !_nativeProxyOwned) {
         runtime.setNativeMode(false);
       }
       if (_unexpectedExit) unawaited(_recoverAfterCrash());

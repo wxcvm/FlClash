@@ -27,6 +27,16 @@ struct ProxyOwnership {
     return current == applied;
   }
 
+  // Only claim a read-back that confirms the requested server is enabled.
+  // Preserve the actual normalized values for later ownership checks.
+  bool confirmStart(const ProxySnapshot& actual, unsigned long proxy_flag) {
+    if (actual.server != applied.server || (actual.flags & proxy_flag) == 0) {
+      return false;
+    }
+    applied = actual;
+    return true;
+  }
+
   void rememberStart(const ProxySnapshot& current,
                      const ProxySnapshot& next) {
     if (!stillOwns(current)) original = current;

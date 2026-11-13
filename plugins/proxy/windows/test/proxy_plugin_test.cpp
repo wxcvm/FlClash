@@ -56,6 +56,24 @@ TEST(ProxyOwnership, SameServerWithChangedPacOrBypassIsNotOwned) {
   EXPECT_FALSE(owner.stillOwns(current));
 }
 
+TEST(ProxyOwnership, StartRequiresEnabledRequestedProxy) {
+  const ProxySnapshot original{1, L"", L"", L""};
+  const ProxySnapshot requested{3, L"127.0.0.1:7890", L"<local>", L""};
+  ProxyOwnership owner{original, requested};
+  auto actual = requested;
+  actual.flags = 1;
+  EXPECT_FALSE(owner.confirmStart(actual, 2));
+  actual = requested;
+  actual.server = L"127.0.0.1:3128";
+  EXPECT_FALSE(owner.confirmStart(actual, 2));
+  EXPECT_TRUE(owner.applied == requested);
+  actual = requested;
+  actual.bypass = L"<local>;localhost";
+  EXPECT_TRUE(owner.confirmStart(actual, 2));
+  EXPECT_TRUE(owner.stillOwns(actual));
+  EXPECT_TRUE(owner.original == original);
+}
+
 TEST(ProxyPlugin, UnknownMethodIsNotImplemented) {
   ProxyPlugin plugin;
   bool not_implemented = false;
