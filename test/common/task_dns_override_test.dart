@@ -89,6 +89,55 @@ void main() {
     },
   );
 
+  test('encrypted DNS preserves implicit core exclusions', () async {
+    final dns = await _dnsOf(
+      rawConfig: {
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'nameserver': ['https://resolver.example/dns-query'],
+        },
+      },
+      keys: {},
+    );
+    expect(dns['fake-ip-filter'], [
+      'dns.msftnsci.com',
+      'www.msftnsci.com',
+      'www.msftconnecttest.com',
+      'resolver.example',
+    ]);
+  });
+
+  test('explicit empty blacklist stays the configured baseline', () async {
+    final dns = await _dnsOf(
+      rawConfig: {
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'nameserver': ['https://resolver.example/dns-query'],
+          'fake-ip-filter': [],
+        },
+      },
+      keys: {},
+    );
+    expect(dns['fake-ip-filter'], ['resolver.example']);
+  });
+
+  test('omitted nameserver accounts for implicit encrypted resolver', () async {
+    final dns = await _dnsOf(
+      rawConfig: {
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'fake-ip-filter': ['*.lan'],
+        },
+      },
+      keys: {},
+    );
+    expect(dns['fake-ip-filter'], ['*.lan', 'doh.pub']);
+    expect(dns.containsKey('nameserver'), isFalse);
+  });
+
   test('absolute resolver names use ordinary hostname filters', () async {
     final dns = await _dnsOf(
       rawConfig: {

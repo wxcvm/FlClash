@@ -82,6 +82,36 @@ void main() {
     expect(await verify([health('route-unreachable', at: 99)]), isFalse);
   });
 
+  test('wake refreshes DNS before probing the route', () async {
+    final calls = <String>[];
+    expect(
+      await verifyDesktopNetwork(
+        check: () async => calls.add('check'),
+        read: () async => health('reachable'),
+        isCurrent: () => true,
+        startedAt: 100,
+        refreshPath: () async => calls.add('refresh'),
+      ),
+      isFalse,
+    );
+    expect(calls, ['refresh', 'check']);
+  });
+
+  test('wake does not interrupt an active handover verification', () async {
+    final calls = <String>[];
+    expect(
+      await verifyDesktopNetwork(
+        check: () async => calls.add('check'),
+        read: () async => {...health('checking'), 'source': 'handover'},
+        isCurrent: () => true,
+        startedAt: 100,
+        refreshPath: () async => calls.add('refresh'),
+      ),
+      isFalse,
+    );
+    expect(calls, isEmpty);
+  });
+
   test('new network event or stop cancels pending decision', () async {
     var active = true;
     expect(

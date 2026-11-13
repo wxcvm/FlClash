@@ -103,7 +103,7 @@ class CoreAction extends _$CoreAction {
 
   /// Wake and same-transport reconnects do not prove that connections are
   /// broken. Reuse the core's bounded route health probe before resetting.
-  Future<void> verifyNetworkAfterResume() async {
+  Future<void> verifyNetworkAfterResume({bool refreshPath = false}) async {
     final revision = ++_networkEventRevision;
     final route = ref.read(routeTrackerProvider);
     bool current() =>
@@ -121,6 +121,7 @@ class CoreAction extends _$CoreAction {
         read: _core.getNetworkHealth,
         isCurrent: current,
         startedAt: DateTime.now().millisecondsSinceEpoch,
+        refreshPath: refreshPath ? _core.reportNetworkChange : null,
       );
       if (recover && current()) {
         await reportNetworkChange(recover: true);
