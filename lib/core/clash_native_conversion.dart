@@ -118,3 +118,76 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
   }
   return result;
 }
+
+/// Converts static selectors without changing their selected member.
+/// Dynamic providers and health-check groups need separate conversion.
+Map<String, dynamic> convertClashSelector(
+  Map<String, dynamic> group,
+  Set<String> knownTags, {
+  String? selected,
+}) {
+  final name = group['name'];
+  final members = group['proxies'];
+  if (group['type'] != 'select' ||
+      name is! String ||
+      name.isEmpty ||
+      members is! List ||
+      members.isEmpty ||
+      members.any((member) => member is! String || !knownTags.contains(member)) ||
+      group.keys.any(
+        (key) => !const {'name', 'type', 'proxies'}.contains(key),
+      )) {
+    throw const FormatException('Unsupported proxy group');
+  }
+  if (selected != null && !members.contains(selected)) {
+    throw const FormatException('Selected proxy is not in group');
+  }
+  return {
+    'type': 'selector',
+    'tag': name,
+    'outbounds': List<String>.from(members),
+    if (selected != null) 'default': selected,
+  };
+}
+
+/// Converts ordered domain rules and the terminal MATCH into a route fragment.
+/// The caller must supply the remaining DNS and inbound configuration.
+Map<String, dynamic> convertClashDomainRoutes(
+  List<String> rules,
+  Set<String> knownTags,
+) {
+  final converted = <Map<String, dynamic>>[];
+  String? fallback;
+  for (final rule in rules) {
+    final parts = rule.split(',').map((part) => part.trim()).toList();
+    if (fallback != null || parts.length < 2) {
+      throw const FormatException('Invalid rule order');
+    }
+    final target = parts.last;
+    if (!knownTags.contains(target)) {
+      throw const FormatException('Unknown route target');
+    }
+    if (parts.first == 'MATCH' && parts.length == 2) {
+      fallback = target;
+      continue;
+    }
+    if (parts.length != 3 || parts[1].isEmpty) {
+      throw const FormatException('Unsupported route rule');
+    }
+    final field = switch (parts.first) {
+      'DOMAIN' => 'domain',
+      'DOMAIN-SUFFIX' => 'domain_suffix',
+      'DOMAIN-KEYWORD' => 'domain_keyword',
+      _ => throw const FormatException('Unsupported route rule'),
+    };
+    converted.add({
+      field: [parts[1]],
+      'action': 'route',
+      'outbound': target,
+    });
+  }
+  if (fallback == null) {
+    throw const FormatException('Missing terminal MATCH rule');
+  }
+  return {'rules': converted, 'final': fallback};
+}
