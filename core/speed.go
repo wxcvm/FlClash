@@ -10,6 +10,7 @@ import (
 const (
 	downloadSpeedURL     = "https://speed.cloudflare.com/__down?bytes=2097152"
 	downloadSpeedBytes   = 2 * 1024 * 1024
+	minSpeedSampleBytes  = 256 * 1024
 	downloadSpeedTimeout = 12 * time.Second
 )
 
@@ -130,16 +131,25 @@ func testSpeed(ctx context.Context, params *SpeedTestParams, run func(context.Co
 		result.Error = probeErrorTimeout
 		return result
 	}
-	if probe.Error != "" {
-		result.Error = probe.Error
-		return result
-	}
 	afterEpoch, afterVersion, afterGeneration := speedPathStamp()
 	if ctx.Err() != nil || afterEpoch != epoch || afterVersion != version ||
-		afterGeneration != generation ||
-		probe.StatusCode != http.StatusOK ||
-		probe.DownloadBytes != downloadSpeedBytes {
+		afterGeneration != generation || probe.StatusCode != http.StatusOK {
 		result.Error = probeErrorFailed
+		return result
+	}
+	// A slow node can transfer real data without finishing 2 MiB in 12s.
+	// Keep a sufficiently large deadline-limited sample, but never count
+	// a canceled request, premature EOF, or an HTTP error as throughput.
+	complete := probe.Error == "" && probe.DownloadBytes == downloadSpeedBytes
+	partial := probe.Error == probeErrorTimeout &&
+		probe.DownloadBytes >= minSpeedSampleBytes &&
+		probe.DownloadBytes < downloadSpeedBytes &&
+		probe.DownloadMillis > 0
+	if !complete && !partial {
+		result.Error = probe.Error
+		if result.Error == "" {
+			result.Error = probeErrorFailed
+		}
 		return result
 	}
 

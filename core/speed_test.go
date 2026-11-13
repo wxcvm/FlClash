@@ -65,6 +65,32 @@ func TestDownloadProbeRequiresCompleteSample(t *testing.T) {
 	}
 }
 
+func TestSpeedAcceptsDeadlineLimitedSample(t *testing.T) {
+	result := testSpeed(context.Background(), &SpeedTestParams{ProxyName: "node"},
+		func(context.Context, probeRequest) *ProbeResult {
+			return &ProbeResult{StatusCode: http.StatusOK, Error: probeErrorTimeout,
+				DownloadBytes: minSpeedSampleBytes, DownloadMillis: 10000}
+		})
+	if result.Error != "" || result.Bytes != minSpeedSampleBytes ||
+		result.BytesPerSecond != minSpeedSampleBytes/10 {
+		t.Fatalf("deadline-limited sample = %+v", result)
+	}
+}
+
+func TestSpeedRejectsInvalidPartialSamples(t *testing.T) {
+	for _, sample := range []ProbeResult{
+		{StatusCode: http.StatusOK, Error: probeErrorTimeout, DownloadBytes: minSpeedSampleBytes - 1, DownloadMillis: 10000},
+		{StatusCode: http.StatusOK, Error: probeErrorFailed, DownloadBytes: minSpeedSampleBytes, DownloadMillis: 10000},
+		{StatusCode: http.StatusForbidden, Error: probeErrorTimeout, DownloadBytes: minSpeedSampleBytes, DownloadMillis: 10000},
+	} {
+		result := testSpeed(context.Background(), &SpeedTestParams{ProxyName: "node"},
+			func(context.Context, probeRequest) *ProbeResult { return &sample })
+		if result.Error == "" || result.BytesPerSecond != 0 {
+			t.Fatalf("accepted invalid partial sample: %+v", result)
+		}
+	}
+}
+
 func TestSpeedRejectsCompletedSampleAfterPassiveNetworkChange(t *testing.T) {
 	recordRoutes(t)
 	previousReset := resetNetworkResolver

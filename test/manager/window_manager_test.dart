@@ -26,7 +26,10 @@ class _RecordingCoreAction extends CoreAction {
   static final recoveries = <bool>[];
 
   @override
-  Future<void> verifyNetworkAfterResume({bool refreshPath = false}) async {
+  Future<void> verifyNetworkAfterResume({
+    bool refreshPath = false,
+    bool watchdog = false,
+  }) async {
     recoveries.add(refreshPath);
   }
 }
