@@ -213,6 +213,162 @@ void main() {
     });
   });
 
+  group('native runtime commands', () {
+    test('quality and snapshot commands preserve their payloads', () async {
+      mockChannel((call) async {
+        return switch (call.method) {
+          'nativeQualitySnapshot' => '{"state":"done","downloadBps":123}',
+          'nativeSnapshot' => '{"networkReady":true,"generation":7}',
+          'validateNativeCore' => '1.14.4',
+          _ => true,
+        };
+      });
+
+      final service = Service();
+      await service.startNativeQuality('HK');
+      expect(await service.getNativeQuality(), {
+        'state': 'done',
+        'downloadBps': 123,
+      });
+      await service.cancelNativeQuality();
+      expect(await service.getNativeSnapshot(), {
+        'networkReady': true,
+        'generation': 7,
+      });
+      await service.resetNativeNetwork();
+      await service.selectNativeOutbound('auto', 'HK', generation: 7);
+      await service.testNativeOutbound('HK');
+      expect(await service.validateNativeCore('/profile.json'), '1.14.4');
+
+      expect(calls.map((call) => call.method), [
+        'startNativeQuality',
+        'nativeQualitySnapshot',
+        'cancelNativeQuality',
+        'nativeSnapshot',
+        'resetNativeNetwork',
+        'selectNativeOutbound',
+        'testNativeOutbound',
+        'validateNativeCore',
+      ]);
+      expect(calls[0].arguments, {'tag': 'HK'});
+      expect(calls[5].arguments, {
+        'group': 'auto',
+        'tag': 'HK',
+        'generation': 7,
+      });
+      expect(calls[6].arguments, {'tag': 'HK'});
+      expect(calls[7].arguments, {'path': '/profile.json'});
+    });
+
+    test('native start, switch and stop refresh actual ownership', () async {
+      var engine = 'idle';
+      mockChannel((call) async {
+        switch (call.method) {
+          case 'startNativeCore':
+            engine = 'sing-box';
+            return {'started': true, 'restoredMihomo': false, 'error': ''};
+          case 'startMihomoCore':
+            engine = 'mihomo';
+            return true;
+          case 'stopNativeCore':
+            engine = 'idle';
+            return true;
+          case 'nativeCoreStatus':
+            return {'engine': engine, 'available': true};
+          default:
+            throw StateError('Unexpected command: ${call.method}');
+        }
+      });
+
+      final service = Service();
+      final started = await service.startNativeCore('/profile.json');
+      expect(started.started, isTrue);
+      expect(started.restoredMihomo, isFalse);
+      expect(started.error, isEmpty);
+      expect(service.nativeOwnsRuntime, isTrue);
+      expect(await service.startMihomoCore(), isTrue);
+      expect(service.nativeStatus.value?.engine, 'mihomo');
+      expect(service.nativeOwnsRuntime, isFalse);
+      expect(await service.stopNativeCore(), isTrue);
+      expect(service.nativeStatus.value?.engine, 'idle');
+
+      expect(calls.map((call) => call.method), [
+        'startNativeCore',
+        'nativeCoreStatus',
+        'startMihomoCore',
+        'nativeCoreStatus',
+        'stopNativeCore',
+        'nativeCoreStatus',
+      ]);
+      final startArgs = calls[0].arguments as Map;
+      final switchArgs = calls[2].arguments as Map;
+      final stopArgs = calls[4].arguments as Map;
+      expect(startArgs['path'], '/profile.json');
+      expect(switchArgs['revision'], greaterThan(startArgs['revision']));
+      expect(stopArgs['revision'], greaterThan(switchArgs['revision']));
+    });
+
+    test('failed native start reports restored Mihomo and error', () async {
+      mockChannel((call) async {
+        return switch (call.method) {
+          'startNativeCore' => {
+            'started': false,
+            'restoredMihomo': true,
+            'error': 'invalid configuration',
+          },
+          'nativeCoreStatus' => {'engine': 'mihomo'},
+          _ => null,
+        };
+      });
+
+      final result = await Service().startNativeCore('/invalid.json');
+      expect(result.started, isFalse);
+      expect(result.restoredMihomo, isTrue);
+      expect(result.error, 'invalid configuration');
+      expect(Service().nativeStatus.value?.engine, 'mihomo');
+      expect(Service().nativeOwnsRuntime, isFalse);
+    });
+
+    test('missing native command results do not report success', () async {
+      mockChannel((_) async => null);
+      final service = Service();
+
+      expect((await service.startNativeCore('/profile.json')).started, isFalse);
+      expect(await service.startMihomoCore(), isFalse);
+      expect(await service.stopNativeCore(), isFalse);
+      expect(service.nativeOwnsRuntime, isFalse);
+      expect(await service.validateNativeCore('/profile.json'), isEmpty);
+      expect(await service.getNativeQuality(), isEmpty);
+      expect(await service.getNativeSnapshot(), isEmpty);
+    });
+
+    test('a late native start cannot replace a newer stop intent', () async {
+      final start = Completer<Object?>();
+      mockChannel((call) {
+        return switch (call.method) {
+          'startNativeCore' => start.future,
+          'stopNativeCore' => Future.value(true),
+          'nativeCoreStatus' => Future.value({'engine': 'idle'}),
+          _ => throw StateError('Unexpected command: ${call.method}'),
+        };
+      });
+
+      final service = Service();
+      final pending = service.startNativeCore('/profile.json');
+      expect(await service.stopNativeCore(), isTrue);
+      start.complete({'started': true});
+      await pending;
+
+      expect(service.nativeStatus.value?.engine, 'idle');
+      expect(service.nativeOwnsRuntime, isFalse);
+      expect(calls.map((call) => call.method), [
+        'startNativeCore',
+        'stopNativeCore',
+        'nativeCoreStatus',
+      ]);
+    });
+  });
+
   group('lifecycle commands', () {
     test('start and stop report the platform result', () async {
       mockChannel((call) async => call.method == 'start');
