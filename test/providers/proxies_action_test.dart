@@ -111,7 +111,7 @@ void main() {
   }
 
   group('network change', () {
-    test('discards an in-flight delay result from the previous path', () async {
+    test('discards delay results from the previous path', () async {
       final release = Completer<Delay>();
       when(
         () => core.testDelay(_delayTest(_testUrl, 'HK-01')),
