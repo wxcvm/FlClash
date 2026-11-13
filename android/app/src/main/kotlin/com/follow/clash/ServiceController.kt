@@ -1,5 +1,7 @@
 package com.follow.clash
 
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -25,6 +27,7 @@ import com.follow.clash.service.VpnService
 import com.follow.clash.service.models.VpnOptions
 import com.follow.clash.service.models.NotificationParams
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -421,12 +424,37 @@ object ServiceController {
         }
     }
 
+    private data class LostNative(val pid: Int, val startedAt: Long, val options: VpnOptions)
+
+    private suspend fun confirmedNativeCrash(lost: LostNative): Boolean {
+        if (Build.VERSION.SDK_INT < 30 || lost.pid <= 0) return false
+        val app = GlobalState.application
+        return withContext(Dispatchers.IO) {
+            val manager = app.getSystemService(ActivityManager::class.java) ?: return@withContext false
+            // The exit record can arrive just after Binder death. Query the exact PID, never
+            // infer a crash from an arbitrary disconnect, explicit stop or permission revoke.
+            repeat(3) { attempt ->
+                val record = runCatching {
+                    manager.getHistoricalProcessExitReasons(app.packageName, lost.pid, 1).firstOrNull()
+                }.getOrNull()
+                if (record != null && record.timestamp >= lost.startedAt &&
+                    record.processName == "${app.packageName}:singbox") {
+                    return@withContext record.reason == ApplicationExitInfo.REASON_CRASH ||
+                        record.reason == ApplicationExitInfo.REASON_CRASH_NATIVE
+                }
+                if (attempt < 2) delay(300)
+            }
+            false
+        }
+    }
+
     private fun handleServiceDisconnected(
         disconnectedBinding: ManagedServiceBinding,
         message: String,
     ) {
         val token = ServiceState.captureRequestToken()
         GlobalState.launch {
+            var lostNative: LostNative? = null
             val wasCurrent = lock.withLock {
                 if (binding !== disconnectedBinding) {
                     return@withLock false
@@ -437,12 +465,19 @@ object ServiceController {
                     return@withLock false
                 }
                 val wasNative = hasNativeOwner
+                val old = runtime
+                val options = ServiceConfig.vpnOptions
+                if (old?.nativeConfigPath != null && options != null && options.nativeConfigPath == old.nativeConfigPath) {
+                    lostNative = LostNative(disconnectedBinding.nativePid, old.startedAtMillis, options)
+                }
                 release()
                 if (wasNative && MihomoCoreTransport.isolated) MihomoCoreTransport.resumeAfterNative()
                 true
             }
             if (wasCurrent) {
-                ServiceState.handleServiceLost(token)
+                val lost = lostNative
+                val recover = if (lost != null && confirmedNativeCrash(lost)) lost.options else null
+                ServiceState.handleServiceLost(token, recover)
             }
         }
     }
@@ -466,6 +501,7 @@ private class ManagedServiceBinding(
     // Android may rebind a BIND_AUTO_CREATE connection after process death.
     // Retain the original native owner, never adopt a replacement binder implicitly.
     @Volatile private var nativeOwner: NativeManagedService? = null
+    val nativePid: Int get() = nativeOwner?.pid ?: 0
 
     @Volatile
     private var isBound = false
@@ -580,6 +616,8 @@ private class NativeManagedService(
     private val profile: File,
 ) : ManagedService {
     private val owner = Binder()
+    var pid: Int = 0
+        private set
     fun startQuality(tag: String) = SingBoxVpnControl.startQuality(remote, tag)
     fun qualitySnapshot(): String = SingBoxVpnControl.qualitySnapshot(remote)
     fun cancelQuality() = SingBoxVpnControl.cancelQuality(remote)
@@ -591,6 +629,7 @@ private class NativeManagedService(
 
     fun validate() {
         SingBoxVpnControl.validate(remote, profile, owner)
+        pid = SingBoxVpnControl.pid(remote)
     }
 
     override fun start() {

@@ -46,5 +46,6 @@ object ServiceState {
 
     internal fun captureRequestToken(): RunRequest = machine.captureRequestToken()
 
-    internal suspend fun handleServiceLost(token: RunRequest) = machine.handleServiceLost(token)
+    internal suspend fun handleServiceLost(token: RunRequest, crashedNative: com.follow.clash.service.models.VpnOptions? = null) =
+        machine.handleServiceLost(token, crashedNative)
 }

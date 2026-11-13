@@ -37,7 +37,7 @@ class SingBoxVpnService : VpnService() {
 
     private val control = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-            if (code !in SingBoxVpnControl.VALIDATE..SingBoxVpnControl.STATUS_SNAPSHOT || reply == null) {
+            if (code !in SingBoxVpnControl.VALIDATE..SingBoxVpnControl.PID || reply == null) {
                 return super.onTransact(code, data, reply, flags)
             }
             data.enforceInterface(SingBoxVpnControl.TOKEN)
@@ -111,6 +111,7 @@ class SingBoxVpnService : VpnService() {
                             session?.cancelQuality()
                             0
                         }
+                        SingBoxVpnControl.PID -> Process.myPid()
                         else -> if (running) 1 else 0
                     }
                 }

@@ -53,6 +53,8 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     private var sharedState = SharedState()
 
     @Volatile private var manualNativePath: String? = null
+    private var nativeRunToken: RunRequest? = null
+    private var nativeRecoveryAttempt: RunRequest? = null
 
     @Volatile
     private var pendingVpnPreparation: (() -> Unit)? = null
@@ -83,7 +85,29 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
      * Settles the state after the bound service was lost. [token] is the request that was current
      * when the loss was observed, so a start that raced ahead of this callback keeps its intent.
      */
-    suspend fun handleServiceLost(token: RunRequest) {
+    suspend fun handleServiceLost(token: RunRequest, crashedNative: VpnOptions? = null) {
+        if (crashedNative?.nativeConfigPath != null) {
+            val recovered = startPreparationLock.withLock {
+                transitionLock.withLock recovery@ {
+                    if (!isCurrent(token) || !isRunRequested || nativeRunToken != token ||
+                        nativeRecoveryAttempt == token || host.runtime != null || host.hasNativeOwner ||
+                        !host.isVpnPermissionGranted()) return@recovery false
+                    nativeRecoveryAttempt = token
+                    transitioning(RunState.STARTING) {
+                        try {
+                            host.log("Recovering crashed sing-box VPN with the same configuration")
+                            host.startNativeService(crashedNative).started && isCurrent(token)
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            host.log("Unable to recover crashed sing-box: $error")
+                            false
+                        }
+                    }
+                }
+            }
+            if (recovered) return
+        }
         val dropped = transitionLock.withLock {
             if (host.runtime != null) {
                 return@withLock false
@@ -183,7 +207,10 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
                     transitioning(RunState.STARTING) {
                         try {
                             host.startNativeService(options).also { outcome ->
-                                if (outcome.started) manualNativePath = config.path
+                                if (outcome.started) {
+                                    manualNativePath = config.path
+                                    nativeRunToken = request
+                                }
                             }
                         } catch (error: CancellationException) {
                             throw error
@@ -376,7 +403,9 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
                 !isCurrent(request) -> false
                 isManualNativeRun(options) || host.runtime?.matches(options) == true -> true
                 else -> transitioning(RunState.STARTING) {
-                    host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
+                    val started = host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
+                    if (started && options.nativeConfigPath != null) nativeRunToken = request
+                    started
                 }
             }
         }

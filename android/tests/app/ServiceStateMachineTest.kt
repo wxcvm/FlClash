@@ -635,6 +635,50 @@ class ServiceStateMachineTest {
     }
 
     @Test
+    fun `confirmed native crash restores the same configuration only once`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestNativeStart(File("native.json")).await().started)
+        val token = machine.captureRequestToken()
+        val options = vpnOptions().copy(nativeConfigPath = "native.json")
+        host.runtime = null
+        host.hasNativeOwner = false
+        machine.handleServiceLost(token, options)
+        assertEquals(2, host.nativeStartCalls)
+        assertEquals("native.json", host.runtime?.nativeConfigPath)
+        assertEquals(RunState.STARTED, machine.runState.value)
+        host.runtime = null
+        host.hasNativeOwner = false
+        machine.handleServiceLost(token, options)
+        assertEquals(2, host.nativeStartCalls)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
+
+    @Test
+    fun `native crash cannot override revoked permission or newer stop`() = runTest {
+        val host = FakeHost(backgroundScope)
+        val machine = ServiceStateMachine(host)
+        machine.syncSharedState(configuredState())
+        assertTrue(machine.requestNativeStart(File("native.json")).await().started)
+        val token = machine.captureRequestToken()
+        val options = vpnOptions().copy(nativeConfigPath = "native.json")
+        host.runtime = null
+        host.hasNativeOwner = false
+        host.vpnPermissionGranted = false
+        machine.handleServiceLost(token, options)
+        assertEquals(1, host.nativeStartCalls)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+        host.vpnPermissionGranted = true
+        assertTrue(machine.requestNativeStart(File("native.json")).await().started)
+        val second = machine.captureRequestToken()
+        assertTrue(machine.requestStop().await())
+        machine.handleServiceLost(second, options)
+        assertEquals(2, host.nativeStartCalls)
+        assertEquals(RunState.STOPPED, machine.runState.value)
+    }
+
+    @Test
     fun `handleServiceLost clears the state for the token that observed the loss`() = runTest {
         val host = FakeHost(backgroundScope)
         val machine = ServiceStateMachine(host)
