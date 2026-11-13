@@ -143,6 +143,18 @@ void main() {
     },
   );
 
+  test('native activation exception releases ownership and cleans up', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    proxy.failure = StateError('channel gone');
+
+    expect(await queue.activateNative(8090, const []), isFalse);
+    await queue.apply(_state(isStart: true));
+    await queue.apply(_state(isStart: false));
+
+    expect(proxy.calls, ['start 8090', 'stop', 'start 7890', 'stop']);
+  });
+
   test('closing the queue stops the native proxy owner', () async {
     final proxy = _FakeProxy();
     final queue = SystemProxyQueue(proxy);
