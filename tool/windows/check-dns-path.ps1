@@ -2,11 +2,14 @@ param(
     [Parameter(Mandatory = $true)][string]$ResolverHost,
     [ValidateRange(1,65535)][int]$MixedPort = 7890,
     [string]$FakeIpRange = '198.18.0.0/15',
-    [string]$TestUrl = 'https://www.gstatic.com/generate_204'
+    [string]$TestUrl = 'https://www.gstatic.com/generate_204',
+    [ValidateRange(1,120)][int]$Samples = 1,
+    [ValidateRange(0,60)][int]$IntervalSeconds = 2
 )
 $ErrorActionPreference = 'Stop'
 # No private URL in the diagnostic report or subprocess arguments.
-if ([uri]$TestUrl -and ([uri]$TestUrl).Host -in @('localhost','127.0.0.1','::1')) {
+$testUri = [uri]$TestUrl
+if (-not $testUri.IsAbsoluteUri -or $testUri.Scheme -ne 'https' -or $testUri.IsLoopback) {
     throw 'Choose a public HTTPS test URL, not loopback.'
 }
 if ($ResolverHost -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$' -or
@@ -33,13 +36,6 @@ function Test-FakeAddress([string]$Address) {
     }
     return $true
 }
-$answers = @()
-$dnsError = $null
-try {
-    $answers = @(Resolve-DnsName -Name $ResolverHost -Type A -DnsOnly -ErrorAction Stop |
-        Where-Object { $_.Type -eq 'A' -and $_.IPAddress } |
-        ForEach-Object { [pscustomobject]@{ address = $_.IPAddress; fake = (Test-FakeAddress $_.IPAddress) } })
-} catch { $dnsError = $_.Exception.GetType().Name }
 function Test-HttpPath([string]$ProxyUrl) {
     $args = @('--silent', '--output', 'NUL', '--connect-timeout', '5',
               '--max-time', '12', '--write-out', '%{http_code} %{time_total}')
@@ -51,15 +47,47 @@ function Test-HttpPath([string]$ProxyUrl) {
         $args += @('--noproxy', '*')
     }
     $args += $TestUrl
+    $started = [DateTimeOffset]::UtcNow
     $value = & curl.exe @args 2>$null
     $code = $LASTEXITCODE
-    return [pscustomobject]@{ curlExit = $code; httpAndSeconds = ($value -join '') }
+    return [pscustomobject]@{
+        startedUtc = $started.ToString('o')
+        finishedUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        curlExit = $code
+        httpAndSeconds = ($value -join '')
+    }
 }
-[pscustomobject]@{
-    resolverHost = $ResolverHost
-    fakeIpRange = $FakeIpRange
-    dnsAnswers = $answers
-    dnsError = $dnsError
-    noApplicationProxy = (Test-HttpPath '')
-    explicitFlClashProxy = (Test-HttpPath "http://127.0.0.1:$MixedPort")
-} | ConvertTo-Json -Depth 5
+function Get-PathSample {
+    $started = [DateTimeOffset]::UtcNow
+    $answers = @()
+    $dnsError = $null
+    try {
+        $answers = @(Resolve-DnsName -Name $ResolverHost -Type A -DnsOnly -ErrorAction Stop |
+            Where-Object { $_.Type -eq 'A' -and $_.IPAddress } |
+            ForEach-Object { [pscustomobject]@{ address = $_.IPAddress; fake = (Test-FakeAddress $_.IPAddress) } })
+    } catch { $dnsError = $_.Exception.GetType().Name }
+    [pscustomobject]@{
+        startedUtc = $started.ToString('o')
+        dnsFinishedUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        resolverHost = $ResolverHost
+        fakeIpRange = $FakeIpRange
+        dnsAnswers = $answers
+        dnsError = $dnsError
+        noApplicationProxy = (Test-HttpPath '')
+        explicitFlClashProxy = (Test-HttpPath "http://127.0.0.1:$MixedPort")
+        finishedUtc = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+}
+# Preserve the original single-sample JSON shape. In timeline mode, change the
+# physical network or AdGuard DNS yourself while probes are running.
+if ($Samples -eq 1) {
+    Get-PathSample | ConvertTo-Json -Depth 5
+} else {
+    $timeline = @(for ($i = 1; $i -le $Samples; $i++) {
+        Write-Progress -Activity 'FlClash network recovery probes' -Status "Sample $i of $Samples" -PercentComplete (($i - 1) * 100 / $Samples)
+        Get-PathSample
+        if ($i -lt $Samples) { Start-Sleep -Seconds $IntervalSeconds }
+    })
+    Write-Progress -Activity 'FlClash network recovery probes' -Completed
+    [pscustomobject]@{ samples = $timeline } | ConvertTo-Json -Depth 7
+}

@@ -39,6 +39,28 @@ secret path/query, add broad wildcard exclusions, or route it DIRECT without
 checking the intended privacy policy. FlClash cannot control AdGuard's own
 DNS cache or guarantee that its DNS interception will coexist with TUN.
 
+## Record recovery across a network change
+
+Use timeline mode to collect before/after samples while manually reproducing
+the problem, with FlClash retained and one network variable changed at a time:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File tool/windows/check-dns-path.ps1 -ResolverHost private.example -MixedPort 7890 -Samples 12 -IntervalSeconds 2 > recovery.json
+
+Start with a working baseline, switch Wi-Fi / Ethernet or toggle only AdGuard
+DNS, then leave the new state in place while sampling continues. Repeat with
+sleep/resume if needed. The script never changes network settings itself.
+Each sample records UTC start/end times, DNS completion time, and separate
+start/end times, curl exit code, HTTP status and duration for both paths.
+A successful public HTTPS probe needs curl exit 0 and the expected status
+(204 for the default URL); a listener alone does not prove connectivity.
+
+The two HTTPS probes run sequentially, with a 12-second timeout each, and
+the interval is a pause after the sample, not a fixed sampling period.
+Use the observed timestamps to bound recovery rather than treating sample
+count as seconds. This is a diagnostic comparison, not proof of proxy exit
+IP, remote protocol handshakes, or exact recovery latency. Keep the report
+local if the resolver hostname or DNS answers are private.
+
 ## Mihomo reconnect fix
 
 The pinned core's ClearAll already synchronously resets resolver clients, including

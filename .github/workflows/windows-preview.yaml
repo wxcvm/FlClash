@@ -103,6 +103,9 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      - name: Apply Mihomo recovery source extension
+        shell: bash
+        run: python3 tool/mihomo-recovery/apply.py core/Clash.Meta
       - name: Fetch CA bundle
         shell: bash
         run: |

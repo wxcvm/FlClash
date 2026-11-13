@@ -21,9 +21,14 @@ a prompt health recheck, not guaranteed instantaneous failover. If a native
 periodic check is already running, its existing single-flight guard wins.
 The actual device forwarding and node recovery still need testing.
 
-The package CI applies the patch only on the dedicated recovery branch,
-runs the Go gate tests with the race detector and compiles the real group
-package before building an ARM64 AAR and APK. The upstream license remains
+Candidate and signed Android ARM64 preview builds share `build-libbox.sh`.
+Candidate CI runs the Go race, group, route and protocol-fixture checks;
+the signed preview builds the same pinned source instead of downloading a
+previous CI artifact. The preview passes the AAR to Gradle via
+`ORG_GRADLE_PROJECT_flclashSingBoxAar` and checks both native libraries and
+the isolated DEX in the final APK. Mihomo remains the default VPN owner.
+The release-check APK uses the existing development signing fallback, not
+the production certificate. The upstream license remains
 applicable; the patch and its source are distributed here.
 
 The 1.14.4 router resolves groups to the leaf before dialing. The patch also

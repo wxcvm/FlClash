@@ -15,6 +15,81 @@ void main() {
       ..record(sample('slow', 2000000, 10, now - 1000));
     expect(rank.recommend(['slow', 'fast'], now: now), 'fast');
   });
+  test('throughput advantage is not compressed away by latency', () {
+    final rank = NativeQualityRanking()
+      ..record(sample('fast', 100000000, 300, now - 1000))
+      ..record(sample('slow', 50000000, 10, now - 1000));
+    expect(rank.recommend(['slow', 'fast'], now: now), 'fast');
+  });
+  test('late arrival cannot override a newer failed measurement', () {
+    final rank = NativeQualityRanking()
+      ..record(sample('a', 0, 0, now - 1000, state: 'failed'))
+      ..record(sample('a', 100000000, 10, now - 2000));
+    expect(rank.recommend(['a'], now: now), isNull);
+  });
+  test('latest invalid completed measurement cannot recommend old speed', () {
+    final rank = NativeQualityRanking()
+      ..record(sample('a', 100000000, 10, now - 2000))
+      ..record(sample('a', 0, 10, now - 1000));
+    expect(rank.recommend(['a'], now: now), isNull);
+  });
+  test('rotation reaches every proxy while keeping current and measured best', () {
+    final rank = NativeQualityRanking()
+      ..record(sample('best', 100000000, 100, now - 1000));
+    final names = ['current', 'best', 'low', 'medium', 'high'];
+    final seen = <String>{};
+    for (var cursor = 0; cursor < names.length; cursor++) {
+      final candidates = rank.candidates(
+        names, incumbent: 'current', cursor: cursor, now: now,
+      );
+      expect(candidates, hasLength(3));
+      expect(candidates, containsAll(['current', 'best']));
+      seen.addAll(candidates);
+    }
+    expect(seen, containsAll(names));
+  });
+  test('auto apply keeps incumbent without a clear improvement', () {
+    expect(
+      NativeQualityRanking.chooseAutoSwitch([
+        sample('current', 10000000, 20, now - 2000),
+        sample('candidate', 11000000, 20, now - 1000),
+      ], incumbent: 'current', now: now),
+      isNull,
+    );
+    expect(
+      NativeQualityRanking.chooseAutoSwitch([
+        sample('current', 10000000, 20, now - 2000),
+        sample('candidate', 15000000, 20, now - 1000),
+      ], incumbent: 'current', now: now),
+      'candidate',
+    );
+  });
+  test('auto apply needs fresh incumbent and a successful challenger', () {
+    final good = sample('candidate', 15000000, 20, now - 1000);
+    expect(NativeQualityRanking.chooseAutoSwitch(
+      [good], incumbent: 'current', now: now,
+    ), isNull);
+    expect(NativeQualityRanking.chooseAutoSwitch([
+      sample('current', 0, 0, now - 2000, state: 'failed'), good,
+    ], incumbent: 'current', now: now), 'candidate');
+    expect(NativeQualityRanking.chooseAutoSwitch([
+      sample('current', 0, 0, now - 2000, state: 'canceled'), good,
+    ], incumbent: 'current', now: now), isNull);
+    expect(NativeQualityRanking.chooseAutoSwitch([
+      sample('current', 0, 0, now - 901000, state: 'failed'), good,
+    ], incumbent: 'current', now: now), isNull);
+  });
+  test('auto apply ignores a failed challenger and invalid incumbent', () {
+    expect(NativeQualityRanking.chooseAutoSwitch([
+      sample('current', 0, 20, now - 2000),
+      sample('candidate', 15000000, 20, now - 1000),
+    ], incumbent: 'current', now: now), isNull);
+    expect(NativeQualityRanking.chooseAutoSwitch([
+      sample('current', 10000000, 20, now - 2000),
+      sample('candidate', 15000000, 20, now - 1500),
+      sample('candidate', 0, 0, now - 1000, state: 'failed'),
+    ], incumbent: 'current', now: now), isNull);
+  });
   test('latest failed measurement excludes a node', () {
     final rank = NativeQualityRanking()
       ..record(sample('fast', 100000000, 10, now - 2000))

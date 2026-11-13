@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/core/native_quality_ranking.dart';
+import 'package:fl_clash/core/native_quality_schedule.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 
@@ -30,6 +31,10 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
   bool _busy = false;
   bool _showLogs = false;
   final _ranking = NativeQualityRanking();
+  final _continuous = NativeQualitySchedule();
+  Timer? _continuousTimer;
+  bool _scheduledQualityRunning = false;
+  final Map<String, int> _qualityCursors = {};
   Map<String, dynamic>? _quality;
   int _sessionStartedAt = 0;
   int? _networkGeneration;
@@ -60,7 +65,10 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     _cancelRequested = true;
     _qualityRequested = false;
     _networkGeneration = null;
+    _continuous.disable();
+    _continuousTimer?.cancel();
     _ranking.clear();
+    _qualityCursors.clear();
     _latestQuality.clear();
     if (mounted) setState(() {
       _quality = null;
@@ -81,8 +89,16 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
-    if (!_foreground) _liveRevision++;
+    if (!_foreground) {
+      _liveRevision++;
+      _continuousTimer?.cancel();
+      if (_scheduledQualityRunning) {
+        _continuous.networkChanged(DateTime.now());
+        if (_qualityRequested) unawaited(_cancelQuality());
+      }
+    }
     _scheduleLive();
+    _scheduleContinuous();
   }
 
   void _scheduleLive() {
@@ -121,11 +137,85 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     }
   }
 
+  void _scheduleContinuous({Duration? retry}) {
+    _continuousTimer?.cancel();
+    if (!mounted || !widget.home || !_foreground ||
+        _sessionStartedAt == 0 || _continuous.group == null) return;
+    final delay = retry ?? _continuous.delay(DateTime.now());
+    if (delay == null) return;
+    _continuousTimer = Timer(delay, () => unawaited(_runContinuous()));
+  }
+
+  void _toggleContinuous(Map<String, dynamic> group) {
+    final key = group['tag'] as String;
+    if (_continuous.group == key) {
+      _stopContinuous();
+      return;
+    }
+    setState(() => _continuous.enable(
+      key, DateTime.now(), selected: group['selected'] as String,
+    ));
+    _scheduleContinuous();
+  }
+
+  void _stopContinuous() {
+    _continuousTimer?.cancel();
+    if (mounted) setState(_continuous.disable);
+    if (_scheduledQualityRunning && _qualityRequested) {
+      unawaited(_cancelQuality());
+    }
+  }
+
+  Future<void> _runContinuous() async {
+    final key = _continuous.group;
+    if (!mounted || !_foreground || key == null || _sessionStartedAt == 0) return;
+    if (_busy || _polling || ModalRoute.of(context)?.isCurrent == false) {
+      _scheduleContinuous(retry: const Duration(seconds: 15));
+      return;
+    }
+    final session = _sessionStartedAt;
+    final revision = _continuous.revision;
+    _scheduledQualityRunning = true;
+    try {
+      await _perform(() async {
+        await _readSnapshot();
+        if (!mounted || !_foreground || session != _sessionStartedAt ||
+            revision != _continuous.revision ||
+            ModalRoute.of(context)?.isCurrent == false) {
+          return '自动优选已暂停，等待当前网络重新评估';
+        }
+        final matches = _rows(_snapshot?['groups']).where((g) => g['tag'] == key);
+        if (matches.isEmpty || !_canAutoApply(matches.first)) {
+          _stopContinuous();
+          return '当前策略组已变化，持续优选已停止';
+        }
+        final group = matches.first;
+        if (!_continuous.matchesSelection(group['selected'] as String?)) {
+          _stopContinuous();
+          return '检测到手动或外部节点切换，持续优选已停止';
+        }
+        final tags = _candidates(group);
+        if (tags.length < 2) {
+          _stopContinuous();
+          return '没有可比较的候选节点，持续优选已停止';
+        }
+        _qualityCursors.update(key, (cursor) => cursor + 1, ifAbsent: () => 1);
+        return _measureQuality(tags, autoGroup: group, scheduledRevision: revision);
+      });
+    } finally {
+      _scheduledQualityRunning = false;
+      _continuous.complete(revision, DateTime.now());
+      _scheduleContinuous();
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _liveRevision++;
     _liveTimer?.cancel();
+    _continuousTimer?.cancel();
+    _continuous.disable();
     _service.nativeStatus.removeListener(_onNativeStatus);
     _cancelRequested = true;
     if (_qualityRequested) {
@@ -140,7 +230,10 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     final changed = _networkGeneration != null && _networkGeneration != generation;
     if (changed) {
       _ranking.clear();
+      _qualityCursors.clear();
       _latestQuality.clear();
+      _continuous.networkChanged(DateTime.now());
+      _scheduleContinuous();
     }
     _networkGeneration = generation;
     return changed;
@@ -160,16 +253,48 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
       return value is num && value > 0 ? value.toDouble() : double.infinity;
     }
     items.sort((a, b) => delay(a).compareTo(delay(b)));
-    return items.map((item) => item['tag'] as String).toSet().take(3).toList();
+    return _ranking.candidates(
+      items.map((item) => item['tag'] as String),
+      incumbent: group['selected'] as String? ?? '',
+      cursor: _qualityCursors[group['tag']] ?? 0,
+      now: DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
-  Future<void> _runQuality(List<String> tags) => _perform(() async {
+  bool _canAutoApply(Map<String, dynamic> group) =>
+      group['selectable'] == true &&
+      _rows(group['items']).any((item) =>
+          _isProxy(item) && item['tag'] == group['selected']);
+
+  Future<void> _runGroupQuality(
+    Map<String, dynamic> group, {
+    bool autoApply = false,
+  }) async {
+    final tags = _candidates(group);
+    final key = group['tag'] as String;
+    _qualityCursors.update(key, (cursor) => cursor + 1, ifAbsent: () => 1);
+    await _runQuality(tags, autoGroup: autoApply ? group : null);
+  }
+
+  Future<void> _runQuality(
+    List<String> tags, {
+    Map<String, dynamic>? autoGroup,
+  }) => _perform(() => _measureQuality(tags, autoGroup: autoGroup));
+
+  Future<String> _measureQuality(
+    List<String> tags, {
+    Map<String, dynamic>? autoGroup,
+    int? scheduledRevision,
+  }) async {
     if (tags.isEmpty) return '没有可测速的代理节点';
     final session = _sessionStartedAt;
+    final completed = <NativeQualitySample>[];
     _cancelRequested = false;
     _qualityRequested = true;
     bool active() => mounted && session == _sessionStartedAt &&
-        !_cancelRequested;
+        !_cancelRequested && (scheduledRevision == null ||
+            (_foreground && _continuous.revision == scheduledRevision &&
+                ModalRoute.of(context)?.isCurrent != false));
     try {
       for (var index = 0; index < tags.length && active(); index++) {
         final tag = tags[index];
@@ -197,6 +322,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
           }
           if (sample.state != 'running') {
             _ranking.record(sample);
+            if (sample.state == 'done' || sample.state == 'failed') {
+              completed.add(sample);
+            }
             _latestQuality[tag] = result;
             break;
           }
@@ -213,7 +341,42 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
           await Future<void>.delayed(const Duration(seconds: 1));
         }
       }
-      return active() ? '测速完成，可查看策略组中的实测推荐' : '测速已取消';
+      if (!active()) return '测速已取消';
+      if (autoGroup == null) return '测速完成，可查看策略组中的实测推荐';
+      if (!_foreground || _networkGeneration == null) {
+        return '测速完成，当前状态已变化，未自动切换';
+      }
+      final incumbent = autoGroup['selected'] as String;
+      final winner = NativeQualityRanking.chooseAutoSwitch(
+        completed,
+        incumbent: incumbent,
+        now: DateTime.now().millisecondsSinceEpoch,
+      );
+      if (winner == null) return '测速完成，保持当前节点';
+      final generation = _networkGeneration!;
+      final snapshot = await _service.getNativeSnapshot();
+      if (!active() || !_foreground ||
+          snapshot['networkGeneration'] != generation) {
+        return '网络或会话已变化，未自动切换';
+      }
+      final key = autoGroup['tag'] as String;
+      final matches = _rows(snapshot['groups']).where((g) => g['tag'] == key);
+      if (matches.isEmpty) return '策略组已变化，未自动切换';
+      final group = matches.first;
+      if (!_canAutoApply(group) || group['selected'] != incumbent ||
+          !_rows(group['items']).any((item) =>
+              _isProxy(item) && item['tag'] == winner)) {
+        return '当前选择或策略组已变化，未自动切换';
+      }
+      await _service.selectNativeOutbound(key, winner, generation: generation);
+      if (!active()) return '切换请求已提交，请刷新确认';
+      await _readSnapshot();
+      final applied = _rows(_snapshot?['groups']).any((g) =>
+          g['tag'] == key && g['selected'] == winner);
+      if (applied && scheduledRevision != null) {
+        _continuous.applied(scheduledRevision, winner);
+      }
+      return applied ? '实测自动优选：已切换至 $winner' : '切换请求已提交，请刷新确认';
     } finally {
       // Stop the native stream before releasing this page's single-test slot.
       if (session == _sessionStartedAt) {
@@ -231,7 +394,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
         }
       }
     }
-  });
+  }
 
   Future<void> _cancelQuality() async {
     _cancelRequested = true;
@@ -286,6 +449,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
 
   Future<void> _select(String group, String tag, {bool measured = false}) => _perform(() async {
     if (measured && _networkGeneration == null) return '请先重新测速';
+    if (_continuous.group == group) _stopContinuous();
     await _service.selectNativeOutbound(group, tag, generation: measured ? _networkGeneration! : -1);
     await _readSnapshot();
     return '已提交节点切换，当前选择以策略组返回值为准';
@@ -294,7 +458,10 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
   Future<void> _resetNetwork() => _perform(() async {
     await _service.resetNativeNetwork();
     _ranking.clear();
+    _qualityCursors.clear();
     _latestQuality.clear();
+    _continuous.networkChanged(DateTime.now());
+    _scheduleContinuous();
     await _readSnapshot();
     return '已请求内核重建网络连接；请重新检查联网和节点延迟';
   });
@@ -390,6 +557,12 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                       subtitle: const Text('重置内核连接，不重启 VPN；现有连接可能中断'),
                       onTap: enabled ? () => unawaited(_resetNetwork()) : null,
                     ),
+                  if (running && widget.home && _continuous.group != null)
+                    ListItem(
+                      title: Text('持续智能优选：${_continuous.group}'),
+                      subtitle: const Text('前台定期实测；点击停止'),
+                      onTap: _stopContinuous,
+                    ),
                   if (running && _liveError != null) ListItem(title: Text(_liveError!)),
                   if (running && live != null) ...[
                     ListItem(
@@ -448,12 +621,12 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                       ListItem(title: Text('候选进度：$_batchProgress')),
                     if (_qualityRunning)
                       ListItem(
-                        title: const Text('取消测速'),
+                        title: const Text('取消本轮测速'),
                         onTap: running && !_cancelRequested
                             ? () => unawaited(_cancelQuality()) : null,
                       ),
                   ],
-                  footer: '实际消耗网络流量，单次测试最长目标 30 秒；不切换当前节点。'
+                  footer: '实际消耗网络流量，单次测试最长目标 30 秒；仅在主动选择自动优选时切换节点。'
                       '移动数据或限额网络请谨慎使用。',
                 ),
               if (running && snapshot != null)
@@ -473,9 +646,27 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                       if (group['selectable'] == true && _candidates(group).isNotEmpty)
                         ListItem(
                           title: const Text('智能优选 · 实测候选'),
-                          subtitle: Text('按延迟初筛最多 3 个代理：${_candidates(group).join('、')}；依次测带宽，不自动切换'),
+                          subtitle: Text('最多 3 个候选（当前、实测优选及轮换探索）：${_candidates(group).join('、')}；依次测带宽，不自动切换'),
                           onTap: enabled && !_qualityRunning
-                              ? () => unawaited(_runQuality(_candidates(group))) : null,
+                              ? () => unawaited(_runGroupQuality(group)) : null,
+                        ),
+                      if (_canAutoApply(group) && _candidates(group).length > 1)
+                        ListItem(
+                          title: const Text('智能优选 · 测速后自动切换'),
+                          subtitle: const Text('实测当前与候选节点，综合质量至少提升 20% 或当前实测失败时切换'),
+                          onTap: enabled && !_qualityRunning
+                              ? () => unawaited(_runGroupQuality(group, autoApply: true))
+                              : null,
+                        ),
+                      if (widget.home && _canAutoApply(group) &&
+                          _candidates(group).length > 1)
+                        ListItem(
+                          title: Text(_continuous.group == group['tag']
+                              ? '持续智能优选 · 已开启' : '开启持续智能优选'),
+                          subtitle: const Text('前台每 15 分钟最多实测 3 个节点；网络变化后重新评估，实际消耗流量'),
+                          onTap: enabled || _continuous.group == group['tag']
+                              ? () => _toggleContinuous(group)
+                              : null,
                         ),
                       if (group['selectable'] == true)
                         for (final best in [_ranking.recommend(

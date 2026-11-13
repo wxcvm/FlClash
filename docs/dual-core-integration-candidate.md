@@ -1,22 +1,30 @@
 # Dual-core integration candidate
 
-This branch combines PRs #60–#65, with actual merge ancestry. It is not a
-release and does not change main. Both core source extensions are built in
-the candidate CI; the normal production pins and process layout are retained.
-Android produces an ARM64 debug APK and the isolated debug APK + instrumentation
-pair. Windows builds the installer and portable package with the Mihomo patch,
-using the existing setup workflow; sing-box Android libbox is not a Windows
-runtime. The Android workflow no longer depends on the expiring official
-libbox artifact for this candidate.
+This branch combines PRs #60–#65 and #67–#70 with actual commit ancestry.
+It is not a release and does not change main.
 
-Prior complete CI: #60, #61, #63. #64's network and Flutter tests passed before
-integration. #62 had a duplicated workflow tail after a successful source
-build; removed. #65 failed due to a Go 1.21 clear builtin in a Go 1.20 module;
-replaced with a nil map under the lock. Candidate CI must validate both patches,
-the Android package, and Windows packages together. No physical device or
-real remote node handshake has been executed in this development session.
+The first joint candidate (30a98608) passed both Android and Windows jobs
+in workflow run 43333849583. The combined successor includes:
 
-Candidate build runs from the source pins; for normal builds and release
-enablement, evaluate permanent patch delivery separately after validation.
-Android isolation remains opt-in and Windows does not gain a sing-box engine
-from this integration. Device acceptance guide: android-dual-core-device-acceptance.md.
+- #67: Windows DNS / HTTPS path diagnostics with continuous timeline sampling.
+- #68: Mihomo recovery extension in regular CI and Windows/Android preview packaging.
+- #69: shared pinned sing-box source build for candidate and signed ARM64 preview;
+  no dependency on a prior CI artifact.
+- #70: native measured node exploration, one-tap apply, and opt-in foreground
+  continuous quality selection. No background bandwidth tests; native URLTest
+  failure recovery remains independent.
+
+The integrated CI compiles both recovery extensions, runs native ranking and
+schedule tests, builds Android debug and isolated instrumentation APKs, and
+builds a minified ARM64 release-mode APK using development signing. It checks
+that both native libraries and the isolated DEX are packaged. Windows builds
+installer and portable packages and parses the PowerShell diagnostic.
+
+Production signing identity, application ID, version code, upstream pins and
+default Mihomo process layout are retained. Sing-box is optional and Android
+only; Windows does not gain a sing-box runtime. The signed preview workflow
+is not executed by candidate CI, and development-signed APKs are not upgrades
+to the production app. No real device or remote-node handshake validation has
+been performed in this development session.
+
+Device acceptance guide: android-dual-core-device-acceptance.md.
