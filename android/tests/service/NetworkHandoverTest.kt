@@ -54,6 +54,31 @@ class NetworkHandoverTest {
     }
 
     @Test
+    fun `same network path changes reset once`() {
+        val tracker = NetworkHandoverTracker<String>()
+        val initial = NetworkPath("wlan0", listOf("192.0.2.1/24"), listOf("default"),
+            listOf("192.0.2.53:53"), false, null)
+        assertFalse(tracker.update("wifi", path = initial))
+        assertFalse(tracker.update("wifi", path = initial.copy()))
+        val changed = initial.copy(addresses = listOf("192.0.2.2/24"))
+        assertTrue(tracker.update("wifi", path = changed))
+        assertFalse(tracker.update("wifi", path = changed))
+        val privateDns = changed.copy(privateDnsActive = true, privateDnsName = "dns.example")
+        assertTrue(tracker.update("wifi", path = privateDns))
+        assertFalse(tracker.update("wifi", path = privateDns))
+    }
+
+    @Test
+    fun `suspended path resumes on the same network`() {
+        val tracker = NetworkHandoverTracker<String>()
+        val path = NetworkPath("wlan0", emptyList(), emptyList(), emptyList(), false, null)
+        assertFalse(tracker.update("wifi", path = path))
+        assertFalse(tracker.update(null))
+        assertTrue(tracker.update("wifi", path = path))
+        assertFalse(tracker.update("wifi", path = path))
+    }
+
+    @Test
     fun `late loss of old network does not reset the new one`() {
         val tracker = NetworkHandoverTracker<String>()
         assertFalse(tracker.update("wifi"))
