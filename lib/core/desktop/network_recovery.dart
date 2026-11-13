@@ -28,7 +28,8 @@ Future<bool> verifyDesktopNetwork({
       // trigger a second teardown when a wake notification overlaps it.
       return health['source'] == 'manual' &&
           (state == 'dns-failure' || state == 'route-unreachable') &&
-          health['attempt'] == 2;
+          health['attempt'] == 2 &&
+          health['confirmed-failures'] == 2;
     }
     await wait();
   }
