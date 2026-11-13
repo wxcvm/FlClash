@@ -92,7 +92,13 @@ func TestVerifiedSpeedRejectsNetworkChangeDuringCheck(t *testing.T) {
 		<-release
 		w.WriteHeader(http.StatusNoContent)
 	})
-	defer close(release)
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
 
 	a, b := namedProxy("node-a"), namedProxy("node-b")
 	members := []constant.Proxy{a, b}
@@ -126,7 +132,7 @@ func TestVerifiedSpeedRejectsNetworkChangeDuringCheck(t *testing.T) {
 	}
 	handleNetworkChanged()
 	// Allow the health check to finish after the passive resolver reset.
-	release <- struct{}{}
+	close(release)
 	select {
 	case result := <-done:
 		if result.Message != "speed selection changed during health check" {
