@@ -2,7 +2,7 @@ name: Android optional sing-box package
 on:
   workflow_dispatch:
   push:
-    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/android-singbox-failure-recovery, feat/android-dns-path-recovery, feat/windows-fakeip-doh-compatibility, feat/mihomo-failure-recovery, feat/android-dual-core-integration]
+    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/android-singbox-failure-recovery, feat/android-dns-path-recovery, feat/windows-fakeip-doh-compatibility, feat/mihomo-failure-recovery, feat/android-dual-core-integration, feat/android-singbox-preview-delivery]
     paths:
       - 'android/**'
       - 'lib/**'
@@ -77,7 +77,7 @@ jobs:
           javac --release 8 -d /tmp/flclash-lease-test android/service/src/main/java/com/follow/clash/service/NativeConfigLease.java android/tests/service/NativeConfigLeaseCheck.java
           java -cp /tmp/flclash-lease-test com.follow.clash.service.NativeConfigLeaseCheck
       - name: Apply and test Mihomo recovery source extension
-        if: github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        if: github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
         run: |
           python3 tool/mihomo-recovery/apply.py core/Clash.Meta
           cd core/Clash.Meta
@@ -89,13 +89,13 @@ jobs:
           tags=$(sed -n 's/^tags: *//p' ../build_config.yaml)
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags "$tags" -o ../mihomo-recovery-windows.exe ./cmd/core
       - uses: actions/upload-artifact@v4
-        if: github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        if: github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
         with:
           name: mihomo-recovery-windows-core-dev
           path: mihomo-recovery-windows.exe
           retention-days: 7
       - name: Checkout pinned sing-box for recovery build
-        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
         uses: actions/checkout@v4
         with:
           repository: SagerNet/sing-box
@@ -103,37 +103,24 @@ jobs:
           path: upstream-sing-box
           persist-credentials: false
       - uses: actions/setup-go@v5
-        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
         with:
           go-version: '1.26.10'
           cache: false
           cache-dependency-path: upstream-sing-box/go.sum
       - name: Build and test recovery-enabled ARM64 libbox
-        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
         run: |
-          python3 tool/android-singbox/recovery/apply.py upstream-sing-box
-          cd upstream-sing-box
-          gofmt -w protocol/group/urltest.go protocol/group/flclash_failure_gate*.go route/conn.go route/flclash_route_observer_test.go
-          go test -race protocol/group/flclash_failure_gate.go protocol/group/flclash_failure_gate_test.go
-          go test ./protocol/group
-          go test ./route -run '^TestFlClashRouteObserver$'
-          # Build the real CLI with protocol tags and validate synthetic profiles without dialing.
-          go run -tags 'with_quic,with_utls' ./cmd/sing-box check -c ../tool/android-singbox/recovery/protocol-fixture.json
-          git tag -f v1.14.4
-          make lib_install
-          export PATH="$PATH:$(go env GOPATH)/bin"
-          go run ./cmd/internal/build_libbox -target android -platform android/arm64
-          unzip -t libbox.aar
-          echo "LIBBOX_AAR=$(realpath libbox.aar)" >> "$GITHUB_ENV"
-          sha256sum libbox.aar > libbox.sha256
+          bash tool/android-singbox/recovery/build-libbox.sh upstream-sing-box --test
+          echo "LIBBOX_AAR=$(realpath upstream-sing-box/libbox.aar)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
-        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
         with:
           go-version: '1.27.1'
           cache: false
           cache-dependency-path: core/go.sum
       - name: Obtain verified official ARM64 AAR
-        if: github.ref_name != 'feat/android-singbox-failure-recovery' && github.head_ref != 'feat/android-singbox-failure-recovery' && github.ref_name != 'feat/android-dual-core-integration' && github.head_ref != 'feat/android-dual-core-integration'
+        if: github.ref_name != 'feat/android-singbox-failure-recovery' && github.head_ref != 'feat/android-singbox-failure-recovery' && github.ref_name != 'feat/android-dual-core-integration' && github.head_ref != 'feat/android-dual-core-integration' && github.ref_name != 'feat/android-singbox-preview-delivery' && github.head_ref != 'feat/android-singbox-preview-delivery'
         run: |
           gh run download 43219145718 --repo "$GITHUB_REPOSITORY" --name sing-box-v1.14.4-arm64-probe --dir libbox-input
           aar="$(find libbox-input -name libbox.aar -print -quit)"
@@ -226,6 +213,26 @@ jobs:
         with:
           name: mihomo-process-device-test
           path: mihomo-process-test/
+          retention-days: 7
+      - name: Build minified ARM64 release APK for runtime verification
+        if: github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
+        run: |
+          export ORG_GRADLE_PROJECT_flclashSingBoxAar="$LIBBOX_AAR"
+          flutter build apk --release --target-platform android-arm64 --split-per-abi --dart-define=APP_ENV=pre
+          apk=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          test -s "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              files = set(apk.namelist())
+              for name in ('assets/singbox/libbox.dex', 'lib/arm64-v8a/libbox.so', 'lib/arm64-v8a/libclash.so'):
+                  assert name in files, f'missing {name}'
+          PY
+      - uses: actions/upload-artifact@v4
+        if: github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
+        with:
+          name: flclash-android-dual-core-release-check
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           retention-days: 7
       - name: Verify default build omits runtime
         run: |
