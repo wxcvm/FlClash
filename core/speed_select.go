@@ -110,7 +110,7 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	if err != nil {
 		return fail(err)
 	}
-	if current.Fixed != before.Fixed || current.Now != before.Now {
+	if current.Fixed != before.Fixed {
 		return fail(errors.New("speed selection superseded by another choice"))
 	}
 	if groupProxy.Type() == constant.URLTest && !member.AliveForTestUrl(before.TestURL) {
