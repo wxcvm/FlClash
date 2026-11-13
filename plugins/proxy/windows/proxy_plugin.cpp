@@ -209,12 +209,9 @@ bool startProxy(const int port, const flutter::EncodableList& bypassDomain)
     // WinINet may normalize its stored values. Only accept a snapshot that
     // still points at the requested proxy, never claim an unrelated server.
     const auto actual = ReadProxySnapshot(connection);
-    if (actual && actual->server == next.server &&
-        (actual->flags & PROXY_TYPE_PROXY) != 0)
-    {
-      it->second.applied = *actual;
-    }
-    return ok;
+    const bool confirmed = actual &&
+        it->second.confirmStart(*actual, PROXY_TYPE_PROXY);
+    return ok && confirmed;
   });
   const bool settingsNotified = NotifySettingsChanged();
   return optionsApplied && settingsNotified;
