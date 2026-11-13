@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/clash_native_file.dart';
 import 'package:fl_clash/core/native_auto_recovery.dart';
 import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/views/config/android_native_dashboard.dart';
@@ -58,6 +59,40 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
     if (!mounted || file?.path == null) return '未选择配置';
     setState(() => _configPath = file!.path!);
     return '已选择原生配置，启动前将进行完整预检';
+  }
+
+  Future<String> _importClash() async {
+    final file = await picker.pickerFile();
+    final path = file?.path;
+    if (!mounted || path == null) return '未选择配置';
+    final directory = await Directory(
+      await appPath.homeDirPath,
+    ).createTemp('singbox-clash-');
+    try {
+      final candidate = await createClashNativeCandidate(
+        File(path),
+        directory,
+        inbounds: [
+          {
+            'type': 'tun',
+            'tag': 'tun-in',
+            'address': ['172.19.0.1/30'],
+            'auto_route': true,
+            'strict_route': true,
+          },
+        ],
+      );
+      await _service.validateNativeCore(candidate.path);
+      if (!mounted) {
+        await directory.delete(recursive: true);
+        return '未选择配置';
+      }
+      setState(() => _configPath = candidate.path);
+      return 'Clash 配置已转换并通过预检；原配置未修改';
+    } catch (_) {
+      await directory.delete(recursive: true);
+      rethrow;
+    }
   }
 
   Future<String> _createAutoProfile() async {
@@ -173,6 +208,11 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                 title: 'sing-box 原生配置',
                 items: [
                   ListItem(
+                    title: const Text('导入 Clash 配置'),
+                    subtitle: const Text('兼容配置自动转换并预检'),
+                    onTap: canConfigure ? () => _perform(_importClash) : null,
+                  ),
+                  ListItem(
                     title: const Text('导入 sing-box 配置'),
                     subtitle: Text(
                       _configPath.isEmpty ? '尚未选择' : _configPath,
@@ -222,7 +262,7 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                   ),
                 ],
                 footer:
-                    '使用带 TUN 的 sing-box 原生 JSON；不会转换 Clash 订阅。'
+                    '支持兼容的 Clash 配置或带 TUN 的 sing-box 原生 JSON。'
                     '启动失败时尝试恢复先前的 Mihomo VPN。'
                     '节点、流量与日志可在运行管理查看；选择原生自动组后由内核重新选路。',
               ),
