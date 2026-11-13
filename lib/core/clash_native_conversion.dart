@@ -211,8 +211,10 @@ Map<String, dynamic> convertClashRoutingGraph(
       rules.any((rule) => rule is! String)) {
     throw const FormatException('Invalid static Clash profile');
   }
-  if (profile.containsKey('proxy-providers') ||
-      profile.containsKey('rule-providers')) {
+  if (['proxy-providers', 'rule-providers'].any(
+    (key) => profile.containsKey(key) &&
+        !_isNeutralClashSetting(key, profile[key]),
+  )) {
     throw const FormatException('Dynamic providers require conversion');
   }
   final tags = <String>{'DIRECT'};
@@ -338,8 +340,17 @@ Map<String, dynamic> buildClashNativeConfig(
   Map<String, String> selected = const {},
 }) {
   const supported = {'proxies', 'proxy-groups', 'rules', 'dns', 'mode'};
-  if (profile.keys.any((key) => !supported.contains(key)) ||
-      (profile.containsKey('mode') && profile['mode'] != 'rule') ||
+  final unsupported = profile.entries
+      .where((entry) => !supported.contains(entry.key))
+      .where((entry) => !_isNeutralClashSetting(entry.key, entry.value))
+      .map((entry) => entry.key)
+      .toList();
+  if (unsupported.isNotEmpty) {
+    throw FormatException(
+      'Unsupported profile fields: ${unsupported.join(', ')}',
+    );
+  }
+  if ((profile.containsKey('mode') && profile['mode'] != 'rule') ||
       inbounds.isEmpty ||
       profile['dns'] is! Map) {
     throw const FormatException('Unsupported profile settings');
@@ -362,4 +373,42 @@ Map<String, dynamic> buildClashNativeConfig(
       ],
     },
   };
+}
+
+bool _isNeutralClashSetting(String key, dynamic value) {
+  switch (key) {
+    case 'external-controller':
+    case 'external-controller-tls':
+    case 'external-controller-unix':
+    case 'external-controller-pipe':
+    case 'external-ui':
+    case 'external-ui-url':
+    case 'secret':
+    case 'interface-name':
+      return value == '';
+    case 'port':
+    case 'socks-port':
+    case 'redir-port':
+    case 'tproxy-port':
+    case 'routing-mark':
+      return value == 0;
+    case 'authentication':
+    case 'skip-auth-prefixes':
+    case 'listeners':
+    case 'tunnels':
+      return value is List && value.isEmpty;
+    case 'hosts':
+    case 'proxy-providers':
+    case 'rule-providers':
+      return value is Map && value.isEmpty;
+    case 'allow-lan':
+    case 'geo-auto-update':
+      return value == false;
+    case 'profile':
+      return value is Map &&
+          value.keys.every((key) => key == 'store-selected') &&
+          value['store-selected'] != true;
+    default:
+      return false;
+  }
 }
