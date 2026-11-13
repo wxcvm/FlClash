@@ -191,3 +191,77 @@ Map<String, dynamic> convertClashDomainRoutes(
   }
   return {'rules': converted, 'final': fallback};
 }
+
+/// Assembles the outbound and route graph from a static Clash profile.
+/// DNS and inbound settings remain the responsibility of the platform adapter.
+Map<String, dynamic> convertClashRoutingGraph(
+  Map<String, dynamic> profile, {
+  Map<String, String> selected = const {},
+}) {
+  final proxies = profile['proxies'];
+  final groups = profile['proxy-groups'];
+  final rules = profile['rules'];
+  if (proxies is! List ||
+      groups is! List ||
+      rules is! List ||
+      rules.any((rule) => rule is! String)) {
+    throw const FormatException('Invalid static Clash profile');
+  }
+  if (profile.containsKey('proxy-providers') ||
+      profile.containsKey('rule-providers')) {
+    throw const FormatException('Dynamic providers require conversion');
+  }
+  final tags = <String>{'DIRECT'};
+  final outbounds = <Map<String, dynamic>>[
+    {'type': 'direct', 'tag': 'DIRECT'},
+  ];
+  for (final proxy in proxies) {
+    if (proxy is! Map) {
+      throw const FormatException('Invalid proxy');
+    }
+    final outbound = convertClashOutbound(Map<String, dynamic>.from(proxy));
+    if (!tags.add(outbound['tag'] as String)) {
+      throw const FormatException('Duplicate outbound tag');
+    }
+    outbounds.add(outbound);
+  }
+  final byName = <String, Map<String, dynamic>>{};
+  for (final group in groups) {
+    if (group is! Map || group['name'] is! String) {
+      throw const FormatException('Invalid proxy group');
+    }
+    final name = group['name'] as String;
+    if (!tags.add(name)) {
+      throw const FormatException('Duplicate group tag');
+    }
+    byName[name] = Map<String, dynamic>.from(group);
+  }
+  final visiting = <String>{};
+  final visited = <String>{};
+  void visit(String name) {
+    if (visited.contains(name)) return;
+    if (!visiting.add(name)) {
+      throw const FormatException('Cyclic proxy groups');
+    }
+    final group = byName[name]!;
+    final outbound = convertClashSelector(
+      group,
+      tags,
+      selected: selected[name],
+    );
+    for (final member in outbound['outbounds'] as List<String>) {
+      if (byName.containsKey(member)) visit(member);
+    }
+    visiting.remove(name);
+    visited.add(name);
+    outbounds.add(outbound);
+  }
+
+  for (final name in byName.keys) {
+    visit(name);
+  }
+  return {
+    'outbounds': outbounds,
+    'route': convertClashDomainRoutes(List<String>.from(rules), tags),
+  };
+}
