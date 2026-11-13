@@ -29,8 +29,14 @@ class SystemProxyQueue {
       }
       if (state.isStart && state.systemProxy) {
         _applied = true;
-        if (!await _proxy.startProxy(state.port, state.bassDomain)) {
-          _logFailure();
+        var success = false;
+        try {
+          success = await _proxy.startProxy(state.port, state.bassDomain);
+        } finally {
+          if (!success) {
+            _logFailure();
+            await _stop();
+          }
         }
       } else {
         await _stop();
