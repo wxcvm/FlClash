@@ -9,17 +9,20 @@ import 'package:fl_clash/core/desktop/native_installer.dart';
 import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_clash/providers/action.dart';
+import 'package:fl_clash/providers/state.dart';
 
 /// Desktop-only control for native external cores.
 /// System proxy and process ownership are coordinated by NativeCoreHandoff.
-class NativeCoreView extends StatefulWidget {
+class NativeCoreView extends ConsumerStatefulWidget {
   const NativeCoreView({super.key});
 
   @override
-  State<NativeCoreView> createState() => _NativeCoreViewState();
+  ConsumerState<NativeCoreView> createState() => _NativeCoreViewState();
 }
 
-class _NativeCoreViewState extends State<NativeCoreView> {
+class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   NativeCoreKind _kind = nativeCoreRuntime.activeKind ?? NativeCoreKind.singBox;
   String _executable =
       nativeCoreRuntime.activeSpec?.executable ??
@@ -111,17 +114,33 @@ class _NativeCoreViewState extends State<NativeCoreView> {
     return '已识别 ${kind.label}，启动时自动准备内核';
   }
 
-  Future<String> _importClash() async {
-    final file = await picker.pickerFile();
-    final path = file?.path;
-    if (!mounted || path == null) return '未选择配置';
+  Future<String> _importClash({bool current = false}) async {
+    final String yaml;
+    final Map<String, String> selected;
+    if (current) {
+      final profile = ref.read(currentProfileProvider);
+      if (profile == null) return '请先选择订阅';
+      yaml = await ref
+          .read(setupActionProvider.notifier)
+          .getProfileWithId(profile.id);
+      selected = Map<String, String>.from(profile.selectedMap);
+      if (yaml.isEmpty) return '无法读取当前有效配置';
+    } else {
+      final file = await picker.pickerFile();
+      final path = file?.path;
+      if (!mounted || path == null) return '未选择配置';
+      yaml = await File(path).readAsString();
+      selected = const {};
+    }
+    if (!mounted) return '未选择配置';
     final directory = await Directory(
       await appPath.homeDirPath,
     ).createTemp('singbox-clash-');
     try {
-      final candidate = await createClashNativeCandidate(
-        File(path),
+      final candidate = await createClashNativeCandidateFromYaml(
+        yaml,
         directory,
+        selected: selected,
         inbounds: [
           {
             'type': 'mixed',
@@ -241,6 +260,13 @@ class _NativeCoreViewState extends State<NativeCoreView> {
           generateSection(
             title: '内核与配置',
             items: [
+              ListItem(
+                title: const Text('使用当前订阅'),
+                subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
+                onTap: _busy || active != null || !nativeCoreInstaller.supported
+                    ? null
+                    : () => _perform(() => _importClash(current: true)),
+              ),
               ListItem(
                 title: const Text('导入 Clash 配置'),
                 subtitle: const Text('自动转换、准备 sing-box 并预检'),
