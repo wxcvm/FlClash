@@ -95,14 +95,26 @@ func handleStopSpeedCall(call *MethodCall) (any, error) {
 }
 
 func handleTestSpeed(ctx context.Context, params *SpeedTestParams) *SpeedTestResult {
+	return testSpeed(ctx, params, runProbe)
+}
+
+// A passive network reset invalidates samples without advancing the route epoch.
+func speedPathStamp() (epoch, version, generation uint64) {
+	configMu.Lock()
+	defer configMu.Unlock()
+	epoch, version = routeStamp()
+	return epoch, version, networkPathGeneration
+}
+
+func testSpeed(ctx context.Context, params *SpeedTestParams, run func(context.Context, probeRequest) *ProbeResult) *SpeedTestResult {
 	result := &SpeedTestResult{Name: params.ProxyName}
 	if params.ProxyName == "" || ctx.Err() != nil {
 		result.Error = probeErrorFailed
 		return result
 	}
 
-	epoch, version := routeStamp()
-	probe := runProbe(ctx, probeRequest{
+	epoch, version, generation := speedPathStamp()
+	probe := run(ctx, probeRequest{
 		method:        http.MethodGet,
 		url:           downloadSpeedURL,
 		proxyName:     params.ProxyName,
@@ -122,8 +134,9 @@ func handleTestSpeed(ctx context.Context, params *SpeedTestParams) *SpeedTestRes
 		result.Error = probe.Error
 		return result
 	}
-	afterEpoch, afterVersion := routeStamp()
-	if afterEpoch != epoch || afterVersion != version ||
+	afterEpoch, afterVersion, afterGeneration := speedPathStamp()
+	if ctx.Err() != nil || afterEpoch != epoch || afterVersion != version ||
+		afterGeneration != generation ||
 		probe.StatusCode != http.StatusOK ||
 		probe.DownloadBytes != downloadSpeedBytes {
 		result.Error = probeErrorFailed
