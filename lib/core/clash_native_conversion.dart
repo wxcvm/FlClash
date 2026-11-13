@@ -1,3 +1,5 @@
+import 'dart:io';
+
 /// Converts a supported Clash proxy into a sing-box outbound.
 /// Unknown options are rejected rather than silently changing the connection.
 Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
@@ -264,4 +266,64 @@ Map<String, dynamic> convertClashRoutingGraph(
     'outbounds': outbounds,
     'route': convertClashDomainRoutes(List<String>.from(rules), tags),
   };
+}
+
+/// Converts a single explicitly configured resolver without changing its host
+/// or DoH path. Multiple resolvers and Fake-IP need their own policy mapping.
+Map<String, dynamic> convertClashDns(Map<String, dynamic> dns) {
+  const supported = {
+    'enable',
+    'enhanced-mode',
+    'nameserver',
+    'default-nameserver',
+  };
+  final servers = dns['nameserver'];
+  if (dns['enable'] != true ||
+      dns['enhanced-mode'] != 'redir-host' ||
+      dns.keys.any((key) => !supported.contains(key)) ||
+      servers is! List ||
+      servers.length != 1 ||
+      servers.single is! String) {
+    throw const FormatException('Unsupported DNS policy');
+  }
+  final address = servers.single as String;
+  final bootstrap = dns['default-nameserver'];
+  final entries = <Map<String, dynamic>>[];
+  if (bootstrap != null) {
+    if (bootstrap is! List ||
+        bootstrap.length != 1 ||
+        bootstrap.single is! String ||
+        InternetAddress.tryParse(bootstrap.single as String) == null) {
+      throw const FormatException('Unsupported DNS bootstrap');
+    }
+    entries.add({
+      'type': 'udp',
+      'tag': 'bootstrap',
+      'server': bootstrap.single,
+    });
+  }
+  if (InternetAddress.tryParse(address) != null) {
+    entries.add({'type': 'udp', 'tag': 'resolver', 'server': address});
+  } else {
+    final uri = Uri.tryParse(address);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        (InternetAddress.tryParse(uri.host) == null && bootstrap == null)) {
+      throw const FormatException('Unsupported encrypted DNS resolver');
+    }
+    entries.add({
+      'type': 'https',
+      'tag': 'resolver',
+      'server': uri.host,
+      'server_port': uri.port,
+      'path': uri.path.isEmpty ? '/dns-query' : uri.path,
+      if (InternetAddress.tryParse(uri.host) == null)
+        'domain_resolver': 'bootstrap',
+    });
+  }
+  return {'servers': entries, 'final': 'resolver'};
 }
