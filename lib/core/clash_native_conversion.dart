@@ -212,8 +212,8 @@ Map<String, dynamic> convertClashRoutingGraph(
     throw const FormatException('Invalid static Clash profile');
   }
   if (['proxy-providers', 'rule-providers'].any(
-    (key) => profile.containsKey(key) &&
-        !_isNeutralClashSetting(key, profile[key]),
+    (key) =>
+        profile.containsKey(key) && !_isNeutralClashSetting(key, profile[key]),
   )) {
     throw const FormatException('Dynamic providers require conversion');
   }
