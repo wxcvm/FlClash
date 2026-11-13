@@ -58,6 +58,10 @@ List<String> encryptedDnsEndpointHosts(Map<String, dynamic> dns) {
     hosts.add(_resolverHost(uri));
   }
 
+  // The pinned core supplies a DoH upstream when nameserver is omitted.
+  if (!dns.containsKey('nameserver')) {
+    add('https://doh.pub/dns-query');
+  }
   for (final key in const [
     'default-nameserver',
     'nameserver',
