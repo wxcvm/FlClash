@@ -43,11 +43,7 @@ void main() {
       'enabled': true,
       'server_name': 'example.com',
       'utls': {'enabled': true, 'fingerprint': 'chrome'},
-      'reality': {
-        'enabled': true,
-        'public_key': 'key',
-        'short_id': 'abcd',
-      },
+      'reality': {'enabled': true, 'public_key': 'key', 'short_id': 'abcd'},
     });
   });
 
@@ -72,11 +68,15 @@ void main() {
   });
   test('preserves selector order and selected member', () {
     expect(
-      convertClashSelector({
-        'name': 'Proxy',
-        'type': 'select',
-        'proxies': ['a', 'b'],
-      }, {'a', 'b'}, selected: 'b'),
+      convertClashSelector(
+        {
+          'name': 'Proxy',
+          'type': 'select',
+          'proxies': ['a', 'b'],
+        },
+        {'a', 'b'},
+        selected: 'b',
+      ),
       {
         'type': 'selector',
         'tag': 'Proxy',
@@ -88,11 +88,14 @@ void main() {
 
   test('preserves ordered domain rules and final route', () {
     expect(
-      convertClashDomainRoutes([
-        'DOMAIN,example.com,DIRECT',
-        'DOMAIN-SUFFIX,example.org,Proxy',
-        'MATCH,Proxy',
-      ], {'DIRECT', 'Proxy'}),
+      convertClashDomainRoutes(
+        [
+          'DOMAIN,example.com,DIRECT',
+          'DOMAIN-SUFFIX,example.org,Proxy',
+          'MATCH,Proxy',
+        ],
+        {'DIRECT', 'Proxy'},
+      ),
       {
         'rules': [
           {
@@ -113,10 +116,10 @@ void main() {
 
   test('rejects unsupported rule instead of dropping it', () {
     expect(
-      () => convertClashDomainRoutes([
-        'GEOIP,CN,DIRECT',
-        'MATCH,Proxy',
-      ], {'DIRECT', 'Proxy'}),
+      () => convertClashDomainRoutes(
+        ['GEOIP,CN,DIRECT', 'MATCH,Proxy'],
+        {'DIRECT', 'Proxy'},
+      ),
       throwsFormatException,
     );
   });
@@ -139,29 +142,32 @@ void main() {
     }
   });
   test('assembles nested groups and preserves selected member', () {
-    final graph = convertClashRoutingGraph({
-      'proxies': [
-        {
-          ...endpoint,
-          'type': 'ss',
-          'cipher': 'aes-128-gcm',
-          'password': 'secret',
-        },
-      ],
-      'proxy-groups': [
-        {
-          'name': 'outer',
-          'type': 'select',
-          'proxies': ['inner', 'DIRECT'],
-        },
-        {
-          'name': 'inner',
-          'type': 'select',
-          'proxies': ['node'],
-        },
-      ],
-      'rules': ['MATCH,outer'],
-    }, selected: {'outer': 'inner'});
+    final graph = convertClashRoutingGraph(
+      {
+        'proxies': [
+          {
+            ...endpoint,
+            'type': 'ss',
+            'cipher': 'aes-128-gcm',
+            'password': 'secret',
+          },
+        ],
+        'proxy-groups': [
+          {
+            'name': 'outer',
+            'type': 'select',
+            'proxies': ['inner', 'DIRECT'],
+          },
+          {
+            'name': 'inner',
+            'type': 'select',
+            'proxies': ['node'],
+          },
+        ],
+        'rules': ['MATCH,outer'],
+      },
+      selected: {'outer': 'inner'},
+    );
     final outbounds = graph['outbounds'] as List;
     expect(outbounds.map((item) => item['tag']), [
       'DIRECT',
@@ -226,18 +232,21 @@ void main() {
   });
 
   test('assembles a candidate with explicit platform inbound', () {
-    final config = buildClashNativeConfig({
-      'proxies': [],
-      'proxy-groups': [],
-      'rules': ['MATCH,DIRECT'],
-      'dns': {
-        'enable': true,
-        'enhanced-mode': 'redir-host',
-        'nameserver': ['192.0.2.53'],
+    final config = buildClashNativeConfig(
+      {
+        'proxies': [],
+        'proxy-groups': [],
+        'rules': ['MATCH,DIRECT'],
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'redir-host',
+          'nameserver': ['192.0.2.53'],
+        },
       },
-    }, inbounds: [
-      {'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': 7890},
-    ]);
+      inbounds: [
+        {'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': 7890},
+      ],
+    );
     expect(config['inbounds'], [
       {'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': 7890},
     ]);
