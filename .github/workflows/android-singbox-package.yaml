@@ -259,7 +259,8 @@ jobs:
           cd android
           ./gradlew :service:assembleDebug -Ptarget-platform=android-arm64
           cd ..
-          aar=$(find build/service/outputs/aar -name '*.aar' -print -quit)
+          aar=build/service/outputs/aar/service-debug.aar
+          test -s "$aar"
           unzip -l "$aar" > service-default-aar.txt
           python3 - "$aar" <<'PY'
           import sys, zipfile, xml.etree.ElementTree as ET
@@ -270,6 +271,7 @@ jobs:
           for name in ('VpnService', 'ProxyService'):
               assert ns+'process' not in services[name].attrib, name
           assert services['MihomoCoreService'].attrib[ns+'enabled'] == 'false'
+          assert services['SingBoxVpnService'].attrib[ns+'enabled'] == 'false'
           PY
           if grep -E 'assets/singbox/libbox.dex|jni/.*/libbox.so' service-default-aar.txt; then
             echo 'Optional native runtime leaked into default build' >&2; exit 1
