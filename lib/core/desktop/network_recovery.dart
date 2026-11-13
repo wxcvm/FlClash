@@ -47,3 +47,21 @@ Future<bool> verifyDesktopNetwork({
   }
   return false;
 }
+
+/// A local IPC timeout is distinct from an unreachable remote endpoint.
+/// Require two consecutive timeouts; explicit RPC errors are not proof of a hang.
+Future<bool> confirmDesktopCoreTimeout({
+  required Future<void> Function() ping,
+  required bool Function() isCurrent,
+}) async {
+  for (var attempt = 0; attempt < 2; attempt++) {
+    if (!isCurrent()) return false;
+    try {
+      await ping();
+      return false;
+    } on TimeoutException {
+      if (!isCurrent()) return false;
+    }
+  }
+  return isCurrent();
+}
