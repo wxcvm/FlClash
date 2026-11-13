@@ -157,7 +157,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
     if (_executable == _kind.executableName && nativeCoreInstaller.supported) {
       final installed = await nativeCoreInstaller.installedExecutable(_kind);
       _executable =
-          installed ?? (await nativeCoreInstaller.installLatest(_kind)).executable;
+          installed ??
+          (await nativeCoreInstaller.installLatest(_kind)).executable;
       if (mounted) setState(() {});
     }
     await nativeCoreHandoff.activate(_spec);
@@ -196,7 +197,9 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
               ListItem(
                 title: Text(_advanced ? '收起高级设置' : '展开高级设置'),
-                onTap: _busy ? null : () => setState(() => _advanced = !_advanced),
+                onTap: _busy
+                    ? null
+                    : () => setState(() => _advanced = !_advanced),
               ),
               if (_advanced) ...[
                 ListItem<NativeCoreKind>.options(
@@ -210,7 +213,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                     _executablePaths[_kind] = _executable;
                     setState(() {
                       _kind = kind;
-                      _executable = _executablePaths[kind] ?? kind.executableName;
+                      _executable =
+                          _executablePaths[kind] ?? kind.executableName;
                       _configPath = _configPaths[kind] ?? '';
                     });
                     unawaited(_loadInstalledExecutable(kind));
