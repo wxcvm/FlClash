@@ -142,9 +142,23 @@ class SystemAction extends _$SystemAction {
   }
 
   Future<void> copyProxyEnv() async {
-    final port = ref.read(
-      patchClashConfigProvider.select((state) => state.mixedPort),
-    );
+    final int? port;
+    if (system.isDesktop && nativeCoreRuntime.blocksMihomoStart) {
+      port = nativeCoreRuntime.isRunning
+          ? systemProxyQueue?.nativeHttpPort
+          : null;
+    } else {
+      port = ref.read(
+        patchClashConfigProvider.select((state) => state.mixedPort),
+      );
+    }
+    if (port == null) {
+      dialogs.showBanner(
+        '独立内核未接管 HTTP 系统代理，无法复制有效代理地址',
+        level: BannerLevel.warning,
+      );
+      return;
+    }
     await Clipboard.setData(
       ClipboardData(text: proxyEnvCommand(port, isWindows: system.isWindows)),
     );

@@ -134,9 +134,11 @@ void main() {
 
       await queue.apply(_state(isStart: true));
       expect(await queue.activateNative(8090, const []), isTrue);
+      expect(queue.nativeHttpPort, 8090);
       await queue.apply(_state(isStart: false));
       await queue.apply(_state(isStart: true));
       await queue.releaseNative();
+      expect(queue.nativeHttpPort, isNull);
       await queue.apply(_state(isStart: true));
 
       expect(proxy.calls, ['start 7890', 'start 8090', 'stop', 'start 7890']);
@@ -151,10 +153,25 @@ void main() {
       proxy.held = Future.value(false);
 
       expect(await queue.activateNative(8090, const []), isFalse);
+      expect(queue.nativeHttpPort, isNull);
       await queue.apply(_state(isStart: true));
       expect(proxy.calls, ['start 8090', 'stop', 'start 7890']);
     },
   );
+
+  test('native HTTP port is exposed only after activation succeeds', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    final inFlight = Completer<bool>();
+    proxy.held = inFlight.future;
+
+    final activation = queue.activateNative(8090, const []);
+    await pumpEventQueue();
+    expect(queue.nativeHttpPort, isNull);
+    inFlight.complete(true);
+    expect(await activation, isTrue);
+    expect(queue.nativeHttpPort, 8090);
+  });
 
   test('native activation exception releases ownership', () async {
     final proxy = _FakeProxy();
@@ -184,6 +201,7 @@ void main() {
     expect(await queue.activateNative(8090, const []), isTrue);
     proxy.held = Future.value(false);
     await expectLater(queue.releaseNative(), throwsStateError);
+    expect(queue.nativeHttpPort, isNull);
     await queue.apply(_state(isStart: true));
     expect(proxy.calls, ['start 8090', 'stop']);
     await queue.releaseNative();
@@ -207,6 +225,7 @@ void main() {
 
     expect(await queue.activateNative(8090, const []), isTrue);
     await queue.close();
+    expect(queue.nativeHttpPort, isNull);
     expect(proxy.calls, ['start 8090', 'stop']);
   });
 
