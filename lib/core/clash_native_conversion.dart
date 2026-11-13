@@ -135,7 +135,9 @@ Map<String, dynamic> convertClashSelector(
       name.isEmpty ||
       members is! List ||
       members.isEmpty ||
-      members.any((member) => member is! String || !knownTags.contains(member)) ||
+      members.any(
+        (member) => member is! String || !knownTags.contains(member),
+      ) ||
       group.keys.any(
         (key) => !const {'name', 'type', 'proxies'}.contains(key),
       )) {
