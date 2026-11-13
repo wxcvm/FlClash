@@ -184,6 +184,25 @@ void main() {
     await runtime.close();
   });
 
+  test('malformed native log bytes do not break process tracking', () async {
+    final process = _FakeProcess(
+      output: Stream.value([0xff, 65]),
+      errors: Stream.value([0xff, 66]),
+    );
+    final runtime = NativeCoreRuntime(
+      run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
+      start: (_, _, {workingDirectory}) async => process,
+    );
+    final stdout = runtime.logs.firstWhere((line) => line == '\uFFFDA');
+    final stderr = runtime.logs.firstWhere((line) => line == '\uFFFDB');
+    await runtime.start(spec);
+    expect(await stdout, '\uFFFDA');
+    expect(await stderr, '\uFFFDB');
+    expect(runtime.isRunning, isTrue);
+    await runtime.close();
+    expect(runtime.isRunning, isFalse);
+  });
+
   test('closing the native runtime terminates its process', () async {
     final process = _FakeProcess();
     final runtime = NativeCoreRuntime(
@@ -202,6 +221,14 @@ void main() {
 class _FakeProcess implements Process {
   final Completer<int> _exit = Completer<int>();
 
+  final Stream<List<int>> output;
+  final Stream<List<int>> errors;
+
+  _FakeProcess({
+    this.output = const Stream.empty(),
+    this.errors = const Stream.empty(),
+  });
+
   bool killed = false;
 
   @override
@@ -211,10 +238,10 @@ class _FakeProcess implements Process {
   Future<int> get exitCode => _exit.future;
 
   @override
-  Stream<List<int>> get stdout => const Stream.empty();
+  Stream<List<int>> get stdout => output;
 
   @override
-  Stream<List<int>> get stderr => const Stream.empty();
+  Stream<List<int>> get stderr => errors;
 
   void finish(int code) {
     if (!_exit.isCompleted) _exit.complete(code);

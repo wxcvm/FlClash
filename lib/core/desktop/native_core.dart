@@ -188,8 +188,11 @@ final class NativeCoreRuntime {
       _process = process;
       _activeKind = spec.kind;
       _activeSpec = spec;
-      process.stdout.transform(utf8.decoder).listen(_emitLog);
-      process.stderr.transform(utf8.decoder).listen(_emitLog);
+      // External programs may emit non-UTF-8 diagnostics on Windows.
+      // A malformed log byte must not become an unhandled stream error.
+      const decoder = Utf8Decoder(allowMalformed: true);
+      process.stdout.transform(decoder).listen(_emitLog);
+      process.stderr.transform(decoder).listen(_emitLog);
       _emitLog('${spec.kind.label} started (PID ${process.pid})');
       unawaited(
         process.exitCode.then((code) {
