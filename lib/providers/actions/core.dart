@@ -134,13 +134,6 @@ class CoreAction extends _$CoreAction {
         service?.nativeOwnsRuntime != true &&
         !(system.isDesktop && nativeCoreRuntime.blocksMihomoStart);
     if (!current()) return;
-    if (watchdog) {
-      final last = _lastWatchdogRefresh;
-      if (last != null &&
-          DateTime.now().difference(last) < const Duration(minutes: 2)) {
-        return;
-      }
-    }
     _networkVerifications++;
     try {
       if (watchdog &&
@@ -164,6 +157,14 @@ class CoreAction extends _$CoreAction {
         return;
       }
       if (!current()) return;
+      // DNS refresh cooldown must not suppress local IPC stall detection.
+      if (watchdog) {
+        final last = _lastWatchdogRefresh;
+        if (last != null &&
+            DateTime.now().difference(last) < const Duration(minutes: 2)) {
+          return;
+        }
+      }
       final recover = await verifyDesktopNetwork(
         check: _core.checkNetworkHealth,
         read: _core.getNetworkHealth,
