@@ -77,6 +77,31 @@ func TestVerifiedSpeedURLTestHealth(t *testing.T) {
 }
 
 func TestVerifiedSpeedRejectsNetworkChangeDuringCheck(t *testing.T) {
+	testSpeedSelectionSuperseded(t, func() { handleNetworkChanged() })
+}
+
+func TestVerifiedSpeedRejectsExplicitSameChoiceDuringCheck(t *testing.T) {
+	testSpeedSelectionSuperseded(t, func() {
+		result := handleChangeProxy(&ChangeProxyParams{GroupName: "auto", ProxyName: "node-a"})
+		if result.Message != "" {
+			t.Fatalf("manual choice failed: %+v", result)
+		}
+	})
+}
+
+func TestVerifiedSpeedRejectsChoiceChangedAndRestoredDuringCheck(t *testing.T) {
+	testSpeedSelectionSuperseded(t, func() {
+		for _, name := range []string{"node-b", "node-a"} {
+			result := handleChangeProxy(&ChangeProxyParams{GroupName: "auto", ProxyName: name})
+			if result.Message != "" {
+				t.Fatalf("manual choice failed: %+v", result)
+			}
+		}
+	})
+}
+
+func testSpeedSelectionSuperseded(t *testing.T, supersede func()) {
+	t.Helper()
 	recordRoutes(t)
 	previousReset := resetNetworkResolver
 	resetNetworkResolver = func() {}
@@ -130,8 +155,8 @@ func TestVerifiedSpeedRejectsNetworkChangeDuringCheck(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("candidate health check did not start")
 	}
-	handleNetworkChanged()
-	// Allow the health check to finish after the passive resolver reset.
+	supersede()
+	// Allow the health check to finish after the newer operation.
 	close(release)
 	select {
 	case result := <-done:

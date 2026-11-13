@@ -68,8 +68,9 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	}
 	member := speedGroupMember(group, params.ProxyName)
 	before, err := speedSelectionState(groupProxy)
-	epoch, _ := routeStamp()
+	epoch, version := routeStamp()
 	pathGeneration := networkPathGeneration
+	revision := selectionRevision
 	selectMu.Unlock()
 	configMu.Unlock()
 	if err != nil {
@@ -98,8 +99,9 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	defer configMu.Unlock()
 	selectMu.Lock()
 	defer selectMu.Unlock()
-	currentEpoch, _ := routeStamp()
-	if currentEpoch != epoch || networkPathGeneration != pathGeneration ||
+	currentEpoch, currentVersion := routeStamp()
+	if currentEpoch != epoch || currentVersion != version ||
+		selectionRevision != revision || networkPathGeneration != pathGeneration ||
 		lookupProxy(params.GroupName) != groupProxy ||
 		speedGroupMember(group, params.ProxyName) != member {
 		return fail(errors.New("speed selection changed during health check"))
@@ -108,7 +110,7 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	if err != nil {
 		return fail(err)
 	}
-	if current.Fixed != before.Fixed {
+	if current.Fixed != before.Fixed || current.Now != before.Now {
 		return fail(errors.New("speed selection superseded by another choice"))
 	}
 	if groupProxy.Type() == constant.URLTest && !member.AliveForTestUrl(before.TestURL) {
@@ -122,6 +124,7 @@ func handleSelectSpeedProxy(params *ChangeProxyParams) *ChangeProxyResult {
 		refreshRouteLocked(routeUnchanged)
 		return fail(errors.New("core did not select the speed candidate"))
 	}
+	selectionRevision++
 	refreshRouteLocked(routeUnchanged)
 	return &ChangeProxyResult{Changed: current.Now != params.ProxyName}
 }
