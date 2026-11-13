@@ -67,6 +67,14 @@ var networkPathGeneration uint64
 // handleNetworkChanged is how the desktop host reports a new network, which
 // Android's NetworkObserver reports through handleResetNetwork.
 func handleNetworkChanged() {
+	networkResetMu.Lock()
+	defer networkResetMu.Unlock()
+	resetNetworkPath()
+}
+
+// Caller holds networkResetMu so passive notifications cannot interrupt an
+// outbound rebuild or invalidate its health check before it is published.
+func resetNetworkPath() {
 	cancelRecoveryHealth()
 	configMu.Lock()
 	defer configMu.Unlock()
@@ -85,7 +93,7 @@ func handleResetNetwork() {
 	networkResetMu.Lock()
 	defer networkResetMu.Unlock()
 	handleCloseConnections()
-	handleNetworkChanged()
+	resetNetworkPath()
 	rebuilt := reloadOutboundsOnNetworkChange()
 	if isRunning.Load() {
 		scheduleRecoveryHealth(rebuilt)
