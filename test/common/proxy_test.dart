@@ -168,6 +168,29 @@ void main() {
     expect(proxy.calls, ['start 8090', 'stop', 'start 7890', 'stop']);
   });
 
+  test('failed native release retains ownership and can be retried', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    expect(await queue.activateNative(8090, const []), isTrue);
+    proxy.held = Future.value(false);
+    await expectLater(queue.releaseNative(), throwsStateError);
+    await queue.apply(_state(isStart: true));
+    expect(proxy.calls, ['start 8090', 'stop']);
+    await queue.releaseNative();
+    await queue.apply(_state(isStart: true));
+    expect(proxy.calls, ['start 8090', 'stop', 'stop', 'start 7890']);
+  });
+
+  test('native release exception does not lose ownership', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    expect(await queue.activateNative(8090, const []), isTrue);
+    proxy.failure = StateError('channel gone');
+    await expectLater(queue.releaseNative(), throwsStateError);
+    await queue.releaseNative();
+    expect(proxy.calls, ['start 8090', 'stop', 'stop']);
+  });
+
   test('closing the queue stops the native proxy owner', () async {
     final proxy = _FakeProxy();
     final queue = SystemProxyQueue(proxy);
