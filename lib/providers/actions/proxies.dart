@@ -153,6 +153,15 @@ class ProxiesAction extends _$ProxiesAction {
 
   void onAutoSpeedNetworkChange(bool online) {
     _autoSpeedOnline = online;
+    // Results and queued probes from the old network no longer describe
+    // the current path. Cancel them before scheduling a fresh batch.
+    cancelDelayTests();
+    _speedTestGeneration++;
+    if (service?.nativeOwnsRuntime != true &&
+        _speedTestPool.activeCount > 0 &&
+        ref.read(coreStatusProvider) == CoreStatus.connected) {
+      unawaited(_core.stopSpeedTests());
+    }
     _nodeHealth.reset(keepOptimizationBudget: true);
     _scheduleAutoSpeed();
   }
