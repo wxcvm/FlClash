@@ -46,11 +46,14 @@ class SystemProxyQueue {
       if (_closed) return;
       _nativeOwner = true;
       _applied = true;
-      success = await _proxy.startProxy(port, bypassDomain);
-      if (!success) {
-        _nativeOwner = false;
-        _logFailure();
-        await _stop();
+      try {
+        success = await _proxy.startProxy(port, bypassDomain);
+      } finally {
+        if (!success) {
+          _nativeOwner = false;
+          _logFailure();
+          await _stop();
+        }
       }
     });
     return success;
