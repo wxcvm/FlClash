@@ -87,6 +87,8 @@ class ProxiesAction extends _$ProxiesAction {
   bool _autoSpeedOnline = true;
   bool _autoSpeedRunning = false;
   int _autoSpeedCursor = 0;
+  int _autoRecoveryCursor = 0;
+  int _autoSpeedGeneration = 0;
   final _nodeHealth = NodeHealthHistory();
 
   final List<_DelayTestJob> _delayTestJobs = [];
@@ -114,6 +116,8 @@ class ProxiesAction extends _$ProxiesAction {
         _speedTestGeneration++;
         _autoSpeedTimer?.cancel();
         _autoSpeedCursor = 0;
+        _autoRecoveryCursor = 0;
+        _autoSpeedGeneration++;
         _nodeHealth.reset();
       }
     });
@@ -151,6 +155,8 @@ class ProxiesAction extends _$ProxiesAction {
   void setDownloadSpeedAutoGroup(String? name) {
     ref.read(downloadSpeedAutoGroupProvider.notifier).select(name);
     _autoSpeedCursor = 0;
+    _autoRecoveryCursor = 0;
+    _autoSpeedGeneration++;
     _nodeHealth.reset();
     _scheduleAutoSpeed();
   }
@@ -201,6 +207,7 @@ class ProxiesAction extends _$ProxiesAction {
     final profile = ref.read(currentProfileIdProvider);
     final epoch = ref.read(routeTrackerProvider).hostEpoch;
     final generation = _speedTestGeneration;
+    final autoGeneration = _autoSpeedGeneration;
     final selection = _currentSelectedName(group.name);
     final incumbent = group.getCurrentSelectedName(selection);
     bool isCurrent() =>
@@ -210,6 +217,7 @@ class ProxiesAction extends _$ProxiesAction {
         ref.read(currentProfileIdProvider) == profile &&
         ref.read(routeTrackerProvider).hostEpoch == epoch &&
         _speedTestGeneration == generation &&
+        _autoSpeedGeneration == autoGeneration &&
         _currentSelectedName(group.name) == selection;
     try {
       if (incumbent.isEmpty ||
@@ -314,12 +322,12 @@ class ProxiesAction extends _$ProxiesAction {
       alternatives,
       '',
       ref.read(downloadSpeedSortSnapshotProvider),
-      _autoSpeedCursor,
+      _autoRecoveryCursor,
       limit: 3,
       knownLimit: 1,
     );
     if (candidates.isNotEmpty) {
-      _autoSpeedCursor = alternatives.indexOf(candidates.last) + 1;
+      _autoRecoveryCursor = alternatives.indexOf(candidates.last) + 1;
     }
     for (final name in candidates) {
       if (!isCurrent()) return;
@@ -671,6 +679,7 @@ class ProxiesAction extends _$ProxiesAction {
           ?.selectedMap[groupName];
       final initialHostEpoch = ref.read(routeTrackerProvider).hostEpoch;
       final initialGeneration = _speedTestGeneration;
+      final autoGeneration = _autoSpeedGeneration;
       final incumbent = group.getCurrentSelectedName(initialSelection ?? '');
 
       bool isCurrent() =>
@@ -683,6 +692,7 @@ class ProxiesAction extends _$ProxiesAction {
               initialSelection &&
           (!automatic ||
               (_autoSpeedReady &&
+                  _autoSpeedGeneration == autoGeneration &&
                   ref.read(downloadSpeedAutoGroupProvider) == groupName));
       // Test the actual group members, not resolved leaves of nested groups.
       // A resolved leaf may not be a selectable member of this group.

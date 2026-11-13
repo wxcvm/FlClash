@@ -16,12 +16,21 @@ void main() {
     const names = ['a', 'b', 'c', 'd', 'e', 'f'];
     const rates = {'a': 900, 'b': 800, 'c': 700};
     final first = automaticSpeedCandidates(
-      names, '', rates, 3, limit: 3, knownLimit: 1,
+      names,
+      '',
+      rates,
+      3,
+      limit: 3,
+      knownLimit: 1,
     );
     expect(first, ['a', 'd', 'e']);
     final next = automaticSpeedCandidates(
-      names, '', rates, names.indexOf(first.last) + 1,
-      limit: 3, knownLimit: 1,
+      names,
+      '',
+      rates,
+      names.indexOf(first.last) + 1,
+      limit: 3,
+      knownLimit: 1,
     );
     expect(next, ['a', 'f', 'b']);
   });
