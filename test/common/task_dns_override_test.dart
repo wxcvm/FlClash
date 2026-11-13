@@ -89,6 +89,22 @@ void main() {
     },
   );
 
+  test('absolute resolver names use ordinary hostname filters', () async {
+    final dns = await _dnsOf(
+      rawConfig: {
+        'dns': {
+          'enable': true,
+          'enhanced-mode': 'fake-ip',
+          'nameserver': ['https://PRIVATE.example./dns-query'],
+          'fake-ip-filter': ['https://private.example./private-path'],
+        },
+      },
+      keys: {},
+    );
+    expect(dns['fake-ip-filter'], ['private.example']);
+    expect(dns['nameserver'], ['https://PRIVATE.example./dns-query']);
+  });
+
   test('explicit whitelist and rule modes are not modified', () async {
     for (final mode in ['whitelist', 'rule']) {
       final entries = mode == 'rule'
