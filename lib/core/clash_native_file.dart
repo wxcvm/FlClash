@@ -11,13 +11,27 @@ Future<File> createClashNativeCandidate(
   Directory directory, {
   required List<Map<String, dynamic>> inbounds,
 }) async {
-  final decoded = loadYaml(await source.readAsString());
+  return createClashNativeCandidateFromYaml(
+    await source.readAsString(),
+    directory,
+    inbounds: inbounds,
+  );
+}
+
+Future<File> createClashNativeCandidateFromYaml(
+  String yaml,
+  Directory directory, {
+  required List<Map<String, dynamic>> inbounds,
+  Map<String, String> selected = const {},
+}) async {
+  final decoded = loadYaml(yaml);
   if (decoded is! Map) {
     throw const FormatException('Expected a Clash configuration');
   }
   final config = buildClashNativeConfig(
     Map<String, dynamic>.from(decoded),
     inbounds: inbounds,
+    selected: selected,
   );
   final output = File('${directory.path}/config.json');
   await output.writeAsString(
