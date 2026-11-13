@@ -229,7 +229,9 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
                   ListItem(
                     title: const Text('使用当前订阅'),
                     subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
-                    onTap: canConfigure ? () => _perform(() => _importClash(current: true)) : null,
+                    onTap: canConfigure
+                        ? () => _perform(() => _importClash(current: true))
+                        : null,
                   ),
                   ListItem(
                     title: const Text('导入 Clash 配置'),
