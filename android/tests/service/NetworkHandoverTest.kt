@@ -66,6 +66,11 @@ class NetworkHandoverTest {
         val privateDns = changed.copy(privateDnsActive = true, privateDnsName = "dns.example")
         assertTrue(tracker.update("wifi", path = privateDns))
         assertFalse(tracker.update("wifi", path = privateDns))
+        val routed = privateDns.copy(routes = listOf("new default"))
+        assertTrue(tracker.update("wifi", path = routed))
+        val dnsChanged = routed.copy(dns = listOf("192.0.2.54:53"))
+        assertTrue(tracker.update("wifi", path = dnsChanged))
+        assertFalse(tracker.update("wifi", path = dnsChanged))
     }
 
     @Test
@@ -76,6 +81,17 @@ class NetworkHandoverTest {
         assertFalse(tracker.update(null))
         assertTrue(tracker.update("wifi", path = path))
         assertFalse(tracker.update("wifi", path = path))
+    }
+
+    @Test
+    fun `lost current path stays invalid while replacement is incomplete`() {
+        val tracker = NetworkHandoverTracker<String>()
+        assertFalse(tracker.update("wifi"))
+        tracker.markLost("wifi")
+        assertFalse(tracker.update("cell", dnsReady = false))
+        assertTrue(tracker.current == null)
+        assertTrue(tracker.update("cell"))
+        assertFalse(tracker.update("cell"))
     }
 
     @Test

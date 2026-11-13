@@ -134,9 +134,15 @@ object NetworkObserver {
 
     @Synchronized
     private fun updateDns() {
-        val preferred = networkInfos.entries.mapNotNull { entry ->
+        val eligible = networkInfos.entries.mapNotNull { entry ->
             networkPriority(entry)?.let { priority -> entry to priority }
-        }.minWithOrNull(compareBy(
+        }
+        // A suspended/lost current path must not retain its DNS while a
+        // replacement is waiting for link properties.
+        handover.current?.let { current ->
+            if (eligible.none { it.first.key == current }) handover.markLost(current)
+        }
+        val preferred = eligible.minWithOrNull(compareBy(
             { it.second },
             { if (it.first.key == handover.current) 0 else 1 },
             { it.first.key.networkHandle },
@@ -146,7 +152,7 @@ object NetworkObserver {
         val link = preferred?.let { entry ->
             entry.value.linkProperties ?: connectivity?.getLinkProperties(entry.key)
         }
-        if (preferred != null && link == null) {
+        if (preferred != null && (link == null || link.interfaceName == null)) {
             // Keep waiting for the new network's link properties. If the old
             // network was lost, do not keep using its system DNS addresses.
             handover.update(preferred.key, dnsReady = false)
