@@ -124,6 +124,18 @@ void main() {
     );
   });
 
+  test('lightweight failover does not spend the download budget', () {
+    final health = NodeHealthHistory();
+    final now = DateTime(2026);
+    expect(health.record('A', -1, now), NodeHealthDecision.wait);
+    expect(health.record('A', -1, now), NodeHealthDecision.failover);
+    health.markFailoverAttempt();
+    expect(health.record('B', 30, now), NodeHealthDecision.optimize);
+    health.markOptimization(now);
+    health.markFailoverAttempt();
+    expect(health.record('B', 30, now), NodeHealthDecision.wait);
+  });
+
   test('health success clears failures and optimization is rate limited', () {
     final health = NodeHealthHistory();
     final now = DateTime(2026);

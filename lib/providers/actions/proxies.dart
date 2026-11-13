@@ -31,16 +31,20 @@ List<String> automaticSpeedCandidates(
   List<String> names,
   String incumbent,
   Map<String, int> rates,
-  int cursor,
-) {
+  int cursor, {
+  int limit = 4,
+  int knownLimit = 2,
+}) {
   if (names.isEmpty) {
     return [];
   }
   final candidates = <String>{if (names.contains(incumbent)) incumbent};
   final known = names.where((name) => (rates[name] ?? 0) > 0).toList()
     ..sort((a, b) => rates[b]!.compareTo(rates[a]!));
-  candidates.addAll(known.where((name) => !candidates.contains(name)).take(2));
-  for (var i = 0; i < names.length && candidates.length < 4; i++) {
+  candidates.addAll(
+    known.where((name) => !candidates.contains(name)).take(knownLimit),
+  );
+  for (var i = 0; i < names.length && candidates.length < limit; i++) {
     candidates.add(names[(cursor + i) % names.length]);
   }
   return candidates.toList();
@@ -225,7 +229,7 @@ class ProxiesAction extends _$ProxiesAction {
         )) {
           return;
         }
-        _nodeHealth.markOptimization(DateTime.now());
+        _nodeHealth.markFailoverAttempt();
         await _recoverAutoNode(group, incumbent, isCurrent);
       } else {
         _nodeHealth.markOptimization(DateTime.now());
@@ -305,12 +309,18 @@ class ProxiesAction extends _$ProxiesAction {
         )
         .toSet()
         .toList();
+    final alternatives = names.where((name) => name != incumbent).toList();
     final candidates = automaticSpeedCandidates(
-      names,
-      incumbent,
+      alternatives,
+      '',
       ref.read(downloadSpeedSortSnapshotProvider),
-      _autoSpeedCursor++,
-    ).where((name) => name != incumbent);
+      _autoSpeedCursor,
+      limit: 3,
+      knownLimit: 1,
+    );
+    if (candidates.isNotEmpty) {
+      _autoSpeedCursor = alternatives.indexOf(candidates.last) + 1;
+    }
     for (final name in candidates) {
       if (!isCurrent()) return;
       final first = await _probeAutoNode(group, name);
@@ -694,11 +704,14 @@ class ProxiesAction extends _$ProxiesAction {
               names,
               incumbent,
               ref.read(downloadSpeedSortSnapshotProvider),
-              _autoSpeedCursor++,
+              _autoSpeedCursor,
             )
           : names;
       if (candidates.isEmpty) {
         return;
+      }
+      if (automatic) {
+        _autoSpeedCursor = names.indexOf(candidates.last) + 1;
       }
 
       Future<int> measure(String name) =>
