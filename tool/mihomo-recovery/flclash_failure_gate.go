@@ -41,7 +41,7 @@ func (g *flclashFailureGate) failure(network, name string, now time.Time, window
 	}
 	g.running = true
 	g.last = now
-	clear(g.streak)
+	g.streak = nil
 	return true
 }
 
