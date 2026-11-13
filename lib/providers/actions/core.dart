@@ -143,18 +143,21 @@ class CoreAction extends _$CoreAction {
     }
     _networkVerifications++;
     try {
-      if (watchdog && await confirmDesktopCoreTimeout(
-        ping: () async {
-          await _core.invokeMethod(
-            method: CoreMethod.coreInitialized,
-            timeout: const Duration(seconds: 5),
-          );
-        },
-        isCurrent: current,
-      )) {
+      if (watchdog &&
+          await confirmDesktopCoreTimeout(
+            ping: () async {
+              await _core.invokeMethod(
+                method: CoreMethod.coreInitialized,
+                timeout: const Duration(seconds: 5),
+              );
+            },
+            isCurrent: current,
+          )) {
         final last = _lastWatchdogRestart;
-        if (current() && (last == null ||
-            DateTime.now().difference(last) >= const Duration(minutes: 5))) {
+        if (current() &&
+            (last == null ||
+                DateTime.now().difference(last) >=
+                    const Duration(minutes: 5))) {
           _lastWatchdogRestart = DateTime.now();
           await restartCore();
         }

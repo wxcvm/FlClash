@@ -31,24 +31,41 @@ Future<bool> verify(List<Map<String, dynamic>> results) {
 void main() {
   test('two local IPC timeouts confirm a stalled core', () async {
     var calls = 0;
-    expect(await confirmDesktopCoreTimeout(
-      ping: () async { calls++; throw TimeoutException('IPC'); },
-      isCurrent: () => true,
-    ), isTrue);
+    expect(
+      await confirmDesktopCoreTimeout(
+        ping: () async {
+          calls++;
+          throw TimeoutException('IPC');
+        },
+        isCurrent: () => true,
+      ),
+      isTrue,
+    );
     expect(calls, 2);
   });
 
   test('a successful retry or superseded session prevents restart', () async {
     var calls = 0;
-    expect(await confirmDesktopCoreTimeout(
-      ping: () async { if (++calls == 1) throw TimeoutException('IPC'); },
-      isCurrent: () => true,
-    ), isFalse);
+    expect(
+      await confirmDesktopCoreTimeout(
+        ping: () async {
+          if (++calls == 1) throw TimeoutException('IPC');
+        },
+        isCurrent: () => true,
+      ),
+      isFalse,
+    );
     var current = true;
-    expect(await confirmDesktopCoreTimeout(
-      ping: () async { current = false; throw TimeoutException('IPC'); },
-      isCurrent: () => current,
-    ), isFalse);
+    expect(
+      await confirmDesktopCoreTimeout(
+        ping: () async {
+          current = false;
+          throw TimeoutException('IPC');
+        },
+        isCurrent: () => current,
+      ),
+      isFalse,
+    );
   });
   test('healthy or endpoint HTTP responses preserve connections', () async {
     for (final state in [
