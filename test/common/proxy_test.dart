@@ -103,6 +103,19 @@ void main() {
     expect(proxy.calls, ['start 7890', 'stop']);
   });
 
+  test('failed Mihomo start rolls back immediately', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    proxy.held = Future.value(false);
+
+    await queue.apply(_state(isStart: true));
+    expect(proxy.calls, ['start 7890', 'stop']);
+
+    await queue.apply(_state(isStart: true));
+    await queue.apply(_state(isStart: false));
+    expect(proxy.calls, ['start 7890', 'stop', 'start 7890', 'stop']);
+  });
+
   test('leaves a proxy it never set alone', () async {
     final proxy = _FakeProxy();
     final queue = SystemProxyQueue(proxy);
