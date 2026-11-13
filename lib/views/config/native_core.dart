@@ -273,7 +273,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
               ListItem(
                 title: const Text('启动独立内核'),
-                onTap: _busy ||
+                onTap:
+                    _busy ||
                         active != null ||
                         nativeCoreHandoff.ownsNativeSystemProxy
                     ? null

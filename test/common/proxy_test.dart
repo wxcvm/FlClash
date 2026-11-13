@@ -168,6 +168,16 @@ void main() {
     expect(proxy.calls, ['start 8090', 'stop', 'start 7890', 'stop']);
   });
 
+  test('explicit Mihomo release reports failure and can be retried', () async {
+    final proxy = _FakeProxy();
+    final queue = SystemProxyQueue(proxy);
+    await queue.apply(_state(isStart: true));
+    proxy.held = Future.value(false);
+    await expectLater(queue.releaseMihomo(), throwsStateError);
+    await queue.releaseMihomo();
+    expect(proxy.calls, ['start 7890', 'stop', 'stop']);
+  });
+
   test('failed native release retains ownership and can be retried', () async {
     final proxy = _FakeProxy();
     final queue = SystemProxyQueue(proxy);

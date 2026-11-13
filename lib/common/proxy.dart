@@ -44,6 +44,13 @@ class SystemProxyQueue {
     });
   }
 
+  /// Explicit handoff must know whether the previous proxy was released.
+  Future<void> releaseMihomo() => _enqueue(() async {
+    if (_nativeOwner || !await _stop()) {
+      throw StateError('Could not release Mihomo system proxy');
+    }
+  }, propagate: true);
+
   /// Native cores own the system proxy until releaseNative() is called.
   /// Mihomo state-watch updates are queued but cannot overwrite that owner.
   Future<bool> activateNative(int port, List<String> bypassDomain) async {

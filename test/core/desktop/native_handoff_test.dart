@@ -376,6 +376,25 @@ void main() {
     await tunHandoff.close();
   });
 
+  test('Mihomo proxy release failure aborts native handoff and restores', () async {
+    final proxyHandoff = NativeCoreHandoff(
+      runtime: runtime,
+      isMihomoRunning: () => mihomoRunning,
+      setMihomoRunning: (value) async {
+        calls.add('mihomo:$value');
+        mihomoRunning = value;
+        return true;
+      },
+      releaseMihomoProxy: () async => throw StateError('release failed'),
+    );
+    await expectLater(proxyHandoff.activate(spec), throwsStateError);
+    expect(calls, ['mihomo:false', 'mihomo:true']);
+    expect(runtime.isRunning, isFalse);
+    expect(mihomoRunning, isTrue);
+    expect(runtime.blocksMihomoStart, isFalse);
+    await proxyHandoff.close();
+  });
+
   test('failed native proxy release can be retried after core stop', () async {
     var releases = 0;
     final proxyHandoff = NativeCoreHandoff(
