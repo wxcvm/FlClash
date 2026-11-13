@@ -30,6 +30,7 @@ type NetworkHealthSnapshot struct {
 	Source       string `json:"source,omitempty"`
 	Host         string `json:"host,omitempty"`
 	Attempt      int    `json:"attempt"`
+	Failures     int    `json:"confirmed-failures"`
 	HTTPStatus   int    `json:"http-status,omitempty"`
 	Delay        int64  `json:"delay,omitempty"`
 	DNS          string `json:"dns"`
@@ -37,6 +38,14 @@ type NetworkHealthSnapshot struct {
 	CheckedAt    int64  `json:"checked-at,omitempty"`
 	CoreEpoch    uint64 `json:"core-epoch"`
 	RouteVersion uint64 `json:"route-version"`
+}
+
+// An inconclusive probe (for example, no available probe slot) is not a
+// confirmed failure and must not authorize automatic connection teardown.
+func (s *NetworkHealthSnapshot) recordFailure(result recoveryHealthResult) {
+	if result.state == "dns-failure" || result.state == "route-unreachable" {
+		s.Failures++
+	}
 }
 
 var (
@@ -168,6 +177,7 @@ func startRecoveryHealth(source string, rebuilt bool) {
 			return
 		}
 		snapshot.Attempt = attempt
+		snapshot.recordFailure(result)
 		snapshot.DNS = recoveryDNSState(result, host)
 		snapshot.HTTPStatus = result.status
 		snapshot.Delay = result.delay
