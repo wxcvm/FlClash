@@ -1,5 +1,12 @@
 import 'dart:io';
 
+// A fully qualified DNS name may end in a root dot. Fake-IP filters use
+// the ordinary hostname form, so match both spellings with one exception.
+String _resolverHost(Uri uri) {
+  final host = uri.host.toLowerCase();
+  return host.endsWith('.') ? host.substring(0, host.length - 1) : host;
+}
+
 /// A Fake-IP blacklist entry is a hostname, not an encrypted DNS URL.
 /// Only normalize explicitly entered URLs; preserve wildcard and rule syntax.
 List<String> normalizeFakeIpBlacklist(List<String> entries) {
@@ -11,8 +18,8 @@ List<String> normalizeFakeIpBlacklist(List<String> entries) {
         const {'https', 'h3', 'tls', 'quic'}.contains(uri.scheme) &&
         uri.hasAuthority &&
         uri.host.isNotEmpty &&
-        InternetAddress.tryParse(uri.host) == null) {
-      result.add(uri.host.toLowerCase());
+        InternetAddress.tryParse(_resolverHost(uri)) == null) {
+      result.add(_resolverHost(uri));
     } else {
       result.add(value);
     }
@@ -38,10 +45,10 @@ List<String> encryptedDnsEndpointHosts(Map<String, dynamic> dns) {
         !const {'https', 'h3', 'tls', 'quic'}.contains(uri.scheme) ||
         !uri.hasAuthority ||
         uri.host.isEmpty ||
-        InternetAddress.tryParse(uri.host) != null) {
+        InternetAddress.tryParse(_resolverHost(uri)) != null) {
       return;
     }
-    hosts.add(uri.host.toLowerCase());
+    hosts.add(_resolverHost(uri));
   }
 
   for (final key in const [
