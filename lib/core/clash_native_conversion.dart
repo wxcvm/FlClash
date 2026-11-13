@@ -327,3 +327,37 @@ Map<String, dynamic> convertClashDns(Map<String, dynamic> dns) {
   }
   return {'servers': entries, 'final': 'resolver'};
 }
+
+/// Builds a candidate native configuration for an explicitly supported profile.
+/// Platform callers must validate it with the installed core before handoff.
+Map<String, dynamic> buildClashNativeConfig(
+  Map<String, dynamic> profile, {
+  required List<Map<String, dynamic>> inbounds,
+  Map<String, String> selected = const {},
+}) {
+  const supported = {'proxies', 'proxy-groups', 'rules', 'dns', 'mode'};
+  if (profile.keys.any((key) => !supported.contains(key)) ||
+      (profile.containsKey('mode') && profile['mode'] != 'rule') ||
+      inbounds.isEmpty ||
+      profile['dns'] is! Map) {
+    throw const FormatException('Unsupported profile settings');
+  }
+  final graph = convertClashRoutingGraph(profile, selected: selected);
+  final dns = convertClashDns(Map<String, dynamic>.from(profile['dns'] as Map));
+  final route = graph['route'] as Map<String, dynamic>;
+  return {
+    'dns': dns,
+    'inbounds': inbounds,
+    'outbounds': graph['outbounds'],
+    'route': {
+      ...route,
+      'auto_detect_interface': true,
+      'default_domain_resolver': 'resolver',
+      'rules': [
+        {'action': 'sniff'},
+        {'protocol': 'dns', 'action': 'hijack-dns'},
+        ...(route['rules'] as List),
+      ],
+    },
+  };
+}
