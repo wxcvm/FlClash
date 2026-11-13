@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/clash_native_file.dart';
 import 'package:fl_clash/core/desktop/native_config_kind.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_installer.dart';
@@ -110,6 +111,58 @@ class _NativeCoreViewState extends State<NativeCoreView> {
     return '已识别 ${kind.label}，启动时自动准备内核';
   }
 
+  Future<String> _importClash() async {
+    final file = await picker.pickerFile();
+    final path = file?.path;
+    if (!mounted || path == null) return '未选择配置';
+    final directory = await Directory(
+      await appPath.homeDirPath,
+    ).createTemp('singbox-clash-');
+    try {
+      final candidate = await createClashNativeCandidate(
+        File(path),
+        directory,
+        inbounds: [
+          {
+            'type': 'mixed',
+            'tag': 'mixed-in',
+            'listen': '127.0.0.1',
+            'listen_port': 17890,
+          },
+        ],
+      );
+      const kind = NativeCoreKind.singBox;
+      final executable =
+          await nativeCoreInstaller.installedExecutable(kind) ??
+          (await nativeCoreInstaller.installLatest(kind)).executable;
+      final result = await nativeCoreRuntime.validate(
+        NativeCoreSpec(
+          kind: kind,
+          executable: executable,
+          configPath: candidate.path,
+        ),
+      );
+      if (!result.valid) {
+        throw StateError('转换后的配置未通过内核预检');
+      }
+      if (!mounted) {
+        await directory.delete(recursive: true);
+        return '未选择配置';
+      }
+      _configPaths[_kind] = _configPath;
+      _executablePaths[_kind] = _executable;
+      setState(() {
+        _kind = kind;
+        _executable = executable;
+        _configPath = candidate.path;
+      });
+      return 'Clash 配置已转换并通过预检；原配置未修改';
+    } catch (_) {
+      await directory.delete(recursive: true);
+      rethrow;
+    }
+  }
+
   Future<void> _editExecutable() async {
     final value = await dialogs.showCommonDialog<String>(
       child: InputDialog(
@@ -188,6 +241,13 @@ class _NativeCoreViewState extends State<NativeCoreView> {
           generateSection(
             title: '内核与配置',
             items: [
+              ListItem(
+                title: const Text('导入 Clash 配置'),
+                subtitle: const Text('自动转换、准备 sing-box 并预检'),
+                onTap: _busy || active != null || !nativeCoreInstaller.supported
+                    ? null
+                    : () => _perform(_importClash),
+              ),
               ListItem(
                 title: const Text('自动识别内核配置'),
                 subtitle: const Text('导入原生配置，启动时自动准备对应内核'),
