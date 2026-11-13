@@ -7,7 +7,7 @@ void main() {
   test('opt-in runs immediately then waits fifteen minutes after completion', () {
     final schedule = NativeQualitySchedule();
     expect(schedule.delay(now), isNull);
-    schedule.enable('main', now);
+    schedule.enable('main', now, selected: 'a');
     expect(schedule.delay(now), Duration.zero);
     final end = now.add(const Duration(seconds: 60));
     schedule.complete(schedule.revision, end);
@@ -16,7 +16,7 @@ void main() {
   });
 
   test('network change invalidates old batch and debounces new evaluation', () {
-    final schedule = NativeQualitySchedule()..enable('main', now);
+    final schedule = NativeQualitySchedule()..enable('main', now, selected: 'a');
     final old = schedule.revision;
     schedule.networkChanged(now);
     schedule.complete(old, now);
@@ -26,13 +26,26 @@ void main() {
         NativeQualitySchedule.networkSettle);
   });
 
+  test('external selection differs and stale apply cannot replace expectation', () {
+    final schedule = NativeQualitySchedule()
+      ..enable('main', now, selected: 'a');
+    final old = schedule.revision;
+    expect(schedule.matchesSelection('a'), isTrue);
+    expect(schedule.matchesSelection('b'), isFalse);
+    schedule.applied(old, 'b');
+    expect(schedule.matchesSelection('b'), isTrue);
+    schedule.networkChanged(now);
+    schedule.applied(old, 'c');
+    expect(schedule.matchesSelection('b'), isTrue);
+  });
+
   test('stop and group change cannot be overridden by old completion', () {
-    final schedule = NativeQualitySchedule()..enable('main', now);
+    final schedule = NativeQualitySchedule()..enable('main', now, selected: 'a');
     final old = schedule.revision;
     schedule.disable();
     schedule.complete(old, now);
     expect(schedule.delay(now), isNull);
-    schedule.enable('other', now);
+    schedule.enable('other', now, selected: 'b');
     schedule.complete(old, now);
     expect(schedule.group, 'other');
     expect(schedule.delay(now), Duration.zero);

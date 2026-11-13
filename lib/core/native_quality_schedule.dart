@@ -5,17 +5,20 @@ class NativeQualitySchedule {
   static const networkSettle = Duration(seconds: 10);
 
   String? group;
+  String? expectedSelection;
   int revision = 0;
   DateTime? _due;
 
-  void enable(String tag, DateTime now) {
+  void enable(String tag, DateTime now, {required String selected}) {
     group = tag;
+    expectedSelection = selected;
     revision++;
     _due = now;
   }
 
   void disable() {
     group = null;
+    expectedSelection = null;
     revision++;
     _due = null;
   }
@@ -24,6 +27,14 @@ class NativeQualitySchedule {
     if (group == null) return;
     revision++;
     _due = now.add(networkSettle);
+  }
+
+  bool matchesSelection(String? selected) => selected == expectedSelection;
+
+  void applied(int startedRevision, String selected) {
+    if (group != null && startedRevision == revision) {
+      expectedSelection = selected;
+    }
   }
 
   void complete(int startedRevision, DateTime now) {

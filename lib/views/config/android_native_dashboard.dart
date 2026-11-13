@@ -92,8 +92,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     if (!_foreground) {
       _liveRevision++;
       _continuousTimer?.cancel();
-      if (_scheduledQualityRunning && _qualityRequested) {
-        unawaited(_cancelQuality());
+      if (_scheduledQualityRunning) {
+        _continuous.networkChanged(DateTime.now());
+        if (_qualityRequested) unawaited(_cancelQuality());
       }
     }
     _scheduleLive();
@@ -145,12 +146,15 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     _continuousTimer = Timer(delay, () => unawaited(_runContinuous()));
   }
 
-  void _toggleContinuous(String group) {
-    if (_continuous.group == group) {
+  void _toggleContinuous(Map<String, dynamic> group) {
+    final key = group['tag'] as String;
+    if (_continuous.group == key) {
       _stopContinuous();
       return;
     }
-    setState(() => _continuous.enable(group, DateTime.now()));
+    setState(() => _continuous.enable(
+      key, DateTime.now(), selected: group['selected'] as String,
+    ));
     _scheduleContinuous();
   }
 
@@ -186,6 +190,10 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
           return '当前策略组已变化，持续优选已停止';
         }
         final group = matches.first;
+        if (!_continuous.matchesSelection(group['selected'] as String?)) {
+          _stopContinuous();
+          return '检测到手动或外部节点切换，持续优选已停止';
+        }
         final tags = _candidates(group);
         if (tags.length < 2) {
           _stopContinuous();
@@ -365,6 +373,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
       await _readSnapshot();
       final applied = _rows(_snapshot?['groups']).any((g) =>
           g['tag'] == key && g['selected'] == winner);
+      if (applied && scheduledRevision != null) {
+        _continuous.applied(scheduledRevision, winner);
+      }
       return applied ? '实测自动优选：已切换至 $winner' : '切换请求已提交，请刷新确认';
     } finally {
       // Stop the native stream before releasing this page's single-test slot.
@@ -610,7 +621,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                       ListItem(title: Text('候选进度：$_batchProgress')),
                     if (_qualityRunning)
                       ListItem(
-                        title: const Text('取消测速'),
+                        title: const Text('取消本轮测速'),
                         onTap: running && !_cancelRequested
                             ? () => unawaited(_cancelQuality()) : null,
                       ),
@@ -654,7 +665,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                               ? '持续智能优选 · 已开启' : '开启持续智能优选'),
                           subtitle: const Text('前台每 15 分钟最多实测 3 个节点；网络变化后重新评估，实际消耗流量'),
                           onTap: enabled || _continuous.group == group['tag']
-                              ? () => _toggleContinuous(group['tag'] as String)
+                              ? () => _toggleContinuous(group)
                               : null,
                         ),
                       if (group['selectable'] == true)

@@ -12,7 +12,7 @@ on:
       - 'tool/android-singbox/**'
       - '.github/workflows/android-singbox-package.yaml'
   pull_request:
-    branches: [main, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/windows-fakeip-doh-compatibility]
+    branches: [main, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/windows-fakeip-doh-compatibility, feat/android-singbox-preview-delivery]
     paths:
       - 'android/**'
       - 'lib/**'
@@ -26,6 +26,26 @@ permissions:
   contents: read
   actions: read
 jobs:
+  native-quality:
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/native-quality-exploration' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: core/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+      - name: Test native quality and scheduling
+        run: |
+          flutter pub get
+          flutter test test/native_quality_ranking_test.dart test/native_quality_schedule_test.dart test/native_auto_recovery_test.dart
   package:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || github.head_ref == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-dns-path-recovery' || github.head_ref == 'feat/windows-fakeip-doh-compatibility' || github.head_ref == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/android-dual-core-integration'))
     runs-on: ubuntu-latest
@@ -164,7 +184,7 @@ jobs:
           CGO_ENABLED: 0
         run: go test -run 'TestNetworkChange|TestRecoveryHealth' .
       - name: Test native quality ranking
-        run: flutter test test/native_quality_ranking_test.dart test/native_auto_recovery_test.dart test/plugins/service_test.dart test/common/task_dns_override_test.dart
+        run: flutter test test/native_quality_ranking_test.dart test/native_quality_schedule_test.dart test/native_auto_recovery_test.dart test/plugins/service_test.dart test/common/task_dns_override_test.dart
       - name: Compile and test actual Android app with native runtime
         run: |
           cd android
