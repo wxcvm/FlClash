@@ -17,7 +17,7 @@ List<String> normalizeFakeIpBlacklist(List<String> entries) {
     if (uri != null &&
         const {'https', 'h3', 'tls', 'quic'}.contains(uri.scheme) &&
         uri.hasAuthority &&
-        uri.host.isNotEmpty &&
+        _resolverHost(uri).isNotEmpty &&
         InternetAddress.tryParse(_resolverHost(uri)) == null) {
       result.add(_resolverHost(uri));
     } else {
@@ -44,7 +44,7 @@ List<String> encryptedDnsEndpointHosts(Map<String, dynamic> dns) {
     if (uri == null ||
         !const {'https', 'h3', 'tls', 'quic'}.contains(uri.scheme) ||
         !uri.hasAuthority ||
-        uri.host.isEmpty ||
+        _resolverHost(uri).isEmpty ||
         InternetAddress.tryParse(_resolverHost(uri)) != null) {
       return;
     }
