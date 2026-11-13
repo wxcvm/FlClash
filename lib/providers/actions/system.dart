@@ -147,17 +147,17 @@ class SystemAction extends _$SystemAction {
       port = nativeCoreRuntime.isRunning
           ? systemProxyQueue?.nativeHttpPort
           : null;
-      if (port == null) {
-        dialogs.showBanner(
-          '独立内核未接管 HTTP 系统代理，无法复制有效代理地址',
-          level: BannerLevel.warning,
-        );
-        return;
-      }
     } else {
       port = ref.read(
         patchClashConfigProvider.select((state) => state.mixedPort),
       );
+    }
+    if (port == null) {
+      dialogs.showBanner(
+        '独立内核未接管 HTTP 系统代理，无法复制有效代理地址',
+        level: BannerLevel.warning,
+      );
+      return;
     }
     await Clipboard.setData(
       ClipboardData(text: proxyEnvCommand(port, isWindows: system.isWindows)),
