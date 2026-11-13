@@ -70,30 +70,63 @@ class NativeQualityRanking {
     String? best;
     double bestScore = -1;
     for (final tag in candidates.toSet()) {
-      final samples = (_samples[tag] ?? const <NativeQualitySample>[])
-          .where((s) => now >= s.startedAt &&
-              now - s.startedAt <= maxAge.inMilliseconds)
-          .toList();
-      if (samples.isEmpty || samples.last.state != 'done') continue;
-      final valid = samples.where((s) => s.state == 'done' &&
-          s.downloadBps.isFinite && s.downloadBps > 0).toList();
-      if (valid.isEmpty || valid.last != samples.last) continue;
-      final rates = valid.map((s) => s.downloadBps).toList()..sort();
-      final middle = rates.length ~/ 2;
-      final median = rates.length.isOdd
-          ? rates[middle]
-          : (rates[middle - 1] + rates[middle]) / 2;
-      final lastLatency = valid.last.latencyMs;
-      final latencyPenalty = lastLatency.isFinite && lastLatency > 0
-          ? 1 + lastLatency / 500
-          : 1.5;
-      final reliability = valid.length / samples.length;
-      final score = median * reliability * reliability / latencyPenalty;
-      if (score > bestScore) {
+      final score = _score(tag, now);
+      if (score != null && score > bestScore) {
         best = tag;
         bestScore = score;
       }
     }
     return best;
+  }
+
+  double? _score(String tag, int now) {
+    final samples = (_samples[tag] ?? const <NativeQualitySample>[])
+        .where((s) =>
+            now >= s.startedAt && now - s.startedAt <= maxAge.inMilliseconds)
+        .toList();
+    if (samples.isEmpty || samples.last.state != 'done') return null;
+    final valid = samples
+        .where((s) =>
+            s.state == 'done' && s.downloadBps.isFinite && s.downloadBps > 0)
+        .toList();
+    if (valid.isEmpty || valid.last != samples.last) return null;
+    final rates = valid.map((s) => s.downloadBps).toList()..sort();
+    final middle = rates.length ~/ 2;
+    final median = rates.length.isOdd
+        ? rates[middle]
+        : (rates[middle - 1] + rates[middle]) / 2;
+    final lastLatency = valid.last.latencyMs;
+    final latencyPenalty = lastLatency.isFinite && lastLatency > 0
+        ? 1 + lastLatency / 500
+        : 1.5;
+    final reliability = valid.length / samples.length;
+    return median * reliability * reliability / latencyPenalty;
+  }
+
+  /// An explicit auto-apply batch must compare the incumbent and challenger
+  /// using fresh, completed samples. No historical-only switch.
+  static String? chooseAutoSwitch(
+    Iterable<NativeQualitySample> completed, {
+    required String incumbent,
+    required int now,
+  }) {
+    final batch = NativeQualityRanking();
+    for (final sample in completed) {
+      batch.record(sample);
+    }
+    final current = batch._samples[incumbent]?.last;
+    if (current == null ||
+        now < current.startedAt ||
+        now - current.startedAt > maxAge.inMilliseconds) {
+      return null;
+    }
+    final winner = batch.recommend(batch._samples.keys, now: now);
+    if (winner == null || winner == incumbent) return null;
+    if (current.state == 'failed') return winner;
+    final currentScore = batch._score(incumbent, now);
+    final winnerScore = batch._score(winner, now);
+    if (currentScore == null || winnerScore == null) return null;
+    // Use the same 20% improvement margin as Mihomo automatic speed selection.
+    return winnerScore >= currentScore * 1.2 ? winner : null;
   }
 }

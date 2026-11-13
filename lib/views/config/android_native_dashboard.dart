@@ -142,7 +142,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     final changed = _networkGeneration != null && _networkGeneration != generation;
     if (changed) {
       _ranking.clear();
-    _qualityCursors.clear();
+      _qualityCursors.clear();
       _latestQuality.clear();
     }
     _networkGeneration = generation;
@@ -171,16 +171,28 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     );
   }
 
-  Future<void> _runGroupQuality(Map<String, dynamic> group) async {
+  bool _canAutoApply(Map<String, dynamic> group) =>
+      group['selectable'] == true &&
+      _rows(group['items']).any((item) =>
+          _isProxy(item) && item['tag'] == group['selected']);
+
+  Future<void> _runGroupQuality(
+    Map<String, dynamic> group, {
+    bool autoApply = false,
+  }) async {
     final tags = _candidates(group);
     final key = group['tag'] as String;
     _qualityCursors.update(key, (cursor) => cursor + 1, ifAbsent: () => 1);
-    await _runQuality(tags);
+    await _runQuality(tags, autoGroup: autoApply ? group : null);
   }
 
-  Future<void> _runQuality(List<String> tags) => _perform(() async {
+  Future<void> _runQuality(
+    List<String> tags, {
+    Map<String, dynamic>? autoGroup,
+  }) => _perform(() async {
     if (tags.isEmpty) return '没有可测速的代理节点';
     final session = _sessionStartedAt;
+    final completed = <NativeQualitySample>[];
     _cancelRequested = false;
     _qualityRequested = true;
     bool active() => mounted && session == _sessionStartedAt &&
@@ -212,6 +224,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
           }
           if (sample.state != 'running') {
             _ranking.record(sample);
+            if (sample.state == 'done' || sample.state == 'failed') {
+              completed.add(sample);
+            }
             _latestQuality[tag] = result;
             break;
           }
@@ -228,7 +243,39 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
           await Future<void>.delayed(const Duration(seconds: 1));
         }
       }
-      return active() ? '测速完成，可查看策略组中的实测推荐' : '测速已取消';
+      if (!active()) return '测速已取消';
+      if (autoGroup == null) return '测速完成，可查看策略组中的实测推荐';
+      if (!_foreground || _networkGeneration == null) {
+        return '测速完成，当前状态已变化，未自动切换';
+      }
+      final incumbent = autoGroup['selected'] as String;
+      final winner = NativeQualityRanking.chooseAutoSwitch(
+        completed,
+        incumbent: incumbent,
+        now: DateTime.now().millisecondsSinceEpoch,
+      );
+      if (winner == null) return '测速完成，保持当前节点';
+      final generation = _networkGeneration!;
+      final snapshot = await _service.getNativeSnapshot();
+      if (!active() || !_foreground ||
+          snapshot['networkGeneration'] != generation) {
+        return '网络或会话已变化，未自动切换';
+      }
+      final key = autoGroup['tag'] as String;
+      final matches = _rows(snapshot['groups']).where((g) => g['tag'] == key);
+      if (matches.isEmpty) return '策略组已变化，未自动切换';
+      final group = matches.first;
+      if (!_canAutoApply(group) || group['selected'] != incumbent ||
+          !_rows(group['items']).any((item) =>
+              _isProxy(item) && item['tag'] == winner)) {
+        return '当前选择或策略组已变化，未自动切换';
+      }
+      await _service.selectNativeOutbound(key, winner, generation: generation);
+      if (!active()) return '切换请求已提交，请刷新确认';
+      await _readSnapshot();
+      final applied = _rows(_snapshot?['groups']).any((g) =>
+          g['tag'] == key && g['selected'] == winner);
+      return applied ? '实测自动优选：已切换至 $winner' : '切换请求已提交，请刷新确认';
     } finally {
       // Stop the native stream before releasing this page's single-test slot.
       if (session == _sessionStartedAt) {
@@ -492,6 +539,14 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                           subtitle: Text('最多 3 个候选（当前、实测优选及轮换探索）：${_candidates(group).join('、')}；依次测带宽，不自动切换'),
                           onTap: enabled && !_qualityRunning
                               ? () => unawaited(_runGroupQuality(group)) : null,
+                        ),
+                      if (_canAutoApply(group) && _candidates(group).length > 1)
+                        ListItem(
+                          title: const Text('智能优选 · 测速后自动切换'),
+                          subtitle: const Text('实测当前与候选节点，综合质量至少提升 20% 或当前实测失败时切换'),
+                          onTap: enabled && !_qualityRunning
+                              ? () => unawaited(_runGroupQuality(group, autoApply: true))
+                              : null,
                         ),
                       if (group['selectable'] == true)
                         for (final best in [_ranking.recommend(
