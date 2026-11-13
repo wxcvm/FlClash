@@ -8,15 +8,18 @@ import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/views/config/android_native_dashboard.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_clash/providers/action.dart';
+import 'package:fl_clash/providers/state.dart';
 
-class AndroidCoreView extends StatefulWidget {
+class AndroidCoreView extends ConsumerStatefulWidget {
   const AndroidCoreView({super.key});
 
   @override
-  State<AndroidCoreView> createState() => _AndroidCoreViewState();
+  ConsumerState<AndroidCoreView> createState() => _AndroidCoreViewState();
 }
 
-class _AndroidCoreViewState extends State<AndroidCoreView> {
+class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
   final Service _service = Service();
   String _configPath = '';
   String _result = '';
@@ -61,17 +64,33 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
     return '已选择原生配置，启动前将进行完整预检';
   }
 
-  Future<String> _importClash() async {
-    final file = await picker.pickerFile();
-    final path = file?.path;
-    if (!mounted || path == null) return '未选择配置';
+  Future<String> _importClash({bool current = false}) async {
+    final String yaml;
+    final Map<String, String> selected;
+    if (current) {
+      final profile = ref.read(currentProfileProvider);
+      if (profile == null) return '请先选择订阅';
+      yaml = await ref
+          .read(setupActionProvider.notifier)
+          .getProfileWithId(profile.id);
+      selected = Map<String, String>.from(profile.selectedMap);
+      if (yaml.isEmpty) return '无法读取当前有效配置';
+    } else {
+      final file = await picker.pickerFile();
+      final path = file?.path;
+      if (!mounted || path == null) return '未选择配置';
+      yaml = await File(path).readAsString();
+      selected = const {};
+    }
+    if (!mounted) return '未选择配置';
     final directory = await Directory(
       await appPath.homeDirPath,
     ).createTemp('singbox-clash-');
     try {
-      final candidate = await createClashNativeCandidate(
-        File(path),
+      final candidate = await createClashNativeCandidateFromYaml(
+        yaml,
         directory,
+        selected: selected,
         inbounds: [
           {
             'type': 'tun',
@@ -207,6 +226,11 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
               generateSection(
                 title: 'sing-box 原生配置',
                 items: [
+                  ListItem(
+                    title: const Text('使用当前订阅'),
+                    subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
+                    onTap: canConfigure ? () => _perform(() => _importClash(current: true)) : null,
+                  ),
                   ListItem(
                     title: const Text('导入 Clash 配置'),
                     subtitle: const Text('兼容配置自动转换并预检'),
