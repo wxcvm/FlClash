@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 /// Only actual completed measurements from the current session are eligible.
 class NativeQualitySample {
   const NativeQualitySample({
@@ -39,10 +37,32 @@ class NativeQualityRanking {
     final samples = _samples.putIfAbsent(sample.tag, () => []);
     if (samples.any((s) => s.startedAt == sample.startedAt)) return;
     samples.add(sample);
+    samples.sort((a, b) => a.startedAt.compareTo(b.startedAt));
     if (samples.length > 5) samples.removeAt(0);
   }
 
   void clear() => _samples.clear();
+
+  /// Keep a comparison with the current node and the measured winner, then
+  /// explore other members instead of permanently excluding higher-delay nodes.
+  /// [ordered] is the caller's latency-ordered list of eligible proxy tags.
+  List<String> candidates(
+    Iterable<String> ordered, {
+    required String incumbent,
+    required int cursor,
+    required int now,
+  }) {
+    final names = ordered.toSet().toList();
+    if (names.isEmpty) return [];
+    final chosen = <String>{
+      if (names.contains(incumbent)) incumbent,
+      if (recommend(names, now: now) case final String best) best,
+    };
+    for (var i = 0; i < names.length && chosen.length < 3; i++) {
+      chosen.add(names[(cursor + i) % names.length]);
+    }
+    return chosen.toList();
+  }
 
   /// Throughput is primary; penalize latency and failed recent attempts.
   /// Never recommend untested nodes or a node whose newest test failed.
@@ -57,7 +77,7 @@ class NativeQualityRanking {
       if (samples.isEmpty || samples.last.state != 'done') continue;
       final valid = samples.where((s) => s.state == 'done' &&
           s.downloadBps.isFinite && s.downloadBps > 0).toList();
-      if (valid.isEmpty) continue;
+      if (valid.isEmpty || valid.last != samples.last) continue;
       final rates = valid.map((s) => s.downloadBps).toList()..sort();
       final middle = rates.length ~/ 2;
       final median = rates.length.isOdd
@@ -68,8 +88,7 @@ class NativeQualityRanking {
           ? 1 + lastLatency / 500
           : 1.5;
       final reliability = valid.length / samples.length;
-      final score = math.log(1 + median / 1000000) *
-          reliability * reliability / latencyPenalty;
+      final score = median * reliability * reliability / latencyPenalty;
       if (score > bestScore) {
         best = tag;
         bestScore = score;

@@ -30,6 +30,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
   bool _busy = false;
   bool _showLogs = false;
   final _ranking = NativeQualityRanking();
+  final Map<String, int> _qualityCursors = {};
   Map<String, dynamic>? _quality;
   int _sessionStartedAt = 0;
   int? _networkGeneration;
@@ -61,6 +62,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     _qualityRequested = false;
     _networkGeneration = null;
     _ranking.clear();
+    _qualityCursors.clear();
     _latestQuality.clear();
     if (mounted) setState(() {
       _quality = null;
@@ -140,6 +142,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
     final changed = _networkGeneration != null && _networkGeneration != generation;
     if (changed) {
       _ranking.clear();
+    _qualityCursors.clear();
       _latestQuality.clear();
     }
     _networkGeneration = generation;
@@ -160,7 +163,19 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
       return value is num && value > 0 ? value.toDouble() : double.infinity;
     }
     items.sort((a, b) => delay(a).compareTo(delay(b)));
-    return items.map((item) => item['tag'] as String).toSet().take(3).toList();
+    return _ranking.candidates(
+      items.map((item) => item['tag'] as String),
+      incumbent: group['selected'] as String? ?? '',
+      cursor: _qualityCursors[group['tag']] ?? 0,
+      now: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  Future<void> _runGroupQuality(Map<String, dynamic> group) async {
+    final tags = _candidates(group);
+    final key = group['tag'] as String;
+    _qualityCursors.update(key, (cursor) => cursor + 1, ifAbsent: () => 1);
+    await _runQuality(tags);
   }
 
   Future<void> _runQuality(List<String> tags) => _perform(() async {
@@ -294,6 +309,7 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
   Future<void> _resetNetwork() => _perform(() async {
     await _service.resetNativeNetwork();
     _ranking.clear();
+    _qualityCursors.clear();
     _latestQuality.clear();
     await _readSnapshot();
     return '已请求内核重建网络连接；请重新检查联网和节点延迟';
@@ -473,9 +489,9 @@ class _AndroidNativeDashboardState extends State<AndroidNativeDashboard>
                       if (group['selectable'] == true && _candidates(group).isNotEmpty)
                         ListItem(
                           title: const Text('智能优选 · 实测候选'),
-                          subtitle: Text('按延迟初筛最多 3 个代理：${_candidates(group).join('、')}；依次测带宽，不自动切换'),
+                          subtitle: Text('最多 3 个候选（当前、实测优选及轮换探索）：${_candidates(group).join('、')}；依次测带宽，不自动切换'),
                           onTap: enabled && !_qualityRunning
-                              ? () => unawaited(_runQuality(_candidates(group))) : null,
+                              ? () => unawaited(_runGroupQuality(group)) : null,
                         ),
                       if (group['selectable'] == true)
                         for (final best in [_ranking.recommend(
