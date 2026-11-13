@@ -65,6 +65,34 @@ func TestDownloadProbeRequiresCompleteSample(t *testing.T) {
 	}
 }
 
+func TestSpeedRejectsCompletedSampleAfterPassiveNetworkChange(t *testing.T) {
+	recordRoutes(t)
+	previousReset := resetNetworkResolver
+	resetNetworkResolver = func() {}
+	t.Cleanup(func() { resetNetworkResolver = previousReset })
+	result := testSpeed(context.Background(), &SpeedTestParams{ProxyName: "node"},
+		func(context.Context, probeRequest) *ProbeResult {
+			handleNetworkChanged()
+			return &ProbeResult{StatusCode: http.StatusOK, DownloadBytes: downloadSpeedBytes, DownloadMillis: 1000}
+		})
+	if result.Error == "" || result.BytesPerSecond != 0 {
+		t.Fatalf("accepted old network sample: %+v", result)
+	}
+}
+
+func TestSpeedRejectsCompletedSampleAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := testSpeed(ctx, &SpeedTestParams{ProxyName: "node"},
+		func(context.Context, probeRequest) *ProbeResult {
+			cancel()
+			return &ProbeResult{StatusCode: http.StatusOK, DownloadBytes: downloadSpeedBytes, DownloadMillis: 1000}
+		})
+	if result.Error == "" || result.BytesPerSecond != 0 {
+		t.Fatalf("accepted canceled sample: %+v", result)
+	}
+}
+
 func TestSpeedCancellationRespectsDispatchOrder(t *testing.T) {
 	var registry speedTestRegistry
 	old, finishOld := registry.start(1)

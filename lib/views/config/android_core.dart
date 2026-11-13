@@ -2,26 +2,29 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/clash_native_file.dart';
 import 'package:fl_clash/core/native_auto_recovery.dart';
 import 'package:fl_clash/plugins/service.dart';
-import 'package:fl_clash/views/config/general.dart';
 import 'package:fl_clash/views/config/android_native_dashboard.dart';
-import 'package:fl_clash/views/config/network.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_clash/providers/action.dart';
+import 'package:fl_clash/providers/state.dart';
 
-class AndroidCoreView extends StatefulWidget {
+class AndroidCoreView extends ConsumerStatefulWidget {
   const AndroidCoreView({super.key});
 
   @override
-  State<AndroidCoreView> createState() => _AndroidCoreViewState();
+  ConsumerState<AndroidCoreView> createState() => _AndroidCoreViewState();
 }
 
-class _AndroidCoreViewState extends State<AndroidCoreView> {
+class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
   final Service _service = Service();
   String _configPath = '';
   String _result = '';
   bool _busy = false;
+  bool _advanced = false;
 
   @override
   void initState() {
@@ -59,6 +62,56 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
     if (!mounted || file?.path == null) return '未选择配置';
     setState(() => _configPath = file!.path!);
     return '已选择原生配置，启动前将进行完整预检';
+  }
+
+  Future<String> _importClash({bool current = false}) async {
+    final String yaml;
+    final Map<String, String> selected;
+    if (current) {
+      final profile = ref.read(currentProfileProvider);
+      if (profile == null) return '请先选择订阅';
+      yaml = await ref
+          .read(setupActionProvider.notifier)
+          .getProfileWithId(profile.id);
+      selected = Map<String, String>.from(profile.selectedMap);
+      if (yaml.isEmpty) return '无法读取当前有效配置';
+    } else {
+      final file = await picker.pickerFile();
+      final path = file?.path;
+      if (!mounted || path == null) return '未选择配置';
+      yaml = await File(path).readAsString();
+      selected = const {};
+    }
+    if (!mounted) return '未选择配置';
+    final directory = await Directory(
+      await appPath.homeDirPath,
+    ).createTemp('singbox-clash-');
+    try {
+      final candidate = await createClashNativeCandidateFromYaml(
+        yaml,
+        directory,
+        selected: selected,
+        inbounds: [
+          {
+            'type': 'tun',
+            'tag': 'tun-in',
+            'address': ['172.19.0.1/30'],
+            'auto_route': true,
+            'strict_route': true,
+          },
+        ],
+      );
+      await _service.validateNativeCore(candidate.path);
+      if (!mounted) {
+        await directory.delete(recursive: true);
+        return '未选择配置';
+      }
+      setState(() => _configPath = candidate.path);
+      return 'Clash 配置已转换并通过预检；原配置未修改';
+    } catch (_) {
+      await directory.delete(recursive: true);
+      rethrow;
+    }
   }
 
   Future<String> _createAutoProfile() async {
@@ -110,7 +163,6 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
 
   @override
   Widget build(BuildContext context) {
-    final l = context.appLocalizations;
     return BaseScaffold(
       title: '内核管理',
       body: ValueListenableBuilder<AndroidNativeStatus?>(
@@ -175,7 +227,19 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                 title: 'sing-box 原生配置',
                 items: [
                   ListItem(
-                    title: const Text('选择 JSON 配置'),
+                    title: const Text('使用当前订阅'),
+                    subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
+                    onTap: canConfigure
+                        ? () => _perform(() => _importClash(current: true))
+                        : null,
+                  ),
+                  ListItem(
+                    title: const Text('导入 Clash 配置'),
+                    subtitle: const Text('兼容配置自动转换并预检'),
+                    onTap: canConfigure ? () => _perform(_importClash) : null,
+                  ),
+                  ListItem(
+                    title: const Text('导入 sing-box 配置'),
                     subtitle: Text(
                       _configPath.isEmpty ? '尚未选择' : _configPath,
                       maxLines: 2,
@@ -184,18 +248,26 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                     onTap: canConfigure ? () => _perform(_choose) : null,
                   ),
                   ListItem(
-                    title: const Text('检查配置'),
-                    onTap: canConfigure && _configPath.isNotEmpty
-                        ? () => _perform(_validate)
-                        : null,
+                    title: Text(_advanced ? '收起高级设置' : '展开高级设置'),
+                    onTap: busy
+                        ? null
+                        : () => setState(() => _advanced = !_advanced),
                   ),
-                  ListItem(
-                    title: const Text('生成自动恢复配置副本'),
-                    subtitle: const Text('最多 5 个原有代理组成原生自动组；不改原文件或默认路由'),
-                    onTap: canConfigure && _configPath.isNotEmpty
-                        ? () => _perform(_createAutoProfile)
-                        : null,
-                  ),
+                  if (_advanced)
+                    ListItem(
+                      title: const Text('检查配置'),
+                      onTap: canConfigure && _configPath.isNotEmpty
+                          ? () => _perform(_validate)
+                          : null,
+                    ),
+                  if (_advanced)
+                    ListItem(
+                      title: const Text('生成自动恢复配置副本'),
+                      subtitle: const Text('最多 5 个原有代理组成原生自动组；不改原文件或默认路由'),
+                      onTap: canConfigure && _configPath.isNotEmpty
+                          ? () => _perform(_createAutoProfile)
+                          : null,
+                    ),
                   ListItem(
                     title: const Text('启动 / 切换到 sing-box'),
                     onTap: canConfigure && _configPath.isNotEmpty
@@ -216,7 +288,7 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                   ),
                 ],
                 footer:
-                    '使用带 TUN 的 sing-box 原生 JSON；不会转换 Clash 订阅。'
+                    '支持兼容的 Clash 配置或带 TUN 的 sing-box 原生 JSON。'
                     '启动失败时尝试恢复先前的 Mihomo VPN。'
                     '节点、流量与日志可在运行管理查看；选择原生自动组后由内核重新选路。',
               ),
@@ -230,22 +302,6 @@ class _AndroidCoreViewState extends State<AndroidCoreView> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: SelectableText(_result),
                 ),
-              generateSection(
-                title: 'Mihomo 配置',
-                items: [
-                  ListItem.open(
-                    title: Text(l.general),
-                    widget: const GeneralView(),
-                  ),
-                  ListItem.open(
-                    title: Text(l.network),
-                    widget: BaseScaffold(
-                      title: l.network,
-                      body: const NetworkListView(),
-                    ),
-                  ),
-                ],
-              ),
             ],
           );
         },

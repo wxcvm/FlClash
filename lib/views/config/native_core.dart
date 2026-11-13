@@ -2,23 +2,27 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/clash_native_file.dart';
 import 'package:fl_clash/core/desktop/native_config_kind.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_installer.dart';
 import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_clash/providers/action.dart';
+import 'package:fl_clash/providers/state.dart';
 
 /// Desktop-only control for native external cores.
 /// System proxy and process ownership are coordinated by NativeCoreHandoff.
-class NativeCoreView extends StatefulWidget {
+class NativeCoreView extends ConsumerStatefulWidget {
   const NativeCoreView({super.key});
 
   @override
-  State<NativeCoreView> createState() => _NativeCoreViewState();
+  ConsumerState<NativeCoreView> createState() => _NativeCoreViewState();
 }
 
-class _NativeCoreViewState extends State<NativeCoreView> {
+class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   NativeCoreKind _kind = nativeCoreRuntime.activeKind ?? NativeCoreKind.singBox;
   String _executable =
       nativeCoreRuntime.activeSpec?.executable ??
@@ -31,6 +35,7 @@ class _NativeCoreViewState extends State<NativeCoreView> {
   StreamSubscription<String>? _logSubscription;
   StreamSubscription<String>? _handoffSubscription;
   bool _busy = false;
+  bool _advanced = false;
 
   @override
   void initState() {
@@ -106,7 +111,75 @@ class _NativeCoreViewState extends State<NativeCoreView> {
       _executable = _executablePaths[kind] ?? kind.executableName;
     });
     await _loadInstalledExecutable(kind);
-    return '已识别 ${kind.label}，请检查配置后启动';
+    return '已识别 ${kind.label}，启动时自动准备内核';
+  }
+
+  Future<String> _importClash({bool current = false}) async {
+    final String yaml;
+    final Map<String, String> selected;
+    if (current) {
+      final profile = ref.read(currentProfileProvider);
+      if (profile == null) return '请先选择订阅';
+      yaml = await ref
+          .read(setupActionProvider.notifier)
+          .getProfileWithId(profile.id);
+      selected = Map<String, String>.from(profile.selectedMap);
+      if (yaml.isEmpty) return '无法读取当前有效配置';
+    } else {
+      final file = await picker.pickerFile();
+      final path = file?.path;
+      if (!mounted || path == null) return '未选择配置';
+      yaml = await File(path).readAsString();
+      selected = const {};
+    }
+    if (!mounted) return '未选择配置';
+    final directory = await Directory(
+      await appPath.homeDirPath,
+    ).createTemp('singbox-clash-');
+    try {
+      final candidate = await createClashNativeCandidateFromYaml(
+        yaml,
+        directory,
+        selected: selected,
+        inbounds: [
+          {
+            'type': 'mixed',
+            'tag': 'mixed-in',
+            'listen': '127.0.0.1',
+            'listen_port': 17890,
+          },
+        ],
+      );
+      const kind = NativeCoreKind.singBox;
+      final executable =
+          await nativeCoreInstaller.installedExecutable(kind) ??
+          (await nativeCoreInstaller.installLatest(kind)).executable;
+      final result = await nativeCoreRuntime.validate(
+        NativeCoreSpec(
+          kind: kind,
+          executable: executable,
+          configPath: candidate.path,
+        ),
+      );
+      if (!result.valid) {
+        throw StateError('转换后的配置未通过内核预检');
+      }
+      if (!mounted) {
+        await directory.delete(recursive: true);
+        return '未选择配置';
+      }
+      _configPaths[_kind] = _configPath;
+      _executablePaths[_kind] = _executable;
+      setState(() {
+        _kind = kind;
+        _executable = executable;
+        _configPath = candidate.path;
+      });
+      return 'Clash 配置已转换并通过预检；原配置未修改';
+    } catch (_) {
+      await directory.delete(recursive: true);
+      rethrow;
+    }
   }
 
   Future<void> _editExecutable() async {
@@ -153,6 +226,13 @@ class _NativeCoreViewState extends State<NativeCoreView> {
 
   Future<String> _start() async {
     if (_configPath.trim().isEmpty) return '请先选择配置文件';
+    if (_executable == _kind.executableName && nativeCoreInstaller.supported) {
+      final installed = await nativeCoreInstaller.installedExecutable(_kind);
+      _executable =
+          installed ??
+          (await nativeCoreInstaller.installLatest(_kind)).executable;
+      if (mounted) setState(() {});
+    }
     await nativeCoreHandoff.activate(_spec);
     return nativeCoreHandoff.nativeTunConfigured
         ? '${_kind.label} 已启动；原生 JSON 已配置自动路由 TUN，实际路由状态未独立验证'
@@ -178,68 +258,91 @@ class _NativeCoreViewState extends State<NativeCoreView> {
         ),
         children: [
           generateSection(
-            title: '独立内核与配置',
+            title: '内核与配置',
             items: [
               ListItem(
+                title: const Text('使用当前订阅'),
+                subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
+                onTap: _busy || active != null || !nativeCoreInstaller.supported
+                    ? null
+                    : () => _perform(() => _importClash(current: true)),
+              ),
+              ListItem(
+                title: const Text('导入 Clash 配置'),
+                subtitle: const Text('自动转换、准备 sing-box 并预检'),
+                onTap: _busy || active != null || !nativeCoreInstaller.supported
+                    ? null
+                    : () => _perform(_importClash),
+              ),
+              ListItem(
                 title: const Text('自动识别内核配置'),
-                subtitle: const Text('导入原生配置，自动选择对应内核'),
+                subtitle: const Text('导入原生配置，启动时自动准备对应内核'),
                 onTap: _busy || active != null
                     ? null
                     : () => _perform(_detectConfig),
               ),
-              ListItem<NativeCoreKind>.options(
-                title: const Text('内核'),
-                options: NativeCoreKind.values,
-                value: _kind,
-                textBuilder: (kind) => kind.label,
-                onChanged: (kind) {
-                  if (_busy || active != null) return;
-                  _configPaths[_kind] = _configPath;
-                  _executablePaths[_kind] = _executable;
-                  setState(() {
-                    _kind = kind;
-                    _executable = _executablePaths[kind] ?? kind.executableName;
-                    _configPath = _configPaths[kind] ?? '';
-                  });
-                  unawaited(_loadInstalledExecutable(kind));
-                },
-              ),
               ListItem(
-                title: const Text('下载 / 更新官方稳定版'),
-                subtitle: Text(
-                  nativeCoreInstaller.supported
-                      ? 'Windows / Linux / macOS，自动校验 SHA-256'
-                      : '当前平台请手动选择内核程序',
-                ),
-                onTap:
-                    _busy ||
-                        nativeCoreRuntime.isRunning ||
-                        !nativeCoreInstaller.supported
+                title: Text(_advanced ? '收起高级设置' : '展开高级设置'),
+                onTap: _busy
                     ? null
-                    : () => _perform(_installOfficialCore),
+                    : () => setState(() => _advanced = !_advanced),
               ),
-              ListItem(
-                title: const Text('选择内核程序'),
-                subtitle: Text(_executable),
-                onTap: _busy ? null : _chooseExecutable,
-              ),
-              ListItem(
-                title: const Text('手动填写程序路径'),
-                onTap: _busy ? null : _editExecutable,
-              ),
-              ListItem(
-                title: Text(
-                  _kind == NativeCoreKind.hysteria2
-                      ? '选择原生 YAML 配置'
-                      : '选择原生 JSON 配置',
+              if (_advanced) ...[
+                ListItem<NativeCoreKind>.options(
+                  title: const Text('内核'),
+                  options: NativeCoreKind.values,
+                  value: _kind,
+                  textBuilder: (kind) => kind.label,
+                  onChanged: (kind) {
+                    if (_busy || active != null) return;
+                    _configPaths[_kind] = _configPath;
+                    _executablePaths[_kind] = _executable;
+                    setState(() {
+                      _kind = kind;
+                      _executable =
+                          _executablePaths[kind] ?? kind.executableName;
+                      _configPath = _configPaths[kind] ?? '';
+                    });
+                    unawaited(_loadInstalledExecutable(kind));
+                  },
                 ),
-                subtitle: Text(
-                  _configPath.isEmpty ? '尚未选择' : _configPath,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                ListItem(
+                  title: const Text('下载 / 更新官方稳定版'),
+                  subtitle: Text(
+                    nativeCoreInstaller.supported
+                        ? 'Windows / Linux / macOS，自动校验 SHA-256'
+                        : '当前平台请手动选择内核程序',
+                  ),
+                  onTap:
+                      _busy ||
+                          nativeCoreRuntime.isRunning ||
+                          !nativeCoreInstaller.supported
+                      ? null
+                      : () => _perform(_installOfficialCore),
                 ),
-                onTap: _busy ? null : _chooseConfig,
-              ),
+                ListItem(
+                  title: const Text('选择内核程序'),
+                  subtitle: Text(_executable),
+                  onTap: _busy ? null : _chooseExecutable,
+                ),
+                ListItem(
+                  title: const Text('手动填写程序路径'),
+                  onTap: _busy ? null : _editExecutable,
+                ),
+                ListItem(
+                  title: Text(
+                    _kind == NativeCoreKind.hysteria2
+                        ? '选择原生 YAML 配置'
+                        : '选择原生 JSON 配置',
+                  ),
+                  subtitle: Text(
+                    _configPath.isEmpty ? '尚未选择' : _configPath,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: _busy ? null : _chooseConfig,
+                ),
+              ],
             ],
           ),
           generateSection(
@@ -276,7 +379,8 @@ class _NativeCoreViewState extends State<NativeCoreView> {
                 onTap:
                     _busy ||
                         active != null ||
-                        nativeCoreHandoff.ownsNativeSystemProxy
+                        nativeCoreHandoff.ownsNativeSystemProxy ||
+                        nativeCoreHandoff.hasMihomoToRestore
                     ? null
                     : () => _perform(_start),
               ),

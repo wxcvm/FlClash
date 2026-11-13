@@ -11,9 +11,21 @@ Future<bool> verifyDesktopNetwork({
   required Future<Map<String, dynamic>> Function() read,
   required bool Function() isCurrent,
   required int startedAt,
+  Future<void> Function()? refreshPath,
   Future<void> Function() wait = _waitForHealth,
 }) async {
   if (!isCurrent()) return false;
+  if (refreshPath != null) {
+    final health = await read();
+    if (!isCurrent()) return false;
+    // A physical handover has already refreshed the resolver and outbounds.
+    // Do not cancel its active verification on a concurrent wake event.
+    if (health['source'] == 'handover' && health['state'] == 'checking') {
+      return false;
+    }
+    await refreshPath();
+    if (!isCurrent()) return false;
+  }
   await check();
   // The native probe has a 25-second deadline; allow its final snapshot
   // to arrive without running an unbounded host poll.

@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 private data class NetworkInfo(
     @Volatile var losingUntilMillis: Long = 0,
-    @Volatile var dnsList: List<InetAddress>? = null,
+    @Volatile var linkProperties: LinkProperties? = null,
     @Volatile var capabilities: NetworkCapabilities? = null,
 )
 
@@ -80,7 +80,7 @@ object NetworkObserver {
         }
 
         override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
-            networkInfos[network]?.dnsList = linkProperties.dnsServers
+            networkInfos[network]?.linkProperties = linkProperties
             scheduleUpdateDns()
         }
     }
@@ -106,7 +106,11 @@ object NetworkObserver {
         val info = entry.value
         val capabilities = info.capabilities ?: connectivity?.getNetworkCapabilities(entry.key)
             ?: return null
-        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return null
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+            !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED))
+        ) return null
         val transport = when {
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> 0
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> 1
@@ -123,26 +127,32 @@ object NetworkObserver {
         return networkSelectionPriority(
             transportPriority = transport,
             validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-            hasDns = info.dnsList?.isNotEmpty() == true,
+            hasDns = info.linkProperties?.dnsServers?.isNotEmpty() == true,
             losing = info.losingUntilMillis > SystemClock.elapsedRealtime(),
         )
     }
 
     @Synchronized
     private fun updateDns() {
-        val preferred = networkInfos.entries.mapNotNull { entry ->
+        val eligible = networkInfos.entries.mapNotNull { entry ->
             networkPriority(entry)?.let { priority -> entry to priority }
-        }.minWithOrNull(compareBy(
+        }
+        // A suspended/lost current path must not retain its DNS while a
+        // replacement is waiting for link properties.
+        handover.current?.let { current ->
+            if (eligible.none { it.first.key == current }) handover.markLost(current)
+        }
+        val preferred = eligible.minWithOrNull(compareBy(
             { it.second },
             { if (it.first.key == handover.current) 0 else 1 },
             { it.first.key.networkHandle },
         ))?.first
         // onAvailable can precede onLinkPropertiesChanged by more than the
         // debounce interval. Unknown DNS is not an explicitly empty DNS list.
-        val servers = preferred?.let { entry ->
-            entry.value.dnsList ?: connectivity?.getLinkProperties(entry.key)?.dnsServers
+        val link = preferred?.let { entry ->
+            entry.value.linkProperties ?: connectivity?.getLinkProperties(entry.key)
         }
-        if (preferred != null && servers == null) {
+        if (preferred != null && (link == null || link.interfaceName == null)) {
             // Keep waiting for the new network's link properties. If the old
             // network was lost, do not keep using its system DNS addresses.
             handover.update(preferred.key, dnsReady = false)
@@ -150,10 +160,21 @@ object NetworkObserver {
             return
         }
 
-        publishDns(servers.orEmpty().map { it.asSocketAddressText(DNS_PORT) }.distinct())
+        val servers = link?.dnsServers.orEmpty().map { it.asSocketAddressText(DNS_PORT) }.distinct()
+        publishDns(servers)
         // updateDNS is synchronous, so the new servers are installed before
         // the Core releases old sockets and rebuilds the active outbounds.
-        if (handover.update(preferred?.key)) {
+        val path = link?.let {
+            NetworkPath(
+                interfaceName = it.interfaceName,
+                addresses = it.linkAddresses.map { address -> address.toString() }.sorted(),
+                routes = it.routes.map { route -> route.toString() }.sorted(),
+                dns = servers,
+                privateDnsActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && it.isPrivateDnsActive,
+                privateDnsName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) it.privateDnsServerName else null,
+            )
+        }
+        if (handover.update(preferred?.key, path = path)) {
             Core.resetNetwork()
         }
     }

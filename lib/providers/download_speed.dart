@@ -162,6 +162,11 @@ class NodeHealthHistory {
     _lastOptimization = now;
     _failures = 0;
   }
+
+  // Lightweight recovery does not spend the download optimization budget.
+  void markFailoverAttempt() {
+    _failures = 0;
+  }
 }
 
 enum NetworkHealthGate { allow, wait, refresh }

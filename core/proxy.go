@@ -25,6 +25,8 @@ var (
 	// Selection writes need the mutual exclusion mihomo's Selector.Set lacks.
 	// The lock order is configMu -> selectMu.
 	selectMu sync.Mutex
+	// Tracks explicit choices even when the effective route stays the same.
+	selectionRevision uint64
 
 	errGroupNotFound    = errors.New("Not found group")
 	errGroupInvalidType = errors.New("Group has invalid proxy type")
@@ -197,6 +199,7 @@ func handleChangeProxy(params *ChangeProxyParams) *ChangeProxyResult {
 	} else if err := selector.Set(params.ProxyName); err != nil {
 		return &ChangeProxyResult{Message: err.Error()}
 	}
+	selectionRevision++
 	changed := selector.Now() != before
 	refreshRouteLocked(routeUnchanged)
 	return &ChangeProxyResult{Changed: changed}
@@ -209,6 +212,7 @@ func patchSelectGroup(mapping map[string]string) {
 	for name, selected := range mapping {
 		if selector, ok := adapterAs[outboundgroup.SelectAble](proxies[name]); ok {
 			selector.ForceSet(selected)
+			selectionRevision++
 		}
 	}
 }
