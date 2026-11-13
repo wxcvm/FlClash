@@ -1,5 +1,12 @@
 import 'dart:io';
 
+// Preserve the pinned Mihomo defaults when a blacklist is omitted.
+const _defaultFakeIpBlacklist = [
+  'dns.msftnsci.com',
+  'www.msftnsci.com',
+  'www.msftconnecttest.com',
+];
+
 // A fully qualified DNS name may end in a root dot. Fake-IP filters use
 // the ordinary hostname form, so match both spellings with one exception.
 String _resolverHost(Uri uri) {
@@ -89,7 +96,7 @@ void applyEncryptedDnsFakeIpCompatibility(Map<String, dynamic> dns) {
   }
   final hosts = encryptedDnsEndpointHosts(dns);
   final normalized = normalizeFakeIpBlacklist(
-    entries is List ? entries.cast<String>() : const [],
+    entries is List ? entries.cast<String>() : _defaultFakeIpBlacklist,
   );
   if (entries != null || hosts.isNotEmpty) {
     dns['fake-ip-filter'] = {...normalized, ...hosts}.toList();
