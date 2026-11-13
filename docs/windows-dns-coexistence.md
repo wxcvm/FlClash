@@ -3,7 +3,11 @@
 This addresses one narrow bootstrap case, not every possible third-party DNS
 interception conflict. In generated Mihomo Fake-IP blacklist configurations,
 encrypted DNS resolver hostnames explicitly present in the active DNS section
-are added as exact real-IP exclusions. Existing rules, upstream URLs, private
+are added as exact real-IP exclusions. When the blacklist is omitted, the
+pinned Mihomo default Windows connectivity-check exclusions are retained.
+An explicit empty or custom blacklist stays the user's baseline. An omitted
+nameserver also accounts for the core's implicit DoH hostname.
+Existing rules, upstream URLs, private
 paths, nameserver ordering and policy are retained. IP literals are ignored;
 whitelist and rule modes are not changed. No subscription file is rewritten.
 If AdGuard uses a private DoH endpoint which does not appear in FlClash, its
