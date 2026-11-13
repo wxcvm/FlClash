@@ -2,18 +2,54 @@ name: Android optional sing-box package
 on:
   workflow_dispatch:
   push:
-    branches: [feat/android-singbox-package-runtime]
+    branches: [feat/android-singbox-package-runtime, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/android-singbox-failure-recovery, feat/android-dns-path-recovery, feat/windows-fakeip-doh-compatibility, feat/mihomo-failure-recovery, feat/android-dual-core-integration, feat/android-singbox-preview-delivery]
     paths:
-      - 'android/service/**'
-      - 'tool/android-singbox/isolation/libbox-src/**'
+      - 'android/**'
+      - 'lib/**'
+      - 'core/**'
+      - 'test/**'
+      - 'tool/mihomo-recovery/**'
+      - 'tool/android-singbox/**'
       - '.github/workflows/android-singbox-package.yaml'
+  pull_request:
+    branches: [main, feat/android-singbox-core-ui, feat/android-mihomo-process-probe, feat/windows-fakeip-doh-compatibility, feat/android-singbox-preview-delivery]
+    paths:
+      - 'android/**'
+      - 'lib/**'
+      - 'tool/android-singbox/**'
+      - 'test/native_*'
+      - '.github/workflows/android-singbox-package.yaml'
+concurrency:
+  group: singbox-package-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
   actions: read
 jobs:
-  package:
+  native-quality:
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/native-quality-exploration' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: core/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+      - name: Test native quality and scheduling
+        run: |
+          flutter pub get
+          flutter test test/native_quality_ranking_test.dart test/native_quality_schedule_test.dart test/native_auto_recovery_test.dart
+  package:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feat/android-singbox-') || github.head_ref == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-dns-path-recovery' || github.head_ref == 'feat/windows-fakeip-doh-compatibility' || github.head_ref == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/android-dual-core-integration'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -34,11 +70,77 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: nttld/setup-ndk@v1
+        id: ndk
         with:
           ndk-version: r28c
           link-to-sdk: true
+      - name: Pin Flutter native-assets compiler to project NDK
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          test -n "$ANDROID_NDK_HOME"
+          grep -E 'Pkg.Revision *= *28\.2\.13676358' "$ANDROID_NDK_HOME/source.properties"
+          find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" -maxdepth 2 -name 'libclang.so*' -print -quit | grep .
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
       - uses: gradle/actions/setup-gradle@v6
+      - name: Test device acceptance report parser
+        run: python3 -m unittest discover -s tool/android-singbox -p 'test_device_acceptance.py'
+
+      - name: Test network epoch state transitions
+        run: |
+          mkdir -p /tmp/flclash-network-test
+          javac --release 8 -d /tmp/flclash-network-test tool/android-singbox/isolation/libbox-src/org/flclash/singboxprobe/isolated/NetworkEpoch.java tool/android-singbox/isolation/libbox-src/org/flclash/singboxprobe/isolated/NetworkPathFingerprint.java tool/android-singbox/isolation/tests/NetworkEpochTest.java
+          java -cp /tmp/flclash-network-test org.flclash.singboxprobe.isolated.NetworkEpochTest
+      - name: Test native config lease
+        run: |
+          mkdir -p /tmp/flclash-lease-test
+          javac --release 8 -d /tmp/flclash-lease-test android/service/src/main/java/com/follow/clash/service/NativeConfigLease.java android/tests/service/NativeConfigLeaseCheck.java
+          java -cp /tmp/flclash-lease-test com.follow.clash.service.NativeConfigLeaseCheck
+      - name: Apply and test Mihomo recovery source extension
+        if: github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
+        run: |
+          python3 tool/mihomo-recovery/apply.py core/Clash.Meta
+          cd core/Clash.Meta
+          gofmt -w adapter/outboundgroup/{groupbase,urltest,fallback,loadbalance,flclash_failure_gate,flclash_failure_gate_test}.go
+          go test -race adapter/outboundgroup/flclash_failure_gate.go adapter/outboundgroup/flclash_failure_gate_test.go
+          go test ./adapter/outboundgroup
+          cd ..
+          CGO_ENABLED=0 go test -run 'TestNetworkChange|TestRecoveryHealth' .
+          tags=$(sed -n 's/^tags: *//p' ../build_config.yaml)
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags "$tags" -o ../mihomo-recovery-windows.exe ./cmd/core
+      - uses: actions/upload-artifact@v4
+        if: github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
+        with:
+          name: mihomo-recovery-windows-core-dev
+          path: mihomo-recovery-windows.exe
+          retention-days: 7
+      - name: Checkout pinned sing-box for recovery build
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: c005f35300ce76427dc285481ec5695f5b179cd2
+          path: upstream-sing-box
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
+        with:
+          go-version: '1.26.10'
+          cache: false
+          cache-dependency-path: upstream-sing-box/go.sum
+      - name: Build and test recovery-enabled ARM64 libbox
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
+        run: |
+          bash tool/android-singbox/recovery/build-libbox.sh upstream-sing-box --test
+          echo "LIBBOX_AAR=$(realpath upstream-sing-box/libbox.aar)" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@v5
+        if: github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration' || github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery'
+        with:
+          go-version: '1.27.1'
+          cache: false
+          cache-dependency-path: core/go.sum
       - name: Obtain verified official ARM64 AAR
+        if: github.ref_name != 'feat/android-singbox-failure-recovery' && github.head_ref != 'feat/android-singbox-failure-recovery' && github.ref_name != 'feat/android-dual-core-integration' && github.head_ref != 'feat/android-dual-core-integration' && github.ref_name != 'feat/android-singbox-preview-delivery' && github.head_ref != 'feat/android-singbox-preview-delivery'
         run: |
           gh run download 43219145718 --repo "$GITHUB_REPOSITORY" --name sing-box-v1.14.4-arm64-probe --dir libbox-input
           aar="$(find libbox-input -name libbox.aar -print -quit)"
@@ -75,13 +177,165 @@ jobs:
           if grep -E '^(go/Seq|io/nekohasekai/libbox/)' service-classes.txt; then
             echo 'libbox classes leaked into the host classpath' >&2; exit 1
           fi
+      - name: Test Mihomo network recovery
+        if: github.ref_name == 'feat/windows-fakeip-doh-compatibility' || github.head_ref == 'feat/windows-fakeip-doh-compatibility'
+        working-directory: core
+        env:
+          CGO_ENABLED: 0
+        run: go test -run 'TestNetworkChange|TestRecoveryHealth' .
+      - name: Test native quality ranking
+        run: flutter test test/native_quality_ranking_test.dart test/native_quality_schedule_test.dart test/native_auto_recovery_test.dart test/plugins/service_test.dart test/common/task_dns_override_test.dart
+      - name: Compile and test actual Android app with native runtime
+        run: |
+          cd android
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest :service:testDebugUnitTest -Ptarget-platform=android-arm64 -PflclashSingBoxAar="$LIBBOX_AAR"
+      - name: Verify and upload optional app APK
+        run: |
+          apk=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
+          test -n "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              files = set(apk.namelist())
+              for name in ('assets/singbox/libbox.dex', 'lib/arm64-v8a/libbox.so', 'lib/arm64-v8a/libclash.so'):
+                  assert name in files, f'missing {name}'
+          PY
+          mkdir -p native-app-apk
+          cp "$apk" native-app-apk/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flclash-android-singbox-dev
+          path: native-app-apk/*.apk
+          retention-days: 7
+      - name: Build isolated Mihomo device test APK
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dns-path-recovery' || github.head_ref == 'feat/android-dns-path-recovery' || github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        run: |
+          cd android
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Ptarget-platform=android-arm64 -PflclashMihomoProcessProbe=true -PflclashMihomoIsolated=true -PflclashSingBoxAar="$LIBBOX_AAR"
+          cd ..
+          mkdir -p mihomo-process-test
+          app=$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)
+          test_apk=$(find build/app/outputs/apk/androidTest/debug -name '*.apk' -print -quit)
+          test -n "$app" && test -n "$test_apk"
+          aapt2=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -1)
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$app" > mihomo-process-test/manifest.txt
+          python3 - <<'PY'
+          import re
+          text = open('mihomo-process-test/manifest.txt').read()
+          for name in ('MihomoCoreService', 'VpnService', 'ProxyService'):
+              matches = [block for block in re.split(r'\n\s*E: service', text) if re.search(r'com\.follow\.clash\.service\.' + name + r'"', block)]
+              assert len(matches) == 1 and ':mihomo"' in matches[0], (name, matches)
+          PY
+          cp "$app" mihomo-process-test/app.apk
+          cp "$test_apk" mihomo-process-test/test.apk
+      - uses: actions/upload-artifact@v4
+        if: github.ref_name == 'feat/android-mihomo-process-probe' || github.head_ref == 'feat/android-mihomo-process-probe' || github.ref_name == 'feat/android-singbox-failure-recovery' || github.head_ref == 'feat/android-singbox-failure-recovery' || github.ref_name == 'feat/android-dns-path-recovery' || github.head_ref == 'feat/android-dns-path-recovery' || github.ref_name == 'feat/mihomo-failure-recovery' || github.head_ref == 'feat/mihomo-failure-recovery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        with:
+          name: mihomo-process-device-test
+          path: mihomo-process-test/
+          retention-days: 7
+      - name: Build minified ARM64 release APK for runtime verification
+        if: github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        run: |
+          export ORG_GRADLE_PROJECT_flclashSingBoxAar="$LIBBOX_AAR"
+          flutter build apk --release --target-platform android-arm64 --split-per-abi --dart-define=APP_ENV=pre
+          apk=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          test -s "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              files = set(apk.namelist())
+              for name in ('assets/singbox/libbox.dex', 'lib/arm64-v8a/libbox.so', 'lib/arm64-v8a/libclash.so'):
+                  assert name in files, f'missing {name}'
+          PY
+      - uses: actions/upload-artifact@v4
+        if: github.ref_name == 'feat/android-singbox-preview-delivery' || github.head_ref == 'feat/android-singbox-preview-delivery' || github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+        with:
+          name: flclash-android-dual-core-release-check
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          retention-days: 7
       - name: Verify default build omits runtime
         run: |
           cd android
           ./gradlew :service:assembleDebug -Ptarget-platform=android-arm64
           cd ..
-          aar=$(find build/service/outputs/aar -name '*.aar' -print -quit)
+          aar=build/service/outputs/aar/service-debug.aar
+          test -s "$aar"
           unzip -l "$aar" > service-default-aar.txt
+          python3 - "$aar" <<'PY'
+          import sys, zipfile, xml.etree.ElementTree as ET
+          ns = '{http://schemas.android.com/apk/res/android}'
+          with zipfile.ZipFile(sys.argv[1]) as aar:
+              root = ET.fromstring(aar.read('AndroidManifest.xml'))
+          services = {s.attrib[ns+'name'].rsplit('.', 1)[-1]: s for s in root.findall('./application/service')}
+          for name in ('VpnService', 'ProxyService'):
+              assert ns+'process' not in services[name].attrib, name
+          assert services['MihomoCoreService'].attrib[ns+'enabled'] == 'false'
+          assert services['SingBoxVpnService'].attrib[ns+'enabled'] == 'false'
+          PY
           if grep -E 'assets/singbox/libbox.dex|jni/.*/libbox.so' service-default-aar.txt; then
             echo 'Optional native runtime leaked into default build' >&2; exit 1
           fi
+
+  windows-candidate:
+    if: github.ref_name == 'feat/android-dual-core-integration' || github.head_ref == 'feat/android-dual-core-integration'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: core/go.sum
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-windows
+          workspaces: |
+            services/helper
+            plugins/rust_api/rust
+          cache-directories: .dart_tool/hooks_runner
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+      - name: Check Windows DNS diagnostic syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'tool/windows/check-dns-path.ps1').Path,
+            [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Out-String | Write-Error
+            exit 1
+          }
+      - name: Apply Mihomo source extension
+        run: python tool/mihomo-recovery/apply.py core/Clash.Meta
+      - name: Fetch CA bundle
+        shell: bash
+        run: |
+          bundle=core/Clash.Meta/component/ca/ca-certificates.crt
+          curl -fsSL --retry 3 -o "$bundle" https://curl.se/ca/cacert-2026-09-25.pem
+          echo "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505  $bundle" | sha256sum -c -
+      - name: Test desktop wake recovery
+        run: |
+          flutter pub get
+          flutter test test/core/desktop/network_recovery_test.dart test/manager/window_manager_test.dart
+      - name: Build Windows candidate packages
+        run: |
+          flutter pub get
+          dart setup.dart windows --env pre --targets exe,zip
+      - name: Upload Windows candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: flclash-windows-x64-candidate
+          path: |
+            dist/**/*.exe
+            dist/**/*.zip
+          if-no-files-found: error
+          retention-days: 7

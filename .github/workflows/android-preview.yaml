@@ -77,12 +77,43 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v6
+      - name: Apply Mihomo recovery source extension
+        shell: bash
+        run: python3 tool/mihomo-recovery/apply.py core/Clash.Meta
       - name: Fetch CA bundle
         shell: bash
         run: |
           bundle=core/Clash.Meta/component/ca/ca-certificates.crt
           curl -fsSL --retry 3 -o "$bundle" https://curl.se/ca/cacert-2026-09-25.pem
           echo "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505  $bundle" | sha256sum -c -
+      - name: Checkout pinned sing-box for recovery build
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: c005f35300ce76427dc285481ec5695f5b179cd2
+          path: upstream-sing-box
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+          cache: false
+      - name: Build recovery-enabled ARM64 libbox
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          bash tool/android-singbox/recovery/build-libbox.sh upstream-sing-box
+          echo "ORG_GRADLE_PROJECT_flclashSingBoxAar=$(realpath upstream-sing-box/libbox.aar)" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Install adapter compilation SDK
+        run: |
+          sdkmanager_path="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$sdkmanager_path" 'platforms;android-35'
       - name: Configure Android signing
         env:
           KEYSTORE: ${{ secrets.KEYSTORE }}
@@ -143,6 +174,13 @@ jobs:
           set -euo pipefail
           apk=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           test -s "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              files = set(apk.namelist())
+              for name in ('assets/singbox/libbox.dex', 'lib/arm64-v8a/libbox.so', 'lib/arm64-v8a/libclash.so'):
+                  assert name in files, f'missing {name}'
+          PY
           apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           test -n "$apksigner"
           certs=$("$apksigner" verify --print-certs "$apk")

@@ -10,7 +10,6 @@ import com.follow.clash.models.SharedState
 import com.follow.clash.plugins.AppPlugin
 import com.follow.clash.plugins.ServicePlugin
 import com.follow.clash.plugins.TilePlugin
-import com.follow.clash.service.ServiceConfig
 import com.follow.clash.service.models.NotificationParams
 import com.follow.clash.service.models.VpnOptions
 import io.flutter.embedding.engine.FlutterEngine
@@ -32,6 +31,7 @@ internal data class ServiceRuntime(
 internal interface ServiceStateHost {
     val scope: CoroutineScope
     val runtime: ServiceRuntime?
+    val hasNativeOwner: Boolean get() = false
     val homeDirPath: String
     val sdkInt: Int
 
@@ -56,6 +56,9 @@ internal interface ServiceStateHost {
     suspend fun quickSetup(initParams: String, setupParams: String): Result<String>
 
     suspend fun startService(options: VpnOptions): Boolean
+
+    suspend fun startNativeService(options: VpnOptions): NativeStartResult =
+        NativeStartResult(startService(options), false, "")
 
     suspend fun stopService()
 }
@@ -84,6 +87,9 @@ internal object AndroidServiceStateHost : ServiceStateHost {
     override val runtime: ServiceRuntime?
         get() = ServiceController.runtime
 
+    override val hasNativeOwner: Boolean
+        get() = ServiceController.hasNativeOwner
+
     override val homeDirPath: String
         get() = GlobalState.application.filesDir.path
 
@@ -105,7 +111,7 @@ internal object AndroidServiceStateHost : ServiceStateHost {
     override fun showToast(message: String) = GlobalState.application.showToast(message)
 
     override fun updateNotificationParams(params: NotificationParams) =
-        ServiceConfig.updateNotificationParams(params)
+        ServiceController.updateNotificationParams(params)
 
     override fun loadSharedState(): SharedState = GlobalState.application.sharedState
 
@@ -148,6 +154,9 @@ internal object AndroidServiceStateHost : ServiceStateHost {
 
     override suspend fun startService(options: VpnOptions): Boolean =
         ServiceController.start(options)
+
+    override suspend fun startNativeService(options: VpnOptions): NativeStartResult =
+        ServiceController.startNativeForUi(options)
 
     override suspend fun stopService() = ServiceController.stop()
 }

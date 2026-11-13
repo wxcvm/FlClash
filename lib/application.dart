@@ -202,9 +202,18 @@ class ApplicationState extends ConsumerState<Application> {
           if (!mounted || revision != _desktopNetworkRevision) return;
           final recover = _pendingDesktopRecovery;
           _pendingDesktopRecovery = false;
-          await ref
-              .read(coreActionProvider.notifier)
-              .reportNetworkChange(recover: recover);
+          final core = ref.read(coreActionProvider.notifier);
+          await core.reportNetworkChange(recover: recover);
+          if (!mounted || revision != _desktopNetworkRevision) return;
+          // A Wi-Fi reconnect can report the same transport set. Verify
+          // the route after the passive DNS reset instead of closing all
+          // sockets solely because another connectivity event arrived.
+          if (system.isWindows &&
+              !recover &&
+              previous != null &&
+              physicalNetworks(results).isNotEmpty) {
+            await core.verifyNetworkAfterResume();
+          }
         }, duration: const Duration(milliseconds: 200));
       }
     }

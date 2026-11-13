@@ -3,6 +3,7 @@ package com.follow.clash
 import com.follow.clash.models.SharedState
 import io.flutter.embedding.engine.FlutterEngine
 import kotlinx.coroutines.Deferred
+import java.io.File
 
 object ServiceState {
     private val machine = ServiceStateMachine(AndroidServiceStateHost)
@@ -22,6 +23,8 @@ object ServiceState {
 
     suspend fun handleStartAction() = machine.handleStartAction()
 
+    suspend fun handleSystemVpnStart() = machine.handleSystemVpnStart()
+
     suspend fun handleStopAction() = machine.handleStopAction()
 
     suspend fun handleVpnRevokeAction() = machine.handleVpnRevokeAction()
@@ -30,11 +33,19 @@ object ServiceState {
 
     fun requestStart(): Deferred<Boolean> = machine.requestStart()
 
+    internal fun requestNativeStart(config: File): Deferred<NativeStartResult> = machine.requestNativeStart(config)
+
+    internal fun requestMihomoStart(): Deferred<Boolean> = machine.requestMihomoStart()
+
     fun requestStop(): Deferred<Boolean> = machine.requestStop()
 
-    fun syncSharedState(state: SharedState) = machine.syncSharedState(state)
+    fun syncSharedState(state: SharedState) {
+        ServiceController.rememberSharedState(state)
+        machine.syncSharedState(state)
+    }
 
     internal fun captureRequestToken(): RunRequest = machine.captureRequestToken()
 
-    internal suspend fun handleServiceLost(token: RunRequest) = machine.handleServiceLost(token)
+    internal suspend fun handleServiceLost(token: RunRequest, crashedNative: com.follow.clash.service.models.VpnOptions? = null) =
+        machine.handleServiceLost(token, crashedNative)
 }

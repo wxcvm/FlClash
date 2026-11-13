@@ -10,23 +10,59 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
     private final VpnService service;
     private final AndroidPlatform platform;
     private final LibboxVpnSession session;
+    private final NativeQuality quality;
 
     public AndroidVpnRuntime(VpnService service) {
         this.service = service;
         AndroidTunBridge bridge = new AndroidTunBridge(service);
         platform = new AndroidPlatform(service, bridge);
         session = new LibboxVpnSession(bridge, platform, this);
+        quality = new NativeQuality(platform::networkGeneration);
     }
 
     public void start(String config) throws Exception {
         session.start(service, config);
     }
 
+    public void startQuality(String tag) throws Exception {
+        NetworkEpoch.Snapshot<?> path = platform.networkPath();
+        if (!path.isReady()) throw new IOException("Underlying network unavailable; retry after recovery");
+        quality.start(tag);
+        if (path.generation != platform.networkGeneration()) {
+            quality.cancel();
+            throw new IOException("Underlying network changed while starting measurement");
+        }
+    }
+    public String qualitySnapshot() throws Exception { return quality.snapshot(); }
+    public void cancelQuality() throws Exception { quality.cancel(); }
+
+    public String snapshot() throws Exception { return snapshot(false); }
+    public String statusSnapshot() throws Exception { return snapshot(true); }
+
+    private String snapshot(boolean statusOnly) throws Exception {
+        NetworkEpoch.Snapshot<?> path = platform.networkPath();
+        long generation = path.generation;
+        org.json.JSONObject data = new org.json.JSONObject(statusOnly ? NativeTelemetry.statusSnapshot() : NativeTelemetry.snapshot());
+        if (generation != platform.networkGeneration()) {
+            throw new IOException("Network changed while reading status; refresh again");
+        }
+        return data.put("networkGeneration", generation)
+            .put("networkReady", path.isReady()).toString();
+    }
+    public void selectOutbound(String group, String tag, long expectedGeneration) throws Exception {
+        NetworkEpoch.Snapshot<?> path = platform.networkPath();
+        if (expectedGeneration >= 0 && (!path.isReady() || expectedGeneration != path.generation)) {
+            throw new IOException("Underlying network changed; retest before applying recommendation");
+        }
+        NativeTelemetry.select(group, tag);
+    }
+    public void testOutbound(String tag) throws Exception { NativeTelemetry.test(tag); }
+
     public void resetNetwork() { session.resetNetwork(); }
 
     @Override public void close() throws Exception {
         try {
-            session.close();
+            try { quality.cancel(); } finally { session.close(); }
         } finally {
             platform.close();
         }

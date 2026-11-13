@@ -25,6 +25,9 @@ const _allowed = {
   // `App` is the process-wide Android plugin; the notifier relays keyboard
   // state from the platform channel for the whole run.
   'lib/plugins/app.dart#floatingKeyboard',
+  // The process-wide Service singleton owns the native status channel for
+  // the whole run, independently of any mounted screen or active VPN.
+  'lib/plugins/service.dart#nativeStatus',
 };
 
 final _declaration = RegExp(

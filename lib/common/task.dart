@@ -304,15 +304,7 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
       keepEmpty: data.keepEmptyDnsOverrides,
     ),
   );
-  if (rawDns['enhanced-mode'] == 'fake-ip' &&
-      (rawDns['fake-ip-filter-mode'] ?? 'blacklist') == 'blacklist') {
-    final entries = rawDns['fake-ip-filter'];
-    if (entries is List && entries.every((entry) => entry is String)) {
-      rawDns['fake-ip-filter'] = normalizeFakeIpBlacklist(
-        entries.cast<String>(),
-      );
-    }
-  }
+  applyEncryptedDnsFakeIpCompatibility(rawDns);
   rawConfig['dns'] = rawDns;
   final ntpOverride = overrides.ntp.overrideJson(overrides.ntpOverrideKeys);
   if (ntpOverride.isNotEmpty) {

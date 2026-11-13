@@ -1,0 +1,128 @@
+package com.follow.clash.service
+
+import android.app.Service
+import android.content.Intent
+import android.os.Binder
+import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
+import android.os.Parcel
+import android.os.Process
+import com.follow.clash.core.Core
+import org.json.JSONObject
+
+/** The actual Mihomo Core, shared by VPN, proxy and RPC in the opt-in :mihomo process. */
+class MihomoCoreService : Service() {
+    private val lock = Any()
+    private val main = Handler(Looper.getMainLooper())
+    @Volatile private var retiring = false
+    private var owner: IBinder? = null
+    private var death: IBinder.DeathRecipient? = null
+    @Volatile private var events: IBinder? = null
+
+    private val binder = object : Binder() {
+        override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+            if (code !in MihomoCoreControl.ATTACH..MihomoCoreControl.CAN_SUSPEND || reply == null) {
+                return super.onTransact(code, data, reply, flags)
+            }
+            data.enforceInterface(MihomoCoreControl.TOKEN)
+            check(Binder.getCallingUid() == Process.myUid()) { "Private Mihomo Core" }
+            try {
+                val token = requireNotNull(data.readStrongBinder())
+                synchronized(lock) {
+                    check(!retiring) { "Mihomo Core is retiring" }
+                    MihomoProcessLifecycle.checkAvailable()
+                    if (code == MihomoCoreControl.ATTACH) {
+                        check(owner == null || owner == token) { "Mihomo Core already owned" }
+                        if (owner == null) {
+                            val recipient = IBinder.DeathRecipient { detach(token) }
+                            token.linkToDeath(recipient, 0)
+                            owner = token
+                            death = recipient
+                        }
+                        Core.load()
+                        NetworkObserver.start()
+                        reply.writeNoException()
+                        reply.writeInt(Process.myPid())
+                        return true
+                    }
+                    check(owner == token) { "Invalid Mihomo Core owner" }
+                    when (code) {
+                        MihomoCoreControl.INVOKE, MihomoCoreControl.SETUP -> {
+                            val callback = requireNotNull(data.readStrongBinder())
+                            val request = CoreProbePayload.readParcel(data).decodeToString()
+                            val deliver: (ByteArray) -> Unit = { bytes ->
+                                runCatching { CoreProbeCallback.send(this@MihomoCoreService, callback, Result.success(bytes)) }
+                            }
+                            if (code == MihomoCoreControl.INVOKE) {
+                                Core.invokeMethod(request) { deliver(it ?: ByteArray(0)) }
+                            } else {
+                                val json = JSONObject(request)
+                                Core.quickSetup(json.getString("init"), json.getString("setup")) {
+                                    deliver(it.orEmpty().encodeToByteArray())
+                                }
+                            }
+                        }
+                        MihomoCoreControl.EVENTS -> {
+                            val next = data.readStrongBinder()
+                            events = next
+                            Core.updateEventListener(next?.let { receiver ->
+                                { bytes ->
+                                    if (events == receiver) runCatching {
+                                        CoreProbeCallback.send(this@MihomoCoreService, receiver, Result.success(bytes))
+                                    }
+                                }
+                            })
+                        }
+                        MihomoCoreControl.CAN_SUSPEND -> {
+                            reply.writeNoException()
+                            reply.writeInt(if (MihomoProcessLifecycle.canSuspend()) 1 else 0)
+                            return true
+                        }
+                        MihomoCoreControl.RETIRE -> {
+                            MihomoProcessLifecycle.retire(packageName)
+                            retiring = true
+                            events = null
+                            // Arm before touching JNI. Process death releases all native resources.
+                            Thread({
+                                try { Thread.sleep(3000) } finally { Process.killProcess(Process.myPid()) }
+                            }, "mihomo-retirement-watchdog").apply { isDaemon = true; start() }
+                            runCatching { Core.updateEventListener(null) }
+                            runCatching { Core.stopListener() }
+                            main.postDelayed({ Process.killProcess(Process.myPid()) }, 150)
+                            stopSelf()
+                        }
+                        MihomoCoreControl.LISTENER -> {
+                            if (data.readInt() != 0) Core.startListener() else Core.stopListener()
+                        }
+                    }
+                    reply.writeNoException()
+                }
+            } catch (error: Exception) {
+                reply.writeException(IllegalStateException(error.message ?: "Mihomo RPC failed"))
+            } catch (error: LinkageError) {
+                reply.writeException(IllegalStateException("Mihomo JNI: ${error.message}"))
+            }
+            return true
+        }
+    }
+
+    private fun detach(token: IBinder?) = synchronized(lock) {
+        if (owner != token || token == null) return@synchronized
+        events = null
+        if (!retiring) Core.updateEventListener(null)
+        death?.let { runCatching { token.unlinkToDeath(it, 0) } }
+        owner = null
+        death = null
+    }
+
+    override fun onBind(intent: Intent): IBinder = binder
+    override fun onUnbind(intent: Intent): Boolean {
+        detach(owner)
+        return false
+    }
+    override fun onDestroy() {
+        detach(owner)
+        super.onDestroy()
+    }
+}

@@ -5,6 +5,7 @@ import 'package:fl_clash/core/core.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/action.dart';
+import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/config.dart';
 import 'package:fl_clash/providers/core.dart';
@@ -126,6 +127,7 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   }
 
   void _syncLogStream() {
+    if (service?.nativeOwnsRuntime == true) return;
     if (ref.read(coreStatusProvider) != CoreStatus.connected) {
       return;
     }

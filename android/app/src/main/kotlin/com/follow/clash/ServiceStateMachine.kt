@@ -16,6 +16,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
+import java.io.File
 
 enum class RunState {
     STARTED,
@@ -51,6 +52,10 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     @Volatile
     private var sharedState = SharedState()
 
+    @Volatile private var manualNativePath: String? = null
+    private var nativeRunToken: RunRequest? = null
+    private var nativeRecoveryAttempt: RunRequest? = null
+
     @Volatile
     private var pendingVpnPreparation: (() -> Unit)? = null
 
@@ -80,7 +85,29 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
      * Settles the state after the bound service was lost. [token] is the request that was current
      * when the loss was observed, so a start that raced ahead of this callback keeps its intent.
      */
-    suspend fun handleServiceLost(token: RunRequest) {
+    suspend fun handleServiceLost(token: RunRequest, crashedNative: VpnOptions? = null) {
+        if (crashedNative?.nativeConfigPath != null) {
+            val recovered = startPreparationLock.withLock {
+                transitionLock.withLock recovery@ {
+                    if (!isCurrent(token) || !isRunRequested || nativeRunToken != token ||
+                        nativeRecoveryAttempt == token || host.runtime != null || host.hasNativeOwner ||
+                        !host.isVpnPermissionGranted()) return@recovery false
+                    nativeRecoveryAttempt = token
+                    transitioning(RunState.STARTING) {
+                        try {
+                            host.log("Recovering crashed sing-box VPN with the same configuration")
+                            host.startNativeService(crashedNative).started && isCurrent(token)
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            host.log("Unable to recover crashed sing-box: $error")
+                            false
+                        }
+                    }
+                }
+            }
+            if (recovered) return
+        }
         val dropped = transitionLock.withLock {
             if (host.runtime != null) {
                 return@withLock false
@@ -102,6 +129,45 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             return
         }
         startFromPreferences()
+    }
+
+    /** Android's own VPN start must not route through the tile or request UI consent.
+     * The system selects the Mihomo VpnService; sing-box explicitly opts out of always-on.
+     */
+    suspend fun handleSystemVpnStart() = startPreparationLock.withLock {
+        if (isRunRequested) return@withLock
+        val request = createRequest(running = true)
+        val stored = host.loadSharedState()
+        val options = stored.vpnOptions?.copy(enable = true, nativeConfigPath = null)
+        sharedState = stored.copy(vpnOptions = options)
+        if (options == null || stored.setupParams == null) {
+            host.showToast(MISSING_CONFIG_MESSAGE)
+            abandon(request)
+            return@withLock
+        }
+        if (!host.isVpnPermissionGranted()) {
+            host.showToast(VPN_PERMISSION_MESSAGE)
+            abandon(request)
+            return@withLock
+        }
+        if (!setupCore()) {
+            abandon(request)
+            return@withLock
+        }
+        val started = try {
+            transitionLock.withLock {
+                if (!isCurrent(request)) return@withLock false
+                transitioning(RunState.STARTING) {
+                    host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            host.log("Unable to restore system VPN: $error")
+            false
+        }
+        if (!started) abandon(request)
     }
 
     suspend fun handleStopAction() {
@@ -128,6 +194,78 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return host.scope.async { outcome.await() == StartOutcome.STARTED }
     }
 
+    fun requestNativeStart(config: File): Deferred<NativeStartResult> {
+        val request = createRequest(running = true)
+        return host.scope.async {
+            val result = startPreparationLock.withLock preparation@ {
+                val options = sharedState.vpnOptions?.copy(enable = true, nativeConfigPath = config.path)
+                    ?: return@preparation NativeStartResult(false, false, MISSING_CONFIG_MESSAGE)
+                if (!isCurrent(request)) return@preparation NativeStartResult(false, false, "Superseded")
+                if (!prepareVpn(options)) return@preparation NativeStartResult(false, false, VPN_PERMISSION_MESSAGE)
+                transitionLock.withLock transition@ {
+                    if (!isCurrent(request)) return@transition NativeStartResult(false, false, "Superseded")
+                    transitioning(RunState.STARTING) {
+                        try {
+                            host.startNativeService(options).also { outcome ->
+                                if (outcome.started) {
+                                    manualNativePath = config.path
+                                    nativeRunToken = request
+                                }
+                            }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            NativeStartResult(false, false, error.message.orEmpty())
+                        }
+                    }
+                }
+            }
+            transitionLock.withLock {
+                if (isCurrent(request) && !result.started && host.runtime == null && !host.hasNativeOwner) {
+                    arbiter.resetToStopped(request)
+                }
+                publish()
+            }
+            result
+        }
+    }
+
+    /** Explicit switch, unlike ordinary start which preserves a manual native run. */
+    fun requestMihomoStart(): Deferred<Boolean> {
+        val request = createRequest(running = true)
+        return host.scope.async {
+            val result = startPreparationLock.withLock preparation@ {
+                val options = sharedState.vpnOptions?.copy(nativeConfigPath = null)
+                    ?: return@preparation false
+                // Do not tear down a working native VPN without a restore profile.
+                if (sharedState.setupParams == null) return@preparation false
+                if (!isCurrent(request) || !prepareVpn(options)) return@preparation false
+                transitionLock.withLock transition@ {
+                    if (!isCurrent(request)) return@transition false
+                    transitioning(RunState.STARTING) {
+                        try {
+                            val started = host.startService(withLocalNetworkFallback(options))
+                            if (started) manualNativePath = null
+                            started
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            host.log("Unable to switch to Mihomo: $error")
+                            false
+                        }
+                    }
+                }
+            }
+            transitionLock.withLock {
+                if (isCurrent(request) && !result && host.runtime == null && !host.hasNativeOwner) {
+                    arbiter.resetToStopped(request)
+                }
+                publish()
+            }
+            result
+        }
+    }
+
     fun requestStop(): Deferred<Boolean> {
         val request = createRequest(running = false)
         return host.scope.async { stop(request) }
@@ -140,7 +278,12 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
 
     // No new request for a settled run: one refused at a prompt would take the service down.
     private fun isStartedAs(options: VpnOptions?): Boolean =
-        runState.value == RunState.STARTED && host.runtime?.matches(options) == true
+        runState.value == RunState.STARTED &&
+            (isManualNativeRun(options) || host.runtime?.matches(options) == true)
+
+    private fun isManualNativeRun(options: VpnOptions?): Boolean =
+        manualNativePath != null && host.runtime?.nativeConfigPath == manualNativePath &&
+            options?.nativeConfigPath == null
 
     // The intent is claimed before the Core is set up, so a second action that lands meanwhile
     // toggles this start off instead of racing a second setup against it.
@@ -258,9 +401,11 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
         return transitionLock.withLock {
             when {
                 !isCurrent(request) -> false
-                host.runtime?.matches(options) == true -> true
+                isManualNativeRun(options) || host.runtime?.matches(options) == true -> true
                 else -> transitioning(RunState.STARTING) {
-                    host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
+                    val started = host.startService(withLocalNetworkFallback(options)) && isCurrent(request)
+                    if (started && options.nativeConfigPath != null) nativeRunToken = request
+                    started
                 }
             }
         }
@@ -295,10 +440,12 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
             return@withLock false
         }
         abandonVpnPreparation()
-        if (host.runtime != null) {
+        if (host.runtime != null || host.hasNativeOwner) {
             stopLocked()
         }
-        isCurrent(request)
+        (isCurrent(request) && host.runtime == null && !host.hasNativeOwner).also { stopped ->
+            if (stopped) manualNativePath = null
+        }
     }
 
     private suspend fun stopLocked() = transitioning(RunState.STOPPING) { stopService() }
@@ -327,6 +474,7 @@ internal class ServiceStateMachine(private val host: ServiceStateHost) {
     @Synchronized
     private fun publish() {
         mutableRunState.value = transition ?: when {
+            host.hasNativeOwner && host.runtime == null -> RunState.STOPPING
             host.runtime == null -> RunState.STOPPED
             isRunRequested -> RunState.STARTED
             else -> RunState.STOPPING

@@ -12,7 +12,15 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
+        manifestPlaceholders["flclashMihomoProbeEnabled"] = "false"
         manifestPlaceholders["flclashSingBoxEnabled"] = providers.gradleProperty("flclashSingBoxAar").isPresent.toString()
+    }
+
+    buildTypes {
+        debug {
+            manifestPlaceholders["flclashMihomoProbeEnabled"] =
+                (providers.gradleProperty("flclashMihomoProcessProbe").orNull == "true").toString()
+        }
     }
 
     compileOptions {
@@ -21,6 +29,9 @@ android {
     }
 
     sourceSets {
+        if (providers.gradleProperty("flclashMihomoIsolated").orNull == "true") {
+            getByName("debug").manifest.srcFile("src/mihomoIsolated/AndroidManifest.xml")
+        }
         // Unit tests live under android/tests/ instead of each module's src/test.
         getByName("test").java.setSrcDirs(listOf("../tests/service"))
     }
@@ -44,13 +55,13 @@ dependencies {
 /** Keep the second gomobile go.Seq and JNI bindings outside the host DEX. */
 abstract class PackageSingBoxRuntime : DefaultTask() {
     @get:Inject abstract val execOperations: ExecOperations
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val aar: RegularFileProperty
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val adapterSources: DirectoryProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val androidJar: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val d8Jar: RegularFileProperty
     @get:Input abstract val abis: ListProperty<String>
     @get:OutputDirectory abstract val assets: DirectoryProperty
@@ -58,16 +69,22 @@ abstract class PackageSingBoxRuntime : DefaultTask() {
 
     @TaskAction
     fun pack() {
+        val nativeDir = jni.get().asFile
+        val assetDir = assets.get().asFile
+        nativeDir.deleteRecursively()
+        assetDir.deleteRecursively()
+        nativeDir.mkdirs()
+        assetDir.mkdirs()
+        // Keep generated sources registered even when disabled, so AGP sees
+        // the files disappear on an incremental optional -> default build.
+        if (!aar.isPresent) return
+
         val work = temporaryDir
         work.deleteRecursively()
         work.mkdirs()
         val libboxJar = work.resolve("libbox.jar")
         val classes = work.resolve("adapter").apply { mkdirs() }
         val dex = work.resolve("dex").apply { mkdirs() }
-        val nativeDir = jni.get().asFile
-        val assetDir = assets.get().asFile
-        nativeDir.deleteRecursively()
-        assetDir.deleteRecursively()
         ZipFile(aar.get().asFile).use { zip ->
             fun extract(name: String, target: File) {
                 val entry = zip.getEntry(name) ?: error("Official libbox AAR is missing $name")
@@ -112,31 +129,32 @@ abstract class PackageSingBoxRuntime : DefaultTask() {
 }
 
 val singBoxAar = providers.gradleProperty("flclashSingBoxAar")
-if (singBoxAar.isPresent) {
-    val abiByPlatform = mapOf(
-        "android-arm" to "armeabi-v7a",
-        "android-arm64" to "arm64-v8a",
-        "android-x64" to "x86_64",
-    )
-    val selectedAbis = (rootProject.findProperty("target-platform") as String?)
-        ?.split(",")?.map { abiByPlatform[it.trim()] ?: error("Unsupported Android target $it") }
-        ?: abiByPlatform.values.toList()
-    val sdk = androidComponents.sdkComponents.sdkDirectory
-    val compileApi = "35"
-    val buildTools = android.buildToolsVersion
-    val packageRuntime = tasks.register<PackageSingBoxRuntime>("packageSingBoxRuntime") {
+val packageRuntime = tasks.register<PackageSingBoxRuntime>("packageSingBoxRuntime") {
+    adapterSources.set(rootProject.layout.projectDirectory.dir(
+        "../tool/android-singbox/isolation/libbox-src",
+    ))
+    assets.set(layout.buildDirectory.dir("singbox/assets"))
+    jni.set(layout.buildDirectory.dir("singbox/jni"))
+    abis.set(emptyList())
+    if (singBoxAar.isPresent) {
+        val abiByPlatform = mapOf(
+            "android-arm" to "armeabi-v7a",
+            "android-arm64" to "arm64-v8a",
+            "android-x64" to "x86_64",
+        )
+        val selectedAbis = (rootProject.findProperty("target-platform") as String?)
+            ?.split(",")?.map { abiByPlatform[it.trim()] ?: error("Unsupported Android target $it") }
+            ?: abiByPlatform.values.toList()
+        val sdk = androidComponents.sdkComponents.sdkDirectory
+        val compileApi = "35"
+        val buildTools = android.buildToolsVersion
         aar.set(rootProject.layout.file(singBoxAar.map { rootProject.file(it) }))
-        adapterSources.set(rootProject.layout.projectDirectory.dir(
-            "../tool/android-singbox/isolation/libbox-src",
-        ))
         androidJar.set(sdk.map { it.file("platforms/android-$compileApi/android.jar") })
         d8Jar.set(sdk.map { it.file("build-tools/$buildTools/lib/d8.jar") })
         abis.set(selectedAbis)
-        assets.set(layout.buildDirectory.dir("singbox/assets"))
-        jni.set(layout.buildDirectory.dir("singbox/jni"))
     }
-    androidComponents.onVariants { variant ->
-        variant.sources.assets?.addGeneratedSourceDirectory(packageRuntime, PackageSingBoxRuntime::assets)
-        variant.sources.jniLibs?.addGeneratedSourceDirectory(packageRuntime, PackageSingBoxRuntime::jni)
-    }
+}
+androidComponents.onVariants { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(packageRuntime, PackageSingBoxRuntime::assets)
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(packageRuntime, PackageSingBoxRuntime::jni)
 }
