@@ -138,4 +138,60 @@ void main() {
       });
     }
   });
+  test('assembles nested groups and preserves selected member', () {
+    final graph = convertClashRoutingGraph({
+      'proxies': [
+        {
+          ...endpoint,
+          'type': 'ss',
+          'cipher': 'aes-128-gcm',
+          'password': 'secret',
+        },
+      ],
+      'proxy-groups': [
+        {
+          'name': 'outer',
+          'type': 'select',
+          'proxies': ['inner', 'DIRECT'],
+        },
+        {
+          'name': 'inner',
+          'type': 'select',
+          'proxies': ['node'],
+        },
+      ],
+      'rules': ['MATCH,outer'],
+    }, selected: {'outer': 'inner'});
+    final outbounds = graph['outbounds'] as List;
+    expect(outbounds.map((item) => item['tag']), [
+      'DIRECT',
+      'node',
+      'inner',
+      'outer',
+    ]);
+    expect(outbounds.last['default'], 'inner');
+    expect(graph['route'], {'rules': [], 'final': 'outer'});
+  });
+
+  test('rejects cyclic groups', () {
+    expect(
+      () => convertClashRoutingGraph({
+        'proxies': [],
+        'proxy-groups': [
+          {
+            'name': 'a',
+            'type': 'select',
+            'proxies': ['b'],
+          },
+          {
+            'name': 'b',
+            'type': 'select',
+            'proxies': ['a'],
+          },
+        ],
+        'rules': ['MATCH,a'],
+      }),
+      throwsFormatException,
+    );
+  });
 }
