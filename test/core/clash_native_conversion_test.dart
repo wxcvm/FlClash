@@ -194,4 +194,61 @@ void main() {
       throwsFormatException,
     );
   });
+  test('preserves DoH path and explicit bootstrap', () {
+    final dns = convertClashDns({
+      'enable': true,
+      'enhanced-mode': 'redir-host',
+      'nameserver': ['https://example.com:8443/custom/dns-query'],
+      'default-nameserver': ['192.0.2.53'],
+    });
+    expect(dns['servers'], [
+      {'type': 'udp', 'tag': 'bootstrap', 'server': '192.0.2.53'},
+      {
+        'type': 'https',
+        'tag': 'resolver',
+        'server': 'example.com',
+        'server_port': 8443,
+        'path': '/custom/dns-query',
+        'domain_resolver': 'bootstrap',
+      },
+    ]);
+  });
+
+  test('does not silently replace Fake-IP DNS', () {
+    expect(
+      () => convertClashDns({
+        'enable': true,
+        'enhanced-mode': 'fake-ip',
+        'nameserver': ['192.0.2.53'],
+      }),
+      throwsFormatException,
+    );
+  });
+
+  test('assembles a candidate with explicit platform inbound', () {
+    final config = buildClashNativeConfig({
+      'proxies': [],
+      'proxy-groups': [],
+      'rules': ['MATCH,DIRECT'],
+      'dns': {
+        'enable': true,
+        'enhanced-mode': 'redir-host',
+        'nameserver': ['192.0.2.53'],
+      },
+    }, inbounds: [
+      {'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': 7890},
+    ]);
+    expect(config['inbounds'], [
+      {'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': 7890},
+    ]);
+    expect(config['route'], {
+      'final': 'DIRECT',
+      'auto_detect_interface': true,
+      'default_domain_resolver': 'resolver',
+      'rules': [
+        {'action': 'sniff'},
+        {'protocol': 'dns', 'action': 'hijack-dns'},
+      ],
+    });
+  });
 }
