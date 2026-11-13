@@ -19,11 +19,9 @@ void main() {
       networkHealthGate(health, now.add(const Duration(seconds: 30))),
       NetworkHealthGate.refresh,
     );
+    final checking = {...health, 'state': 'checking'};
     expect(
-      networkHealthGate({
-        ...health,
-        'state': 'checking',
-      }, now.add(const Duration(seconds: 30))),
+      networkHealthGate(checking, now.add(const Duration(seconds: 30))),
       NetworkHealthGate.wait,
     );
     expect(
