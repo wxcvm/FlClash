@@ -273,14 +273,19 @@ class _NativeCoreViewState extends State<NativeCoreView> {
               ),
               ListItem(
                 title: const Text('启动独立内核'),
-                onTap: _busy || active != null ? null : () => _perform(_start),
+                onTap: _busy ||
+                        active != null ||
+                        nativeCoreHandoff.ownsNativeSystemProxy
+                    ? null
+                    : () => _perform(_start),
               ),
               ListItem(
                 title: const Text('停止独立内核'),
                 onTap:
                     _busy ||
                         (active == null &&
-                            !nativeCoreHandoff.hasMihomoToRestore)
+                            !nativeCoreHandoff.hasMihomoToRestore &&
+                            !nativeCoreHandoff.ownsNativeSystemProxy)
                     ? null
                     : () => _perform(_stop),
               ),

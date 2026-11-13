@@ -226,10 +226,13 @@ bool stopProxy()
     if (it == ownedConnections.end()) return true;
     const auto current = ReadProxySnapshot(connection);
     if (!current) return false;
-    if (it->second.stillOwns(*current) &&
-        !WriteProxySnapshot(connection, it->second.original))
+    if (it->second.stillOwns(*current))
     {
-      return false;
+      if (!WriteProxySnapshot(connection, it->second.original)) return false;
+      // Keep the snapshot until a read-back confirms restoration. A failed
+      // query or unchanged setting must not silently discard our rollback.
+      const auto actual = ReadProxySnapshot(connection);
+      if (!actual || !(*actual == it->second.original)) return false;
     }
     // If another program changed the settings, leave its configuration alone.
     ownedConnections.erase(it);
