@@ -19,6 +19,10 @@ class SystemProxyQueue {
   bool _closed = false;
   bool _applied = false;
   bool _nativeOwner = false;
+  int? _nativeHttpPort;
+
+  /// Only expose a verified native HTTP proxy endpoint.
+  int? get nativeHttpPort => _closed ? null : _nativeHttpPort;
 
   SystemProxyQueue(this._proxy);
 
@@ -58,9 +62,11 @@ class SystemProxyQueue {
     await _enqueue(() async {
       if (_closed) return;
       _nativeOwner = true;
+      _nativeHttpPort = null;
       _applied = true;
       try {
         success = await _proxy.startProxy(port, bypassDomain);
+        if (success) _nativeHttpPort = port;
       } finally {
         if (!success) {
           _logFailure();
@@ -73,6 +79,7 @@ class SystemProxyQueue {
 
   Future<void> releaseNative() => _enqueue(() async {
     if (!_nativeOwner) return;
+    _nativeHttpPort = null;
     if (!await _stop()) {
       throw StateError('Could not release native system proxy');
     }
@@ -81,6 +88,7 @@ class SystemProxyQueue {
 
   Future<void> close() {
     _closed = true;
+    _nativeHttpPort = null;
     return _enqueue(() async {
       _nativeOwner = false;
       await _stop();
