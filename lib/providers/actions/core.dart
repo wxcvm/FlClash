@@ -9,6 +9,7 @@ class CoreAction extends _$CoreAction {
   int _networkEventRevision = 0;
   int _networkVerifications = 0;
   DateTime? _lastWatchdogRefresh;
+  DateTime? _lastWatchdogRestart;
 
   @override
   void build() {
@@ -142,6 +143,27 @@ class CoreAction extends _$CoreAction {
     }
     _networkVerifications++;
     try {
+      if (watchdog &&
+          await confirmDesktopCoreTimeout(
+            ping: () async {
+              await _core.invokeMethod(
+                method: CoreMethod.coreInitialized,
+                timeout: const Duration(seconds: 5),
+              );
+            },
+            isCurrent: current,
+          )) {
+        final last = _lastWatchdogRestart;
+        if (current() &&
+            (last == null ||
+                DateTime.now().difference(last) >=
+                    const Duration(minutes: 5))) {
+          _lastWatchdogRestart = DateTime.now();
+          await restartCore();
+        }
+        return;
+      }
+      if (!current()) return;
       final recover = await verifyDesktopNetwork(
         check: _core.checkNetworkHealth,
         read: _core.getNetworkHealth,
