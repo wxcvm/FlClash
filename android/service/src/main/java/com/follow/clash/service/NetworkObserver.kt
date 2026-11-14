@@ -102,7 +102,7 @@ object NetworkObserver {
             .onFailure { error -> GlobalState.log("Unable to observe networks: $error") }
     }
 
-    private fun networkPriority(entry: Map.Entry<Network, NetworkInfo>): Int? {
+    private fun networkPriority(entry: Map.Entry<Network, NetworkInfo>, link: LinkProperties?): Int? {
         val info = entry.value
         val capabilities = info.capabilities ?: connectivity?.getNetworkCapabilities(entry.key)
             ?: return null
@@ -127,7 +127,7 @@ object NetworkObserver {
         return networkSelectionPriority(
             transportPriority = transport,
             validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-            hasDns = info.linkProperties?.dnsServers?.isNotEmpty() == true,
+            hasDns = link?.dnsServers?.isNotEmpty() == true,
             losing = info.losingUntilMillis > SystemClock.elapsedRealtime(),
         )
     }
@@ -135,7 +135,8 @@ object NetworkObserver {
     @Synchronized
     private fun updateDns() {
         val eligible = networkInfos.entries.mapNotNull { entry ->
-            networkPriority(entry)?.let { priority -> entry to priority }
+            val link = entry.value.linkProperties ?: connectivity?.getLinkProperties(entry.key)
+            networkPriority(entry, link)?.let { priority -> Triple(entry, priority, link) }
         }
         // A suspended/lost current path must not retain its DNS while a
         // replacement is waiting for link properties.
@@ -146,16 +147,14 @@ object NetworkObserver {
             { it.second },
             { if (it.first.key == handover.current) 0 else 1 },
             { it.first.key.networkHandle },
-        ))?.first
+        ))
         // onAvailable can precede onLinkPropertiesChanged by more than the
         // debounce interval. Unknown DNS is not an explicitly empty DNS list.
-        val link = preferred?.let { entry ->
-            entry.value.linkProperties ?: connectivity?.getLinkProperties(entry.key)
-        }
+        val link = preferred?.third
         if (preferred != null && (link == null || link.interfaceName == null)) {
             // Keep waiting for the new network's link properties. If the old
             // network was lost, do not keep using its system DNS addresses.
-            handover.update(preferred.key, dnsReady = false)
+            handover.update(preferred.first.key, dnsReady = false)
             if (handover.current == null) publishDns(emptyList())
             return
         }
@@ -172,9 +171,10 @@ object NetworkObserver {
                 dns = servers,
                 privateDnsActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && it.isPrivateDnsActive,
                 privateDnsName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) it.privateDnsServerName else null,
+                mtu = it.mtu,
             )
         }
-        if (handover.update(preferred?.key, path = path)) {
+        if (handover.update(preferred?.first?.key, path = path)) {
             Core.resetNetwork()
         }
     }

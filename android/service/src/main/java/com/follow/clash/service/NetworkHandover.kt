@@ -19,6 +19,7 @@ internal data class NetworkPath(
     val dns: List<String>,
     val privateDnsActive: Boolean,
     val privateDnsName: String?,
+    val mtu: Int = 0,
 )
 
 // Runs on the NetworkObserver handler. Do not reset the core on initial
