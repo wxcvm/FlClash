@@ -382,6 +382,13 @@ func UpdateDns(value string) {
 	handleUpdateDns(value)
 }
 
+// RefreshNetwork invalidates DNS transports and network-dependent probes
+// without closing established connections or rebuilding outbounds.
+func RefreshNetwork() {
+	defer recoverExport("refreshNetwork")
+	safeGo("refreshNetwork", handleNetworkChanged)
+}
+
 func ResetNetwork() {
 	defer recoverExport("resetNetwork")
 	safeGo("resetNetwork", handleResetNetwork)

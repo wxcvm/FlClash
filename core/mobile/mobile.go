@@ -95,6 +95,10 @@ func UpdateDns(value string) {
 	core.UpdateDns(value)
 }
 
+func RefreshNetwork() {
+	core.RefreshNetwork()
+}
+
 func ResetNetwork() {
 	core.ResetNetwork()
 }

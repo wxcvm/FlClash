@@ -30,6 +30,19 @@ internal class NetworkHandoverTracker<T : Any> {
     private var seenNetwork = false
     private var currentPath: NetworkPath? = null
 
+    // DNS policy/server changes on an unchanged data path must not close
+    // established TCP transfers. A returning or different network still needs
+    // full recovery, even if its interface name and addresses are identical.
+    fun isDnsOnlyChange(next: T?, path: NetworkPath?): Boolean {
+        val previous = currentPath ?: return false
+        if (next == null || current != next || path == null || path == previous) return false
+        return path.copy(
+            dns = previous.dns,
+            privateDnsActive = previous.privateDnsActive,
+            privateDnsName = previous.privateDnsName,
+        ) == previous
+    }
+
     fun markLost(network: T) {
         if (current == network) {
             current = null
