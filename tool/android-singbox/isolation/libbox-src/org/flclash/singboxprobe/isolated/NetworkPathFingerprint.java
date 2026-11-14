@@ -10,7 +10,7 @@ final class NetworkPathFingerprint {
 
     static String of(String name, int index, List<?> dns, List<?> addresses,
                      List<?> routes, boolean privateDnsActive, String privateDnsName,
-                     String domains) {
+                     String domains, int mtu) {
         StringBuilder out = new StringBuilder();
         append(out, name);
         append(out, Integer.toString(index));
@@ -20,6 +20,7 @@ final class NetworkPathFingerprint {
         append(out, Boolean.toString(privateDnsActive));
         append(out, privateDnsName);
         append(out, domains);
+        append(out, Integer.toString(mtu));
         return out.toString();
     }
 

@@ -155,7 +155,7 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
                                 link.getDnsServers(), link.getLinkAddresses(), link.getRoutes(),
                                 Build.VERSION.SDK_INT >= 28 && link.isPrivateDnsActive(),
                                 Build.VERSION.SDK_INT >= 28 ? link.getPrivateDnsServerName() : null,
-                                link.getDomains());
+                                link.getDomains(), link.getMtu());
                             NetworkEpoch.Snapshot<Network> previous = networks.snapshot();
                             if (networks.publish(this, candidate, fingerprint)) {
                                 cancelStaleDns();

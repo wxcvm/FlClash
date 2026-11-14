@@ -276,6 +276,14 @@ jobs:
       - name: Apply Mihomo recovery source extension
         shell: bash
         run: python3 tool/mihomo-recovery/apply.py core/Clash.Meta
+      - name: Test native sing-box network epoch
+        shell: bash
+        run: |
+          root=tool/android-singbox/isolation
+          src="$root/libbox-src/org/flclash/singboxprobe/isolated"
+          out="$(mktemp -d)"
+          javac --release 8 -d "$out" "$src/NetworkEpoch.java" "$src/NetworkPathFingerprint.java" "$root/tests/NetworkEpochTest.java"
+          java -cp "$out" org.flclash.singboxprobe.isolated.NetworkEpochTest
       - name: Run Android unit tests
         working-directory: android
         env:

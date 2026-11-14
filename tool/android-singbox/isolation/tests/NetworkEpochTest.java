@@ -8,20 +8,32 @@ public final class NetworkEpochTest {
         java.util.List<String> dns = java.util.Arrays.asList("1.1.1.1", "8.8.8.8");
         java.util.List<String> addresses = java.util.Arrays.asList("a", "b");
         java.util.List<String> routes = java.util.Arrays.asList("x", "y");
-        String base = NetworkPathFingerprint.of("wlan0", 3, dns, addresses, routes, false, null, null);
+        String base = NetworkPathFingerprint.of("wlan0", 3, dns, addresses, routes, false, null, null, 1500);
         check(base.equals(NetworkPathFingerprint.of("wlan0", 3, dns,
             java.util.Arrays.asList("b", "a"), java.util.Arrays.asList("y", "x"),
-            false, null, null)), "reordered addresses/routes must not reset tunnel");
+            false, null, null, 1500)), "reordered addresses/routes must not reset tunnel");
         check(!base.equals(NetworkPathFingerprint.of("wlan0", 3,
             java.util.Arrays.asList("8.8.8.8", "1.1.1.1"), addresses, routes,
-            false, null, null)), "DNS order remains meaningful");
+            false, null, null, 1500)), "DNS order remains meaningful");
         String privateDns = NetworkPathFingerprint.of("wlan0", 3, dns, addresses, routes,
-            true, "dns.example", null);
+            true, "dns.example", null, 1500);
         check(!base.equals(privateDns), "private DNS activation invalidates path");
         check(!privateDns.equals(NetworkPathFingerprint.of("wlan0", 3, dns, addresses, routes,
-            true, "other.example", null)), "private DNS hostname change invalidates path");
+            true, "other.example", null, 1500)), "private DNS hostname change invalidates path");
         check(!base.equals(NetworkPathFingerprint.of("wlan0", 3, dns, addresses, routes,
-            false, null, "example")), "search domains change invalidates path");
+            false, null, "example", 1500)), "search domains change invalidates path");
+        String mtuChanged = NetworkPathFingerprint.of("wlan0", 3, dns, addresses, routes,
+            false, null, null, 1400);
+        check(!base.equals(mtuChanged), "physical MTU change invalidates path");
+        NetworkEpoch<String> epoch = new NetworkEpoch<>();
+        Object owner = new Object();
+        epoch.begin(owner);
+        epoch.select(owner, "wifi");
+        check(epoch.publish(owner, "wifi", base), "initial path published");
+        NetworkEpoch.Snapshot<String> old = epoch.snapshot();
+        check(epoch.publish(owner, "wifi", mtuChanged), "MTU change publishes a new path");
+        check(!epoch.isCurrent(old), "old path is invalidated");
+        check(!epoch.publish(owner, "wifi", mtuChanged), "duplicate MTU does not reset path");
     }
 
     public static void main(String[] args) {
