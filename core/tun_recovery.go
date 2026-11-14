@@ -2,7 +2,9 @@ package core
 
 import (
 	"context"
+	"net"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/metacubex/mihomo/component/dialer"
@@ -18,6 +20,25 @@ func shouldRetryTun(desired, actual bool, last, now time.Time) bool {
 	return desired && !actual && now.Sub(last) >= 2*time.Minute
 }
 
+// A failed or empty enumeration is inconclusive. Match the actual adapter
+// name reported by Mihomo, not the potentially empty requested device name.
+func tunAdapterMissing(name string, interfaces []net.Interface, err error) bool {
+	if name == "" || err != nil || len(interfaces) == 0 {
+		return false
+	}
+	for _, iface := range interfaces {
+		if strings.EqualFold(iface.Name, name) {
+			return false
+		}
+	}
+	return true
+}
+
+func windowsTunAdapterMissing(name string) bool {
+	interfaces, err := net.Interfaces()
+	return tunAdapterMissing(name, interfaces, err)
+}
+
 // Protected by configMu, like the applied configuration and listener changes.
 var lastTunRepair time.Time
 
@@ -26,15 +47,52 @@ func recoverWindowsTunListener(ctx context.Context, valid func() bool) {
 		return
 	}
 	configMu.Lock()
-	defer configMu.Unlock()
 	if ctx.Err() != nil || !valid() || !isRunning.Load() ||
 		currentConfig == nil || appliedConfigDigest == nil {
+		configMu.Unlock()
 		return
 	}
-	general := currentConfig.General
+	cfg := currentConfig
+	general := cfg.General
+	actual := listener.GetTunConf()
+	observedDevice := actual.Device
 	now := time.Now()
-	if !shouldRetryTun(general.Tun.Enable, listener.GetTunConf().Enable, lastTunRepair, now) {
+	missing := general.Tun.Enable && actual.Enable &&
+		now.Sub(lastTunRepair) >= 2*time.Minute &&
+		windowsTunAdapterMissing(actual.Device)
+	if missing {
+		// Do not hold the configuration lock while waiting for Windows to
+		// finish a transient adapter update.
+		configMu.Unlock()
+		timer := time.NewTimer(500 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		configMu.Lock()
+	}
+	defer configMu.Unlock()
+	if ctx.Err() != nil || !valid() || !isRunning.Load() ||
+		currentConfig != cfg || appliedConfigDigest == nil {
 		return
+	}
+	actual = listener.GetTunConf()
+	now = time.Now()
+	// Re-read the active state under the lock. A concurrent setup may have
+	// restored the adapter while the first observation was pending.
+	if !shouldRetryTun(general.Tun.Enable, actual.Enable, lastTunRepair, now) {
+		if !missing || !general.Tun.Enable || !actual.Enable || actual.Device != observedDevice ||
+			now.Sub(lastTunRepair) < 2*time.Minute ||
+			!windowsTunAdapterMissing(actual.Device) {
+			return
+		}
+		// ReCreateTun otherwise only calls OnReload for identical options.
+		// Close the missing adapter's stale listener before recreating it.
+		disabled := general.Tun
+		disabled.Enable = false
+		listener.ReCreateTun(disabled, tunnel.Tunnel)
 	}
 
 	// Reuse the original startup bootstrap idea: pin physical egress until
@@ -48,9 +106,8 @@ func recoverWindowsTunListener(ctx context.Context, valid func() bool) {
 			defer dialer.DefaultInterface.CompareAndSwap(name, "")
 		}
 	}
-	if ctx.Err() != nil || !valid() {
-		return
-	}
+	// Once a missing adapter has been closed, finish this repair under the
+	// config lock even if the probe expires; the next stop/apply can follow.
 	lastTunRepair = now
 	listener.ReCreateTun(general.Tun, tunnel.Tunnel)
 	if listener.GetTunConf().Enable {
