@@ -3,19 +3,21 @@ package core
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
 
 const (
-	downloadSpeedURL     = "https://speed.cloudflare.com/__down?bytes=2097152"
 	downloadSpeedBytes   = 2 * 1024 * 1024
+	sustainedSpeedBytes  = 8 * 1024 * 1024
 	minSpeedSampleBytes  = 256 * 1024
 	downloadSpeedTimeout = 12 * time.Second
 )
 
 type SpeedTestParams struct {
 	ProxyName string `json:"proxy-name"`
+	Sustained bool   `json:"sustained,omitempty"`
 }
 
 type SpeedTestResult struct {
@@ -114,13 +116,17 @@ func testSpeed(ctx context.Context, params *SpeedTestParams, run func(context.Co
 		return result
 	}
 
+	sampleBytes := int64(downloadSpeedBytes)
+	if params.Sustained {
+		sampleBytes = sustainedSpeedBytes
+	}
 	epoch, version, generation := speedPathStamp()
 	probe := run(ctx, probeRequest{
 		method:        http.MethodGet,
-		url:           downloadSpeedURL,
+		url:           "https://speed.cloudflare.com/__down?bytes=" + strconv.FormatInt(sampleBytes, 10),
 		proxyName:     params.ProxyName,
 		timeout:       downloadSpeedTimeout,
-		downloadBytes: downloadSpeedBytes,
+		downloadBytes: sampleBytes,
 		noRedirect:    true,
 		headers: map[string]string{
 			"Accept-Encoding": "identity",
@@ -140,10 +146,10 @@ func testSpeed(ctx context.Context, params *SpeedTestParams, run func(context.Co
 	// A slow node can transfer real data without finishing 2 MiB in 12s.
 	// Keep a sufficiently large deadline-limited sample, but never count
 	// a canceled request, premature EOF, or an HTTP error as throughput.
-	complete := probe.Error == "" && probe.DownloadBytes == downloadSpeedBytes
+	complete := probe.Error == "" && probe.DownloadBytes == sampleBytes
 	partial := probe.Error == probeErrorTimeout &&
 		probe.DownloadBytes >= minSpeedSampleBytes &&
-		probe.DownloadBytes < downloadSpeedBytes &&
+		probe.DownloadBytes < sampleBytes &&
 		probe.DownloadMillis > 0
 	if !complete && !partial {
 		result.Error = probe.Error

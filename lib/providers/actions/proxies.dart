@@ -724,8 +724,8 @@ class ProxiesAction extends _$ProxiesAction {
         _autoSpeedCursor = names.indexOf(candidates.last) + 1;
       }
 
-      Future<int> measure(String name) =>
-          _measureDownloadSpeed(name, isCurrent);
+      Future<int> measure(String name, {bool sustained = false}) =>
+          _measureDownloadSpeed(name, isCurrent, sustained: sustained);
 
       final first = <String, int>{};
       for (final name in candidates) {
@@ -752,7 +752,11 @@ class ProxiesAction extends _$ProxiesAction {
       final stable = <String, int>{};
       for (final name in finalists) {
         if (!isCurrent()) return;
-        final second = await _speedTestPool.run(() => measure(name));
+        // A longer sample reduces the influence of an initial burst. Only
+        // finalists use the larger transfer; the initial scan stays cheap.
+        final second = await _speedTestPool.run(
+          () => measure(name, sustained: true),
+        );
         if (!isCurrent()) return;
         final initial = first[name]!;
         if (second > 0) {
@@ -891,8 +895,9 @@ class ProxiesAction extends _$ProxiesAction {
 
   Future<int> _measureDownloadSpeed(
     String name,
-    bool Function() isCurrent,
-  ) async {
+    bool Function() isCurrent, {
+    bool sustained = false,
+  }) async {
     if (!isCurrent() || (system.isAndroid && !ref.read(appVisibleProvider))) {
       return 0;
     }
@@ -900,7 +905,7 @@ class ProxiesAction extends _$ProxiesAction {
     results.start(name);
     var speed = 0;
     try {
-      final result = await _core.testSpeed(name);
+      final result = await _core.testSpeed(name, sustained: sustained);
       final value = result['bytes-per-second'];
       if (value is num) {
         speed = value.toInt();
