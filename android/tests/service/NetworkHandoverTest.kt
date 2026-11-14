@@ -71,6 +71,9 @@ class NetworkHandoverTest {
         val dnsChanged = routed.copy(dns = listOf("192.0.2.54:53"))
         assertTrue(tracker.update("wifi", path = dnsChanged))
         assertFalse(tracker.update("wifi", path = dnsChanged))
+        val mtuChanged = dnsChanged.copy(mtu = 1400)
+        assertTrue(tracker.update("wifi", path = mtuChanged))
+        assertFalse(tracker.update("wifi", path = mtuChanged))
     }
 
     @Test
