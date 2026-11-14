@@ -209,6 +209,7 @@ func startRecoveryHealth(source string, rebuilt bool) {
 		// endpoint failure. The internal route probe cannot detect this.
 		if source == "manual" && valid() {
 			recoverWindowsMixedListener(ctx, valid)
+			recoverWindowsTunListener(ctx, valid)
 		}
 		for attempt := 1; attempt <= 2; attempt++ {
 			if !valid() {
