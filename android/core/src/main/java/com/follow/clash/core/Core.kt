@@ -19,6 +19,8 @@ object Core {
         dns: String,
     ) = Mobile.updateDns(dns)
 
+    fun refreshNetwork() = Mobile.refreshNetwork()
+
     fun resetNetwork() = Mobile.resetNetwork()
 
     private fun parseInetSocketAddress(address: String): InetSocketAddress {

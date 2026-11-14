@@ -174,8 +174,10 @@ object NetworkObserver {
                 mtu = it.mtu,
             )
         }
-        if (handover.update(preferred?.first?.key, path = path)) {
-            Core.resetNetwork()
+        val next = preferred?.first?.key
+        val dnsOnly = handover.isDnsOnlyChange(next, path)
+        if (handover.update(next, path = path)) {
+            if (dnsOnly) Core.refreshNetwork() else Core.resetNetwork()
         }
     }
 

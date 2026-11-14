@@ -77,6 +77,27 @@ class NetworkHandoverTest {
     }
 
     @Test
+    fun `dns only changes preserve established data path`() {
+        val tracker = NetworkHandoverTracker<String>()
+        val initial = NetworkPath("wlan0", listOf("192.0.2.1/24"), listOf("default"),
+            listOf("192.0.2.53:53"), false, null, 1500)
+        tracker.update("wifi", path = initial)
+        val changed = initial.copy(dns = listOf("192.0.2.54:53"))
+        assertTrue(tracker.isDnsOnlyChange("wifi", changed))
+        assertTrue(tracker.update("wifi", path = changed))
+        assertFalse(tracker.isDnsOnlyChange("wifi", changed))
+        assertTrue(tracker.isDnsOnlyChange("wifi",
+            changed.copy(privateDnsActive = true, privateDnsName = "dns.example")))
+        assertFalse(tracker.isDnsOnlyChange("wifi", changed.copy(mtu = 1400)))
+        assertFalse(tracker.isDnsOnlyChange("wifi", changed.copy(routes = listOf("new default"))))
+        assertFalse(tracker.isDnsOnlyChange("wifi", changed.copy(addresses = listOf("192.0.2.2/24"))))
+        assertFalse(tracker.isDnsOnlyChange("cell", changed))
+        tracker.markLost("wifi")
+        assertFalse(tracker.isDnsOnlyChange("wifi", changed))
+        assertTrue(tracker.update("wifi", path = changed))
+    }
+
+    @Test
     fun `suspended path resumes on the same network`() {
         val tracker = NetworkHandoverTracker<String>()
         val path = NetworkPath("wlan0", emptyList(), emptyList(), emptyList(), false, null)
