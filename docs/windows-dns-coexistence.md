@@ -65,6 +65,25 @@ count as seconds. This is a diagnostic comparison, not proof of proxy exit
 IP, remote protocol handshakes, or exact recovery latency. Keep the report
 local if the resolver hostname or DNS answers are private.
 
+## Inspect the actual Windows route
+
+Add `-RouteDetails` to either invocation above when TUN appears enabled
+but applications cannot connect. For each HTTPS request the report includes
+curl's actual connected peer IP (if available), the best Windows route to
+that IP at observation time, interface index/alias, destination prefix,
+next hop and route metric. If no connection succeeds, the report also lists
+current DNS destination candidates and their routes; these are not observed
+connections. The explicit proxy's peer is the loopback proxy, not its remote
+exit. Compare the no-application-proxy result against the intended TUN
+interface and the explicit proxy result against loopback. Route details are
+snapshots after the request, not a packet capture, and can change during
+handover. The diagnostic does not repair or modify the route table.
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File tool/windows/check-dns-path.ps1 -ResolverHost private.example -MixedPort 7890 -RouteDetails -Samples 5
+
+Keep this report local if interface names or addresses are sensitive.
+No extra software or administrator permissions are requested by the script.
+
 ## Mihomo reconnect fix
 
 The pinned core's ClearAll already synchronously resets resolver clients, including
