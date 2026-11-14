@@ -8,10 +8,11 @@ import (
 func TestShouldRetryTun(t *testing.T) {
 	now := time.Now()
 	for _, tc := range []struct {
-		name            string
-		desired, actual bool
-		last            time.Time
-		want            bool
+		name    string
+		desired bool
+		actual  bool
+		last    time.Time
+		want    bool
 	}{
 		{"failed creation", true, false, time.Time{}, true},
 		{"healthy listener", true, true, time.Time{}, false},
