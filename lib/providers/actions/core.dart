@@ -157,20 +157,22 @@ class CoreAction extends _$CoreAction {
         return;
       }
       if (!current()) return;
-      // DNS refresh cooldown must not suppress local IPC stall detection.
-      if (watchdog) {
-        final last = _lastWatchdogRefresh;
-        if (last != null &&
-            DateTime.now().difference(last) < const Duration(minutes: 2)) {
-          return;
-        }
-      }
+      // Health checks also repair local listeners. Only throttle DNS
+      // refresh itself, not the verification or local listener recovery.
       final recover = await verifyDesktopNetwork(
         check: _core.checkNetworkHealth,
         read: _core.getNetworkHealth,
         isCurrent: current,
         startedAt: DateTime.now().millisecondsSinceEpoch,
         refreshPath: refreshPath ? _core.reportNetworkChange : null,
+        mayRecover: watchdog
+            ? () {
+                final last = _lastWatchdogRefresh;
+                return last == null ||
+                    DateTime.now().difference(last) >=
+                        const Duration(minutes: 2);
+              }
+            : null,
       );
       if (recover && current()) {
         if (watchdog) {

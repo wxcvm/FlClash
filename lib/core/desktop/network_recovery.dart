@@ -12,6 +12,7 @@ Future<bool> verifyDesktopNetwork({
   required bool Function() isCurrent,
   required int startedAt,
   Future<void> Function()? refreshPath,
+  bool Function()? mayRecover,
   Future<void> Function() wait = _waitForHealth,
 }) async {
   if (!isCurrent()) return false;
@@ -41,7 +42,8 @@ Future<bool> verifyDesktopNetwork({
       return health['source'] == 'manual' &&
           (state == 'dns-failure' || state == 'route-unreachable') &&
           health['attempt'] == 2 &&
-          health['confirmed-failures'] == 2;
+          health['confirmed-failures'] == 2 &&
+          (mayRecover?.call() ?? true);
     }
     await wait();
   }
