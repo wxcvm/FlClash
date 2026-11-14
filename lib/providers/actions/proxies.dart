@@ -240,7 +240,7 @@ class ProxiesAction extends _$ProxiesAction {
         _nodeHealth.markFailoverAttempt();
         await _recoverAutoNode(group, incumbent, isCurrent);
       } else {
-        _nodeHealth.markOptimization(DateTime.now());
+        _nodeHealth.markOptimizationAttempt(DateTime.now());
         await selectByDownloadSpeed(group.name, automatic: true);
       }
     } finally {
@@ -797,7 +797,13 @@ class ProxiesAction extends _$ProxiesAction {
           current,
           automatic: automatic,
         );
-        if (winner == null || (automatic && winner == current)) {
+        if (winner == null) return;
+        if (automatic && winner == current) {
+          // Only a comparison against another valid sample completes an
+          // optimization; a batch with just the incumbent should retry.
+          if (remaining.length > 1) {
+            _nodeHealth.markOptimization(DateTime.now());
+          }
           return;
         }
         if (await _selectVerifiedSpeed(
@@ -806,6 +812,9 @@ class ProxiesAction extends _$ProxiesAction {
           isCurrent,
           automatic: automatic,
         )) {
+          if (automatic && isCurrent()) {
+            _nodeHealth.markOptimization(DateTime.now());
+          }
           return;
         }
         // A healthy incumbent must not be discarded merely because its

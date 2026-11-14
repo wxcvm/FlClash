@@ -124,6 +124,36 @@ void main() {
     );
   });
 
+  test('failed optimization retries sooner than a successful comparison', () {
+    final health = NodeHealthHistory();
+    final now = DateTime(2026);
+    expect(health.record('A', 30, now), NodeHealthDecision.optimize);
+    health.markOptimizationAttempt(now);
+    expect(
+      health.record('A', 30, now.add(const Duration(minutes: 1))),
+      NodeHealthDecision.wait,
+    );
+    final retry = now.add(const Duration(minutes: 2));
+    expect(health.record('A', 30, retry), NodeHealthDecision.optimize);
+    health.markOptimization(retry);
+    expect(
+      health.record('A', 30, retry.add(const Duration(minutes: 2))),
+      NodeHealthDecision.wait,
+    );
+    expect(
+      health.record('A', 30, retry.add(const Duration(minutes: 30))),
+      NodeHealthDecision.optimize,
+    );
+  });
+
+  test('failed optimization does not block health failover', () {
+    final health = NodeHealthHistory();
+    final now = DateTime(2026);
+    health.markOptimizationAttempt(now);
+    expect(health.record('A', -1, now), NodeHealthDecision.wait);
+    expect(health.record('A', -1, now), NodeHealthDecision.failover);
+  });
+
   test('lightweight failover does not spend the download budget', () {
     final health = NodeHealthHistory();
     final now = DateTime(2026);
