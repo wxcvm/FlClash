@@ -2,6 +2,7 @@ package core
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/dns"
@@ -87,11 +88,25 @@ func resetNetworkPath() {
 // TCP gives up on it, and so do the DNS clients' pooled connections.
 var networkResetMu sync.Mutex
 
-func handleResetNetwork() {
-	// A burst of handovers may arrive while a previous rebuild is still
-	// applying. Never overlap outbound rebuilds or connection cleanup.
+// Android dispatches recovery asynchronously. An older queued handover must
+// not close connections again after a newer handover has superseded it.
+var mobileNetworkResetSequence atomic.Uint64
+
+func runNetworkReset(sequence uint64, reset func()) {
 	networkResetMu.Lock()
 	defer networkResetMu.Unlock()
+	// Zero denotes an explicit host recovery, not a mobile notification.
+	if sequence != 0 && sequence != mobileNetworkResetSequence.Load() {
+		return
+	}
+	reset()
+}
+
+func handleResetNetwork() {
+	runNetworkReset(0, resetNetworkAndOutbounds)
+}
+
+func resetNetworkAndOutbounds() {
 	handleCloseConnections()
 	resetNetworkPath()
 	rebuilt := reloadOutboundsOnNetworkChange()

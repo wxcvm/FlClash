@@ -391,5 +391,8 @@ func RefreshNetwork() {
 
 func ResetNetwork() {
 	defer recoverExport("resetNetwork")
-	safeGo("resetNetwork", handleResetNetwork)
+	sequence := mobileNetworkResetSequence.Add(1)
+	safeGo("resetNetwork", func() {
+		runNetworkReset(sequence, resetNetworkAndOutbounds)
+	})
 }
