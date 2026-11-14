@@ -57,19 +57,16 @@ function Get-RouteObservation([string]$Address) {
     }
 }
 function Test-HttpPath([string]$ProxyUrl) {
-    $args = @('--silent', '--output', 'NUL', '--connect-timeout', '5',
-              '--max-time', '12', '--write-out', '%{http_code} %{time_total}')
+    $format = '%{http_code} %{time_total}'
+    if ($RouteDetails) { $format += '|%{remote_ip}' }
+    $args = @('--disable', '--silent', '--output', 'NUL', '--connect-timeout', '5',
+              '--max-time', '12', '--write-out', $format)
     if ($ProxyUrl) {
         # Windows PowerShell 5 can drop empty native-command arguments.
         # The fixed diagnostic URL is public; exclude only loopback from proxy bypass.
         $args += @('--proxy', $ProxyUrl, '--noproxy', 'localhost,127.0.0.1,::1')
     } else {
         $args += @('--noproxy', '*')
-    }
-    # Disable curlrc so it cannot silently change the test path.
-    $args = @('--disable') + $args
-    if ($RouteDetails) {
-        $args[ [array]::IndexOf($args, '--write-out') + 1 ] = '%{http_code} %{time_total}|%{remote_ip}'
     }
     $args += $TestUrl
     $started = [DateTimeOffset]::UtcNow
