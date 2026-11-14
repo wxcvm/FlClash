@@ -82,6 +82,7 @@ func recoverWindowsTunListener(ctx context.Context, valid func() bool) {
 	now = time.Now()
 	// Re-read the active state under the lock. A concurrent setup may have
 	// restored the adapter while the first observation was pending.
+	closedMissingAdapter := false
 	if !shouldRetryTun(general.Tun.Enable, actual.Enable, lastTunRepair, now) {
 		if !missing || !general.Tun.Enable || !actual.Enable || actual.Device != observedDevice ||
 			now.Sub(lastTunRepair) < 2*time.Minute ||
@@ -93,6 +94,8 @@ func recoverWindowsTunListener(ctx context.Context, valid func() bool) {
 		disabled := general.Tun
 		disabled.Enable = false
 		listener.ReCreateTun(disabled, tunnel.Tunnel)
+		closedMissingAdapter = true
+		log.Warnln("[Network recovery] Windows TUN adapter %s missing; rebuilding listener", observedDevice)
 	}
 
 	// Reuse the original startup bootstrap idea: pin physical egress until
@@ -101,13 +104,16 @@ func recoverWindowsTunListener(ctx context.Context, valid func() bool) {
 	if general.Interface == "" && general.Tun.AutoRoute &&
 		general.Tun.AutoDetectInterface && dialer.DefaultInterfaceFinder.Load() == nil {
 		name := detectEgress()
-		if name != "" && name != general.Tun.Device &&
+		if name != "" && name != general.Tun.Device && name != observedDevice &&
 			dialer.DefaultInterface.CompareAndSwap("", name) {
 			defer dialer.DefaultInterface.CompareAndSwap(name, "")
 		}
 	}
 	// Once a missing adapter has been closed, finish this repair under the
 	// config lock even if the probe expires; the next stop/apply can follow.
+	if !closedMissingAdapter && (ctx.Err() != nil || !valid()) {
+		return
+	}
 	lastTunRepair = now
 	listener.ReCreateTun(general.Tun, tunnel.Tunnel)
 	if listener.GetTunConf().Enable {
