@@ -37,6 +37,9 @@ jobs:
       - name: Test git hooks
         run: bash tool/hooks/test.sh
 
+      - name: Test preview CI waiting
+        run: bash tool/ci/test-wait-main-ci.sh
+
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -172,7 +175,10 @@ jobs:
       # Compiles the desktop runners and the native plugin code that only the
       # tagged release matrix built before; the bundle itself is discarded.
       - name: Build debug bundle
-        run: flutter build ${{ matrix.platform }} --debug
+        env:
+          # Flutter invokes cmake --build without --parallel on Windows.
+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.platform == 'windows' && '2' || '' }}
+        run: flutter build ${{ matrix.platform }} --debug --no-pub
 
   go:
     name: Go core
