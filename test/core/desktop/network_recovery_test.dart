@@ -78,6 +78,38 @@ void main() {
     }
   });
 
+  test('refresh cooldown still runs the health check', () async {
+    var checks = 0;
+    var reads = 0;
+    expect(
+      await verifyDesktopNetwork(
+        check: () async {
+          checks++;
+        },
+        read: () async {
+          reads++;
+          return health('dns-failure');
+        },
+        isCurrent: () => true,
+        startedAt: 100,
+        mayRecover: () => false,
+      ),
+      isFalse,
+    );
+    expect(checks, 1);
+    expect(reads, 1);
+    expect(
+      await verifyDesktopNetwork(
+        check: () async {},
+        read: () async => health('dns-failure'),
+        isCurrent: () => true,
+        startedAt: 100,
+        mayRecover: () => true,
+      ),
+      isTrue,
+    );
+  });
+
   test('two failed attempts request one recovery', () async {
     for (final state in ['dns-failure', 'route-unreachable']) {
       expect(
