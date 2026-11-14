@@ -108,3 +108,44 @@ func TestMergedProfileSnapshotMatchesPublishedFile(t *testing.T) {
 		t.Fatalf("merged profile cannot be reloaded: %v", err)
 	}
 }
+
+func TestQueuedMobileRecoverySkipsSupersededHandover(t *testing.T) {
+	older := mobileNetworkResetSequence.Add(1)
+	newer := mobileNetworkResetSequence.Add(1)
+	var calls int
+	reset := func() { calls++ }
+
+	// The newer handover may acquire the lock first. The old queued job
+	// must not close the new connections when it eventually runs.
+	runNetworkReset(newer, reset)
+	runNetworkReset(older, reset)
+	if calls != 1 {
+		t.Fatalf("got %d recoveries, want 1", calls)
+	}
+	// Explicit host recovery is independent of the mobile sequence.
+	runNetworkReset(0, reset)
+	if calls != 2 {
+		t.Fatalf("explicit recovery skipped: %d", calls)
+	}
+}
+
+func TestMobileRecoverySupersededWhileWaitingForLock(t *testing.T) {
+	networkResetMu.Lock()
+	older := mobileNetworkResetSequence.Add(1)
+	done := make(chan struct{})
+	calls := 0
+	go func() {
+		runNetworkReset(older, func() { calls++ })
+		close(done)
+	}()
+	newer := mobileNetworkResetSequence.Add(1)
+	networkResetMu.Unlock()
+	<-done
+	if calls != 0 {
+		t.Fatal("queued older handover was not skipped")
+	}
+	runNetworkReset(newer, func() { calls++ })
+	if calls != 1 {
+		t.Fatalf("latest handover did not recover: %d", calls)
+	}
+}
