@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -62,6 +63,39 @@ func TestDownloadProbeRequiresCompleteSample(t *testing.T) {
 	if rejected == nil || rejected.StatusCode != http.StatusForbidden ||
 		rejected.DownloadBytes != 0 {
 		t.Fatalf("HTTP error counted as a download: %+v", rejected)
+	}
+}
+
+func TestSpeedUsesLargerSampleOnlyForSustainedTest(t *testing.T) {
+	for _, sustained := range []bool{false, true} {
+		want := int64(downloadSpeedBytes)
+		if sustained {
+			want = sustainedSpeedBytes
+		}
+		result := testSpeed(context.Background(), &SpeedTestParams{ProxyName: "node", Sustained: sustained},
+			func(_ context.Context, req probeRequest) *ProbeResult {
+				if req.downloadBytes != want || req.timeout != downloadSpeedTimeout ||
+					!strings.HasSuffix(req.url, strconv.FormatInt(want, 10)) {
+					t.Fatalf("unexpected speed request: %+v", req)
+				}
+				return &ProbeResult{StatusCode: http.StatusOK, DownloadBytes: want, DownloadMillis: 1000}
+			})
+		if result.Error != "" || result.BytesPerSecond != want {
+			t.Fatalf("unexpected speed result: %+v", result)
+		}
+	}
+}
+
+func TestSustainedSpeedAcceptsPartialDeadlineButNotShortEOF(t *testing.T) {
+	for _, err := range []string{probeErrorTimeout, probeErrorFailed, ""} {
+		result := testSpeed(context.Background(), &SpeedTestParams{ProxyName: "node", Sustained: true},
+			func(context.Context, probeRequest) *ProbeResult {
+				return &ProbeResult{StatusCode: http.StatusOK, Error: err,
+					DownloadBytes: downloadSpeedBytes, DownloadMillis: 10000}
+			})
+		if (result.Error == "") != (err == probeErrorTimeout) {
+			t.Fatalf("unexpected sustained sample for %q: %+v", err, result)
+		}
 	}
 }
 
