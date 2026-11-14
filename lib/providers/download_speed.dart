@@ -121,6 +121,7 @@ class NodeHealthHistory {
   String? _node;
   int _failures = 0;
   DateTime? _lastOptimization;
+  DateTime? _lastOptimizationAttempt;
   final Map<String, ({int successes, int failures})> _samples = {};
 
   Map<String, ({int successes, int failures})> get samples =>
@@ -129,7 +130,10 @@ class NodeHealthHistory {
   void reset({bool keepOptimizationBudget = false}) {
     _node = null;
     _failures = 0;
-    if (!keepOptimizationBudget) _lastOptimization = null;
+    if (!keepOptimizationBudget) {
+      _lastOptimization = null;
+      _lastOptimizationAttempt = null;
+    }
     _samples.clear();
   }
 
@@ -153,13 +157,25 @@ class NodeHealthHistory {
     }
     _failures = 0;
     final last = _lastOptimization;
-    return last == null || now.difference(last) >= const Duration(minutes: 30)
-        ? NodeHealthDecision.optimize
-        : NodeHealthDecision.wait;
+    final attempt = _lastOptimizationAttempt;
+    if (last != null && now.difference(last) < const Duration(minutes: 30)) {
+      return NodeHealthDecision.wait;
+    }
+    if (attempt != null &&
+        now.difference(attempt) < const Duration(minutes: 2)) {
+      return NodeHealthDecision.wait;
+    }
+    return NodeHealthDecision.optimize;
+  }
+
+  // A failed or interrupted batch should not consume the full success budget.
+  void markOptimizationAttempt(DateTime now) {
+    _lastOptimizationAttempt = now;
   }
 
   void markOptimization(DateTime now) {
     _lastOptimization = now;
+    _lastOptimizationAttempt = now;
     _failures = 0;
   }
 
