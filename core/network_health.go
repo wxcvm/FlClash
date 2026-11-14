@@ -205,6 +205,11 @@ func startRecoveryHealth(source string, rebuilt bool) {
 			e, v := routeStamp()
 			return ctx.Err() == nil && isRunning.Load() && e == epoch && v == version
 		}
+		// Repair only a confirmed missing local listener, not a remote
+		// endpoint failure. The internal route probe cannot detect this.
+		if source == "manual" && valid() {
+			recoverWindowsMixedListener(ctx, valid)
+		}
 		for attempt := 1; attempt <= 2; attempt++ {
 			if !valid() {
 				return
