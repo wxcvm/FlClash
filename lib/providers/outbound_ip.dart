@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/common/service_probe.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import 'app.dart';
 import 'core.dart';
 import 'route_state.dart';
 import 'routed_probe.dart';
@@ -24,10 +28,29 @@ class OutboundIpProbe extends _$OutboundIpProbe
     final proxyName = target == routedOutbound && !route.proxied
         ? directOutbound
         : target;
-    final result = await lookupOutboundIp(
-      ref.read(coreHandlerProvider),
-      proxyName,
-    );
+    final core = ref.read(coreHandlerProvider);
+    bool canRetry() =>
+        target == routedOutbound &&
+        ref.mounted &&
+        ref.read(appVisibleProvider) &&
+        ref.read(routeTrackerProvider) == route;
+
+    OutboundIpResult? result;
+    try {
+      result = await lookupOutboundIp(core, proxyName);
+    } on TimeoutException {
+      if (!canRetry()) rethrow;
+    }
+    // A transient IP metadata failure is not proof that traffic is down.
+    // Retry the dashboard's active route once, without switching nodes or
+    // retrying a lookup whose route has already been superseded.
+    if (result == null || (parseOutboundIp(result) == null && canRetry())) {
+      result = await lookupOutboundIp(
+        core,
+        proxyName,
+        timeout: probeTimeoutDuration,
+      );
+    }
     final value = parseOutboundIp(result);
     final exit = result.chains.firstOrNull;
     return {
