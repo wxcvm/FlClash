@@ -141,6 +141,51 @@ void main() {
     });
   });
 
+  group('latestPreviewRelease', () {
+    const suffix = 'windows-amd64-setup.exe';
+    const older = 'v0.9.3-preview.9.2';
+    const newer = 'v0.9.3-preview.10.1';
+    final digest = 'a' * 64;
+    final page =
+        '<a href="/$repository/releases/tag/$older">old</a>'
+        '<a href="/$repository/releases/tag/$newer">new</a>'
+        '<a href="/$repository/releases/tag/v1.0.0">stable</a>';
+
+    test('falls back from API 403 to the newest matching preview', () async {
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases': () =>
+              ResponseBody.fromString('{}', 403),
+          '/$repository/releases': () => ResponseBody.fromString(page, 200),
+          '/$repository/releases/download/$newer/SHA256SUMS': () =>
+              ResponseBody.fromString(
+                '$digest  FlClash-0.9.3-preview.10.1-$suffix',
+                200,
+              ),
+        });
+
+      expect(await request.latestPreviewRelease(suffix), {'tag_name': newer});
+    });
+
+    test('skips a preview without the platform checksum', () async {
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases': () =>
+              ResponseBody.fromString('{}', 429),
+          '/$repository/releases': () => ResponseBody.fromString(page, 200),
+          '/$repository/releases/download/$newer/SHA256SUMS': () =>
+              ResponseBody.fromString('$digest  other.apk', 200),
+          '/$repository/releases/download/$older/SHA256SUMS': () =>
+              ResponseBody.fromString(
+                '$digest  FlClash-0.9.3-preview.9.2-$suffix',
+                200,
+              ),
+        });
+
+      expect(await request.latestPreviewRelease(suffix), {'tag_name': older});
+    });
+  });
+
   group('downloadVerifiedRelease', () {
     const name = 'FlClash-1.2.3-android-arm64-v8a.apk';
     final package = utf8.encode('package');
