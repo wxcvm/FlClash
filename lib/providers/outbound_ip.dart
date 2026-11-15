@@ -1,3 +1,4 @@
+import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/common/service_probe.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -36,7 +37,11 @@ class OutboundIpProbe extends _$OutboundIpProbe
         ref.mounted &&
         ref.read(appVisibleProvider) &&
         ref.read(routeTrackerProvider) == route) {
-      result = await lookupOutboundIp(core, proxyName);
+      result = await lookupOutboundIp(
+        core,
+        proxyName,
+        timeout: probeTimeoutDuration,
+      );
       value = parseOutboundIp(result);
     }
     final exit = result.chains.firstOrNull;
