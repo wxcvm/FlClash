@@ -173,7 +173,9 @@ void main() {
     await pumpEventQueue();
 
     expect(calls, 2);
-    final entry = container.read(outboundIpProbeProvider).entryOf(routedOutbound);
+    final entry = container
+        .read(outboundIpProbeProvider)
+        .entryOf(routedOutbound);
     expect(entry.phase, ProbePhase.fresh);
     expect(entry.value?.ip, '2.2.2.2');
   });
