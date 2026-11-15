@@ -139,7 +139,7 @@ func withPlatformLimits(cfg *config.Config) *config.Config {
 		log.Warnln("ntp write-to-system ignored: Android does not let apps set the system time")
 		cfg.NTP.WriteToSystem = false
 	}
-	return cfg
+	return withAndroidVpnDNS(cfg, runtime.GOOS == "android")
 }
 
 func runningConfigPath() string {
@@ -180,7 +180,7 @@ func applyConfig(params *SetupParams) error {
 		if fallbackErr != nil {
 			return err
 		}
-		cfg = fallback
+		cfg = withPlatformLimits(fallback)
 	}
 
 	currentConfig = cfg

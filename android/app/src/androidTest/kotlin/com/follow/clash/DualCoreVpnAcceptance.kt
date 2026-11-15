@@ -24,6 +24,7 @@ import java.net.InetSocketAddress
 import java.net.DatagramSocket
 import java.net.DatagramPacket
 import java.net.InetAddress
+import java.net.Inet4Address
 import java.util.concurrent.ThreadLocalRandom
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
@@ -93,7 +94,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             enable = true, port = 0, ipv6 = false, dnsHijacking = false,
             accessControlProps = AccessControlProps(true, AccessControlMode.ACCEPT_SELECTED, listOf(packageName), emptyList()),
             allowBypass = false, systemProxy = false, bypassDomain = emptyList(),
-            stack = "gvisor", routeAddress = listOf("1.1.1.1/32"),
+            stack = "gvisor", routeAddress = emptyList(),
         )
         val setup = JSONObject().put("base", JSONObject().put("path", profile.path).put("overlay", ""))
             .put("selected-map", JSONObject()).put("options", JSONObject())
@@ -157,15 +158,15 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         }
     }
 
-    private fun dns(network: Network): Long {
+    private fun dns(network: Network, address: String = "172.19.0.1", server: String = "172.19.0.2"): Long {
         val id = ThreadLocalRandom.current().nextInt(65536)
         val query = ProbeDnsMessage.query(id)
         val started = SystemClock.elapsedRealtime()
         DatagramSocket(null).use { socket ->
             network.bindSocket(socket)
             socket.bind(InetSocketAddress(0))
-            socket.connect(InetAddress.getByName("172.19.0.2"), 53)
-            check(socket.localAddress.hostAddress == "172.19.0.1") { "DNS bypassed native TUN" }
+            socket.connect(InetAddress.getByName(server), 53)
+            check(socket.localAddress.hostAddress == address) { "DNS bypassed expected TUN" }
             socket.soTimeout = 8000
             socket.send(DatagramPacket(query, query.size))
             val bytes = ByteArray(4096)
@@ -243,14 +244,19 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         waitFor("$name TUN") { vpn(address) != null }
         val network = requireNotNull(vpn(address))
         val latency = https(network, address)
-        val dnsLatency = if (active == ":singbox") dns(network) else null
+        val dnsLatency = if (active == ":singbox") dns(network) else dns(network, address, "198.18.0.2")
+        val domainLatency = if (active == ":mihomo") {
+            val destination = network.getAllByName("example.com").first { it is Inet4Address }
+            https(network, address, "example.com", destination)
+        } else null
         val samples = JSONArray()
         repeat(3) {
             samples.put(pss())
             SystemClock.sleep(1000)
         }
         val report = JSONObject().put("phase", name).put("tlsMs", latency).put("samples", samples)
-        if (dnsLatency != null) report.put("dnsMs", dnsLatency).put("egress", if (nativeProxy) "proxy" else "direct")
+        report.put("dnsMs", dnsLatency).put("egress", if (active == ":singbox" && nativeProxy) "proxy" else "direct")
+        if (domainLatency != null) report.put("domainTlsMs", domainLatency)
         reports.put(report)
         runner.sendStatus(0, Bundle().apply { putString("phase", report.toString()) })
     }
@@ -283,18 +289,19 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             cm.getLinkProperties(network)?.linkAddresses?.any { it.address.hostAddress == address } == true
     }
 
-    private fun https(network: Network, address: String): Long {
+    private fun https(network: Network, address: String, host: String = "cloudflare-dns.com",
+        destination: InetAddress = InetAddress.getByName("1.1.1.1")): Long {
         val started = SystemClock.elapsedRealtime()
         network.socketFactory.createSocket().use { raw ->
-            raw.connect(InetSocketAddress("1.1.1.1", 443), 5000)
+            raw.connect(InetSocketAddress(destination, 443), 5000)
             check(raw.localAddress.hostAddress == address) { "HTTPS bypassed expected TUN" }
             raw.soTimeout = 5000
             val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            (factory.createSocket(raw, "cloudflare-dns.com", 443, true) as SSLSocket).use { tls ->
+            (factory.createSocket(raw, host, 443, true) as SSLSocket).use { tls ->
                 tls.sslParameters = tls.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
                 tls.soTimeout = 5000
                 tls.startHandshake()
-                tls.outputStream.write("HEAD / HTTP/1.1\r\nHost: cloudflare-dns.com\r\nConnection: close\r\n\r\n".toByteArray())
+                tls.outputStream.write("HEAD / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n".toByteArray())
                 tls.outputStream.flush()
                 val line = tls.inputStream.bufferedReader().readLine()
                 check(line != null && Regex("HTTP/1\\.[01] [1-5][0-9]{2}.*").matches(line)) { "Invalid HTTPS response" }
