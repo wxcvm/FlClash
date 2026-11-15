@@ -93,15 +93,28 @@ jobs:
           ref: c005f35300ce76427dc285481ec5695f5b179cd2
           path: upstream-sing-box
           persist-credentials: false
+      - name: Cache pinned recovery libbox AAR
+        id: libbox-cache
+        uses: actions/cache@v4
+        with:
+          path: upstream-sing-box/libbox.aar
+          key: libbox-arm64-v1-${{ runner.os }}-${{ runner.arch }}-c005f35300ce76427dc285481ec5695f5b179cd2-go1.26.10-${{ env.NDK_VERSION }}-${{ hashFiles('tool/android-singbox/recovery/**') }}
       - uses: actions/setup-go@v5
+        if: steps.libbox-cache.outputs.cache-hit != 'true'
         with:
           go-version: '1.26.10'
           cache: false
       - name: Build recovery-enabled ARM64 libbox
+        if: steps.libbox-cache.outputs.cache-hit != 'true'
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           bash tool/android-singbox/recovery/build-libbox.sh upstream-sing-box
+      - name: Validate and select recovery libbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -tq upstream-sing-box/libbox.aar
           echo "ORG_GRADLE_PROJECT_flclashSingBoxAar=$(realpath upstream-sing-box/libbox.aar)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with:

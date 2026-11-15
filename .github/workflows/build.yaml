@@ -21,6 +21,31 @@ env:
   NDK_VERSION: r28c
 
 jobs:
+  scope:
+    name: CI scope
+    if: github.event_name == 'workflow_dispatch' || !github.event.repository.private
+    runs-on: ubuntu-latest
+    outputs:
+      dart_only: ${{ steps.scope.outputs.dart_only }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev'
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Select branch validation scope
+        id: scope
+        shell: bash
+        env:
+          FULL: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+        run: |
+          if [[ "$FULL" == true ]]; then
+            echo 'dart_only=false' >> "$GITHUB_OUTPUT"
+          else
+            echo "dart_only=$(bash tool/ci/branch-scope.sh origin/main HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
   dart:
     name: Dart
     # A private copy pays for its Actions minutes, so it runs the checks only when
@@ -37,15 +62,10 @@ jobs:
       - name: Test git hooks
         run: bash tool/hooks/test.sh
 
-      - name: Test preview CI waiting
-        run: bash tool/ci/test-wait-main-ci.sh
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: plugins/rust_api/rust
-          cache-directories: .dart_tool/hooks_runner
-          save-if: ${{ env.BRANCH_CACHE }}
+      - name: Test preview CI waiting and branch scope
+        run: |
+          bash tool/ci/test-wait-main-ci.sh
+          bash tool/ci/test-branch-scope.sh
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -61,6 +81,13 @@ jobs:
         run: |
           dart format --output=write lib test tool plugins setup.dart
           git diff --exit-code -- lib test tool plugins setup.dart
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: plugins/rust_api/rust
+          cache-directories: .dart_tool/hooks_runner
+          save-if: ${{ env.BRANCH_CACHE }}
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
@@ -81,7 +108,8 @@ jobs:
 
   plugins:
     name: Plugins
-    if: *checks
+    needs: scope
+    if: needs.scope.outputs.dart_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -108,7 +136,8 @@ jobs:
 
   desktop:
     name: Desktop ${{ matrix.platform }}
-    if: (github.event_name == 'workflow_dispatch' || !github.event.repository.private) && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    needs: scope
+    if: needs.scope.outputs.dart_only != 'true' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -182,7 +211,8 @@ jobs:
 
   go:
     name: Go core
-    if: *checks
+    needs: scope
+    if: needs.scope.outputs.dart_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -234,7 +264,8 @@ jobs:
 
   android:
     name: Android unit tests
-    if: *checks
+    needs: scope
+    if: needs.scope.outputs.dart_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -311,7 +342,8 @@ jobs:
 
   rust:
     name: Rust
-    if: *checks
+    needs: scope
+    if: needs.scope.outputs.dart_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -337,7 +369,8 @@ jobs:
 
   windows-helper-test:
     name: Windows helper test
-    if: *checks
+    needs: scope
+    if: needs.scope.outputs.dart_only != 'true'
     runs-on: windows-2022
     steps:
       - name: Checkout
