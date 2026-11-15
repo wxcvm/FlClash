@@ -130,7 +130,7 @@ void main() {
     ]);
   });
 
-  test('a Core error is a failure until it is refreshed', () async {
+  test('a persistent Core error stops after one automatic retry', () async {
     when(() => core.outboundIp(any())).thenAnswer(
       (_) async => const OutboundIpResult(
         error: 'timeout',
@@ -148,11 +148,52 @@ void main() {
       container.read(outboundIpProbeProvider).entryOf(routedOutbound).phase,
       ProbePhase.failed,
     );
-    verify(() => core.outboundIp(any())).called(1);
+    verify(() => core.outboundIp(any())).called(2);
 
     probe.refresh([routedOutbound]);
     await pumpEventQueue();
 
+    verify(() => core.outboundIp(any())).called(2);
+  });
+
+  test('a transient failure recovers on the same route without a tap', () async {
+    var calls = 0;
+    when(() => core.outboundIp(any())).thenAnswer((_) async {
+      if (++calls == 1) {
+        return const OutboundIpResult(
+          error: 'timeout',
+          coreEpoch: 1,
+          routeVersion: 1,
+        );
+      }
+      return _answer;
+    });
+    final container = build();
+    container.read(outboundIpProbeProvider.notifier).watch(routedOutbound);
+    await pumpEventQueue();
+
+    expect(calls, 2);
+    final entry = container.read(outboundIpProbeProvider).entryOf(routedOutbound);
+    expect(entry.phase, ProbePhase.fresh);
+    expect(entry.value?.ip, '2.2.2.2');
+  });
+
+  test('a named node failure does not trigger dashboard retry', () async {
+    when(() => core.outboundIp(any())).thenAnswer(
+      (_) async => const OutboundIpResult(
+        error: 'timeout',
+        coreEpoch: 1,
+        routeVersion: 1,
+      ),
+    );
+    final container = build();
+    container.read(outboundIpProbeProvider.notifier).watch('HK-01');
+    await pumpEventQueue();
+
     verify(() => core.outboundIp(any())).called(1);
+    expect(
+      container.read(outboundIpProbeProvider).entryOf('HK-01').phase,
+      ProbePhase.failed,
+    );
   });
 }
