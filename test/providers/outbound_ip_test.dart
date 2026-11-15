@@ -1,3 +1,4 @@
+import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/common/service_probe.dart';
 import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/interface.dart';
@@ -175,6 +176,13 @@ void main() {
       await pumpEventQueue();
 
       expect(calls, 2);
+      final params = verify(
+        () => core.outboundIp(captureAny()),
+      ).captured.cast<OutboundIpParams>();
+      expect(params.map((p) => p.timeout), [
+        outboundIpTimeoutDuration.inMilliseconds,
+        probeTimeoutDuration.inMilliseconds,
+      ]);
       final entry = container
           .read(outboundIpProbeProvider)
           .entryOf(routedOutbound);
