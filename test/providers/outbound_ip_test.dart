@@ -156,29 +156,32 @@ void main() {
     verify(() => core.outboundIp(any())).called(2);
   });
 
-  test('a transient failure recovers on the same route without a tap', () async {
-    var calls = 0;
-    when(() => core.outboundIp(any())).thenAnswer((_) async {
-      if (++calls == 1) {
-        return const OutboundIpResult(
-          error: 'timeout',
-          coreEpoch: 1,
-          routeVersion: 1,
-        );
-      }
-      return _answer;
-    });
-    final container = build();
-    container.read(outboundIpProbeProvider.notifier).watch(routedOutbound);
-    await pumpEventQueue();
+  test(
+    'a transient failure recovers on the same route without a tap',
+    () async {
+      var calls = 0;
+      when(() => core.outboundIp(any())).thenAnswer((_) async {
+        if (++calls == 1) {
+          return const OutboundIpResult(
+            error: 'timeout',
+            coreEpoch: 1,
+            routeVersion: 1,
+          );
+        }
+        return _answer;
+      });
+      final container = build();
+      container.read(outboundIpProbeProvider.notifier).watch(routedOutbound);
+      await pumpEventQueue();
 
-    expect(calls, 2);
-    final entry = container
-        .read(outboundIpProbeProvider)
-        .entryOf(routedOutbound);
-    expect(entry.phase, ProbePhase.fresh);
-    expect(entry.value?.ip, '2.2.2.2');
-  });
+      expect(calls, 2);
+      final entry = container
+          .read(outboundIpProbeProvider)
+          .entryOf(routedOutbound);
+      expect(entry.phase, ProbePhase.fresh);
+      expect(entry.value?.ip, '2.2.2.2');
+    },
+  );
 
   test('a named node failure does not trigger dashboard retry', () async {
     when(() => core.outboundIp(any())).thenAnswer(
