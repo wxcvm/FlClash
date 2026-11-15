@@ -12,7 +12,7 @@ PACKAGE = "com.follow.clash.dev"
 RUNNER = PACKAGE + ".test/com.follow.clash.MihomoProcessProbeInstrumentation"
 EXPECTED = ["mihomo-initial", "singbox-1", "mihomo-restored-1",
             "singbox-2", "mihomo-restored-2", "stopped"]
-OPTIONAL_PHASES = {"singbox-network-handover", "singbox-soak"}
+OPTIONAL_PHASES = {"singbox-network-handover", "singbox-soak", "mihomo-soak"}
 OUTBOUND_TYPES = {"vless", "vmess", "trojan", "shadowsocks", "hysteria2",
                   "tuic", "socks", "http", "anytls"}
 STAGED = "cache/native-acceptance-outbound.json"
@@ -43,7 +43,7 @@ def measured(value):
     return type(value) in (int, float) and 0 <= value < float("inf")
 
 
-def summarize(report, *, proxy=False, handover=False, soak_seconds=0):
+def summarize(report, *, proxy=False, handover=False, soak_seconds=0, mihomo_soak_seconds=0):
     phases = [p["phase"] for p in report]
     if [p for p in phases if p not in OPTIONAL_PHASES] != EXPECTED:
         raise ValueError("missing or unexpected acceptance phases: " + repr(phases))
@@ -53,6 +53,8 @@ def summarize(report, *, proxy=False, handover=False, soak_seconds=0):
         raise ValueError("unexpected or missing network handover")
     if ("singbox-soak" in phases) != (soak_seconds > 0):
         raise ValueError("unexpected or missing soak")
+    if ("mihomo-soak" in phases) != (mihomo_soak_seconds > 0):
+        raise ValueError("unexpected or missing Mihomo soak")
     output = []
     for phase in report:
         name = phase["phase"]
@@ -73,6 +75,17 @@ def summarize(report, *, proxy=False, handover=False, soak_seconds=0):
                 for check in checks
             ):
                 raise ValueError("incomplete soak measurements")
+        if name == "mihomo-soak":
+            checks = phase.get("checks", [])
+            if phase.get("durationSeconds") != mihomo_soak_seconds or len(checks) < 2 or any(
+                any(not measured(check.get(key)) for key in ("elapsedMs", "tlsMs", "dnsMs", "domainTlsMs"))
+                or not check.get("pss")
+                for check in checks
+            ):
+                raise ValueError("incomplete Mihomo soak measurements")
+            elapsed = [check["elapsedMs"] for check in checks]
+            if elapsed != sorted(elapsed) or elapsed[-1] < mihomo_soak_seconds * 1000:
+                raise ValueError("Mihomo soak ended early or has invalid timestamps")
         samples = phase.get("samples", [])
         totals = [sum(p["pssKiB"] for p in sample) for sample in samples]
         if phase["phase"] in EXPECTED[:-1] and len(samples) != 3:
@@ -82,7 +95,7 @@ def summarize(report, *, proxy=False, handover=False, soak_seconds=0):
         output.append({"phase": phase["phase"], "tlsMs": phase.get("tlsMs"),
                        "dnsMs": phase.get("dnsMs"), "egress": phase.get("egress"),
                        "medianTotalPssKiB": statistics.median(totals) if totals else None,
-                       "samples": samples})
+                       "samples": samples, "checks": phase.get("checks", [])})
     return output
 
 
@@ -107,6 +120,8 @@ def main():
                         help="local single sing-box remote outbound; never passed as a command argument")
     parser.add_argument("--soak-seconds", type=int, default=0, metavar="0..120",
                         help="repeat HTTPS and DNS during the first native phase")
+    parser.add_argument("--mihomo-soak-seconds", type=int, default=0, metavar="0..3600",
+                        help="repeat DNS and HTTPS on the same Mihomo VPN for up to one hour")
     parser.add_argument("--output", default="dual-core-acceptance.json")
     parser.add_argument("--confirm-debug", action="store_true",
                         help="confirm Debug app is consented, stopped, and other VPNs are off")
@@ -115,6 +130,8 @@ def main():
         parser.error("read the device guide, then pass --confirm-debug")
     if not 0 <= args.soak_seconds <= 120:
         parser.error("--soak-seconds must be between 0 and 120")
+    if not 0 <= args.mihomo_soak_seconds <= 3600:
+        parser.error("--mihomo-soak-seconds must be between 0 and 3600")
     try:
         outbound = load_outbound(args.native_outbound) if args.native_outbound else None
     except (OSError, ValueError) as exc:
@@ -137,6 +154,8 @@ def main():
         cmd += ["-e", "nativeProxy", "true"]
     if args.soak_seconds:
         cmd += ["-e", "soakSeconds", str(args.soak_seconds)]
+    if args.mihomo_soak_seconds:
+        cmd += ["-e", "mihomoSoakSeconds", str(args.mihomo_soak_seconds)]
     cmd += [RUNNER]
     lines = []
     try:
@@ -165,7 +184,8 @@ def main():
             raise ValueError("ADB failed with exit code " + str(code))
         report = parse_result(log)
         summary = summarize(report, proxy=outbound is not None,
-                            handover=args.handover, soak_seconds=args.soak_seconds)
+                            handover=args.handover, soak_seconds=args.soak_seconds,
+                            mihomo_soak_seconds=args.mihomo_soak_seconds)
     except (ValueError, KeyError, TypeError) as exc:
         print("FAIL:", exc, file=sys.stderr)
         return 1

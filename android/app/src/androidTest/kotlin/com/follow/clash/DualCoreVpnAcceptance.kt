@@ -37,7 +37,7 @@ import org.json.JSONObject
 
 /** Explicitly opt-in, app-only, real forwarding test of the production controller. */
 internal class DualCoreVpnAcceptance(private val runner: Instrumentation, private val handover: Boolean,
-    private val nativeProxy: Boolean, private val soakSeconds: Int) {
+    private val nativeProxy: Boolean, private val soakSeconds: Int, private val mihomoSoakSeconds: Int) {
     private val context = runner.targetContext
     private val cm = context.getSystemService(ConnectivityManager::class.java)
     private val am = context.getSystemService(ActivityManager::class.java)
@@ -54,6 +54,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             "Stop every existing VPN first"
         }
         require(soakSeconds in 0..120)
+        require(mihomoSoakSeconds in 0..3600)
         val outbound = if (nativeProxy) readNativeOutbound() else JSONObject().put("type", "direct").put("tag", "acceptance-egress")
         val activity = runner.startActivitySync(Intent().setClassName(context, "com.follow.clash.VpnAcceptanceActivity")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -100,7 +101,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             .put("selected-map", JSONObject()).put("options", JSONObject())
         try {
             runBlocking {
-                withTimeout(480_000) {
+                withTimeout(480_000L + mihomoSoakSeconds * 1000L) {
                     val state = SharedState(vpnOptions = options, setupParams = JsonParser.parseString(setup.toString()).asJsonObject)
                     ServiceState.syncSharedState(state)
                     check(ServiceController.quickSetup(
@@ -108,6 +109,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
                     ).getOrThrow().isEmpty()) { "Initial Mihomo setup failed" }
                     check(ServiceState.requestStart().await()) { "Initial Mihomo VPN failed" }
                     phase("mihomo-initial", "198.18.0.1", ":mihomo", ":singbox")
+                    if (mihomoSoakSeconds > 0) verifyMihomoSoak()
                     repeat(2) { round ->
                         val started = ServiceState.requestNativeStart(native).await()
                         check(started.started) { if (nativeProxy) "Native proxy handoff failed; check local device diagnostics" else "Native handoff failed: ${started.error}" }
@@ -175,6 +177,34 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             ProbeDnsMessage.verify(bytes, answer.length, id)
         }
         return SystemClock.elapsedRealtime() - started
+    }
+
+    // Keep the same VPN and core alive throughout. A new socket on each
+    // sample distinguishes stale existing connections from new dial failures.
+    private suspend fun verifyMihomoSoak() {
+        val started = SystemClock.elapsedRealtime()
+        val deadline = started + mihomoSoakSeconds * 1000L
+        val checks = JSONArray()
+        while (true) {
+            val elapsed = SystemClock.elapsedRealtime() - started
+            val network = requireNotNull(vpn("198.18.0.1")) { "Mihomo VPN disappeared during soak" }
+            val dnsMs = dns(network, "198.18.0.1", "198.18.0.2")
+            val destination = network.getAllByName("example.com").first { it is Inet4Address }
+            val sample = JSONObject()
+                .put("elapsedMs", elapsed)
+                .put("dnsMs", dnsMs)
+                .put("tlsMs", https(network, "198.18.0.1"))
+                .put("domainTlsMs", https(network, "198.18.0.1", "example.com", destination))
+                .put("pss", pss())
+            checks.put(sample)
+            runner.sendStatus(0, Bundle().apply { putString("mihomoSoakSample", sample.toString()) })
+            if (checks.length() >= 2 && elapsed >= mihomoSoakSeconds * 1000L) break
+            val remaining = deadline - SystemClock.elapsedRealtime()
+            if (remaining > 0) kotlinx.coroutines.delay(minOf(30_000L, remaining))
+        }
+        val report = JSONObject().put("phase", "mihomo-soak")
+            .put("durationSeconds", mihomoSoakSeconds).put("checks", checks)
+        reports.put(report)
     }
 
     private suspend fun verifySoak() {
