@@ -155,36 +155,7 @@ class Request {
   /// The release page redirect still answers once the hourly API quota is spent.
   Future<Map<String, dynamic>> latestRelease() async {
     if (previewTag.isNotEmpty) {
-      final response = await releaseDio.get<List<dynamic>>(
-        'https://api.github.com/repos/$repository/releases?per_page=30',
-      );
-      final releases = response.data ?? const [];
-      Map<String, dynamic>? latest;
-      for (final release in releases.whereType<Map<String, dynamic>>()) {
-        final tag = release['tag_name'];
-        if (release['draft'] == true ||
-            tag is! String ||
-            !isPreviewReleaseTag(tag)) {
-          continue;
-        }
-        final suffix = selfUpdateSuffix;
-        if (suffix != null) {
-          final assets = release['assets'];
-          final name = releaseAssetName(tag, suffix);
-          if (assets is! List ||
-              !assets.any((asset) => asset is Map && asset['name'] == name)) {
-            continue;
-          }
-        }
-        if (latest == null ||
-            isNewerPreviewTag(tag, latest['tag_name'] as String)) {
-          latest = release;
-        }
-      }
-      if (latest == null) {
-        throw const FormatException('No published preview for this platform');
-      }
-      return latest;
+      return latestPreviewRelease(selfUpdateSuffix);
     }
     try {
       final response = await dio.get<Map<String, dynamic>>(
@@ -212,6 +183,84 @@ class Request {
       throw FormatException('No release tag in the redirect', location);
     }
     return {'tag_name': segments[tagIndex]};
+  }
+
+  @visibleForTesting
+  Future<Map<String, dynamic>> latestPreviewRelease(
+    String? platformSuffix,
+  ) async {
+    try {
+      final response = await releaseDio.get<List<dynamic>>(
+        'https://api.github.com/repos/$repository/releases?per_page=30',
+      );
+      final releases = response.data ?? const [];
+      Map<String, dynamic>? latest;
+      for (final release in releases.whereType<Map<String, dynamic>>()) {
+        final tag = release['tag_name'];
+        if (release['draft'] == true ||
+            tag is! String ||
+            !isPreviewReleaseTag(tag)) {
+          continue;
+        }
+        final suffix = platformSuffix;
+        if (suffix != null) {
+          final assets = release['assets'];
+          final name = releaseAssetName(tag, suffix);
+          if (assets is! List ||
+              !assets.any((asset) => asset is Map && asset['name'] == name)) {
+            continue;
+          }
+        }
+        if (latest == null ||
+            isNewerPreviewTag(tag, latest['tag_name'] as String)) {
+          latest = release;
+        }
+      }
+      if (latest == null) {
+        throw const FormatException('No published preview for this platform');
+      }
+      return latest;
+    } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      if (status != 403 && status != 429) rethrow;
+      commonPrint.log(
+        'preview release API denied: ${compactError(error)}',
+        logLevel: LogLevel.warning,
+      );
+    }
+
+    // GitHub's public release page does not consume the REST API quota.
+    // Unlike /releases/latest, it includes prereleases.
+    final page = await releaseDio.get<String>(
+      'https://github.com/$repository/releases',
+      options: Options(responseType: ResponseType.plain),
+    );
+    final pattern = RegExp(
+      'href="/$repository/releases/tag/([^"]+)"',
+    );
+    final tags = pattern
+        .allMatches(page.data ?? '')
+        .map((match) => match[1]!)
+        .where(isPreviewReleaseTag)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a == b ? 0 : (isNewerPreviewTag(a, b) ? -1 : 1));
+    for (final tag in tags) {
+      if (platformSuffix == null) return {'tag_name': tag};
+      final name = releaseAssetName(tag, platformSuffix);
+      try {
+        final sums = await releaseDio.getUri<String>(
+          releaseAssetUri(tag, releaseChecksumsName),
+          options: Options(responseType: ResponseType.plain),
+        );
+        if (releaseChecksum(sums.data ?? '', name) != null) {
+          return {'tag_name': tag};
+        }
+      } on DioException catch (error) {
+        if (error.response?.statusCode != 404) rethrow;
+      }
+    }
+    throw const FormatException('No published preview for this platform');
   }
 
   Future<String> downloadVerifiedRelease({
