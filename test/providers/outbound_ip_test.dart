@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/common/service_probe.dart';
 import 'package:fl_clash/core/controller.dart';
@@ -207,6 +209,23 @@ void main() {
     expect(
       container.read(outboundIpProbeProvider).entryOf('HK-01').phase,
       ProbePhase.failed,
+    );
+  });
+
+  test('a transport timeout also gets one automatic retry', () async {
+    var calls = 0;
+    when(() => core.outboundIp(any())).thenAnswer((_) async {
+      if (++calls == 1) throw TimeoutException('no answer');
+      return _answer;
+    });
+    final container = build();
+    container.read(outboundIpProbeProvider.notifier).watch(routedOutbound);
+    await pumpEventQueue();
+
+    expect(calls, 2);
+    expect(
+      container.read(outboundIpProbeProvider).valueOf(routedOutbound)?.ip,
+      '2.2.2.2',
     );
   });
 }

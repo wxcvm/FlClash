@@ -501,14 +501,20 @@ void main() {
       await tester.pump();
       expect(phaseOf(tester), ProbePhase.failed);
       expect(find.text('Check failed'), findsNothing);
-      expect(asked, [directOutbound, routedOutbound]);
+      expect(asked, [directOutbound, routedOutbound, routedOutbound]);
 
       await tester.pump(const Duration(seconds: 5));
       expect(find.text('Check failed'), findsOneWidget);
       expect(find.text('Tap the icon to retry'), findsOneWidget);
       await tester.tap(find.byTooltip('Retry'));
       await tester.pump();
-      expect(asked, [directOutbound, routedOutbound, routedOutbound]);
+      expect(asked, [
+        directOutbound,
+        routedOutbound,
+        routedOutbound,
+        routedOutbound,
+        routedOutbound,
+      ]);
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 700));
       expect(find.text('Check failed'), findsOneWidget);
