@@ -235,16 +235,15 @@ class Request {
       'https://github.com/$repository/releases',
       options: Options(responseType: ResponseType.plain),
     );
-    final pattern = RegExp(
-      'href="/$repository/releases/tag/([^"]+)"',
-    );
-    final tags = pattern
-        .allMatches(page.data ?? '')
-        .map((match) => match[1]!)
-        .where(isPreviewReleaseTag)
-        .toSet()
-        .toList()
-      ..sort((a, b) => a == b ? 0 : (isNewerPreviewTag(a, b) ? -1 : 1));
+    final pattern = RegExp('href="/$repository/releases/tag/([^"]+)"');
+    final tags =
+        pattern
+            .allMatches(page.data ?? '')
+            .map((match) => match[1]!)
+            .where(isPreviewReleaseTag)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a == b ? 0 : (isNewerPreviewTag(a, b) ? -1 : 1));
     for (final tag in tags) {
       if (platformSuffix == null) return {'tag_name': tag};
       final name = releaseAssetName(tag, platformSuffix);
