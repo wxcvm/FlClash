@@ -224,7 +224,9 @@ func handleUpdateDns(value string) {
 	defer configMu.Unlock()
 	log.Infoln("[DNS] updateDns %s", value)
 	dns.UpdateSystemDNS(addr)
-	dns.FlushCacheWithDefaultResolver()
+	// The upstream helper launches asynchronous cache/transport resets that
+	// can outlive this network update and close sockets on the new path.
+	dns.ClearAll()
 }
 
 // gobind runs an export on the caller's thread and turns no panic into a Java
