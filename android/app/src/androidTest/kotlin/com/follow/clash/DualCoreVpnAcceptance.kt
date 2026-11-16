@@ -24,6 +24,7 @@ import java.net.InetSocketAddress
 import java.net.DatagramSocket
 import java.net.DatagramPacket
 import java.net.InetAddress
+import java.net.Inet4Address
 import java.util.concurrent.ThreadLocalRandom
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
@@ -36,7 +37,7 @@ import org.json.JSONObject
 
 /** Explicitly opt-in, app-only, real forwarding test of the production controller. */
 internal class DualCoreVpnAcceptance(private val runner: Instrumentation, private val handover: Boolean,
-    private val nativeProxy: Boolean, private val soakSeconds: Int) {
+    private val nativeProxy: Boolean, private val soakSeconds: Int, private val mihomoSoakSeconds: Int) {
     private val context = runner.targetContext
     private val cm = context.getSystemService(ConnectivityManager::class.java)
     private val am = context.getSystemService(ActivityManager::class.java)
@@ -53,6 +54,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             "Stop every existing VPN first"
         }
         require(soakSeconds in 0..120)
+        require(mihomoSoakSeconds in 0..3600)
         val outbound = if (nativeProxy) readNativeOutbound() else JSONObject().put("type", "direct").put("tag", "acceptance-egress")
         val activity = runner.startActivitySync(Intent().setClassName(context, "com.follow.clash.VpnAcceptanceActivity")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -93,13 +95,13 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             enable = true, port = 0, ipv6 = false, dnsHijacking = false,
             accessControlProps = AccessControlProps(true, AccessControlMode.ACCEPT_SELECTED, listOf(packageName), emptyList()),
             allowBypass = false, systemProxy = false, bypassDomain = emptyList(),
-            stack = "gvisor", routeAddress = listOf("1.1.1.1/32"),
+            stack = "gvisor", routeAddress = emptyList(),
         )
         val setup = JSONObject().put("base", JSONObject().put("path", profile.path).put("overlay", ""))
             .put("selected-map", JSONObject()).put("options", JSONObject())
         try {
             runBlocking {
-                withTimeout(480_000) {
+                withTimeout(480_000L + mihomoSoakSeconds * 1000L) {
                     val state = SharedState(vpnOptions = options, setupParams = JsonParser.parseString(setup.toString()).asJsonObject)
                     ServiceState.syncSharedState(state)
                     check(ServiceController.quickSetup(
@@ -107,6 +109,7 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
                     ).getOrThrow().isEmpty()) { "Initial Mihomo setup failed" }
                     check(ServiceState.requestStart().await()) { "Initial Mihomo VPN failed" }
                     phase("mihomo-initial", "198.18.0.1", ":mihomo", ":singbox")
+                    if (mihomoSoakSeconds > 0) verifyMihomoSoak()
                     repeat(2) { round ->
                         val started = ServiceState.requestNativeStart(native).await()
                         check(started.started) { if (nativeProxy) "Native proxy handoff failed; check local device diagnostics" else "Native handoff failed: ${started.error}" }
@@ -157,15 +160,15 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         }
     }
 
-    private fun dns(network: Network): Long {
+    private fun dns(network: Network, address: String = "172.19.0.1", server: String = "172.19.0.2"): Long {
         val id = ThreadLocalRandom.current().nextInt(65536)
         val query = ProbeDnsMessage.query(id)
         val started = SystemClock.elapsedRealtime()
         DatagramSocket(null).use { socket ->
             network.bindSocket(socket)
             socket.bind(InetSocketAddress(0))
-            socket.connect(InetAddress.getByName("172.19.0.2"), 53)
-            check(socket.localAddress.hostAddress == "172.19.0.1") { "DNS bypassed native TUN" }
+            socket.connect(InetAddress.getByName(server), 53)
+            check(socket.localAddress.hostAddress == address) { "DNS bypassed expected TUN" }
             socket.soTimeout = 8000
             socket.send(DatagramPacket(query, query.size))
             val bytes = ByteArray(4096)
@@ -174,6 +177,34 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             ProbeDnsMessage.verify(bytes, answer.length, id)
         }
         return SystemClock.elapsedRealtime() - started
+    }
+
+    // Keep the same VPN and core alive throughout. A new socket on each
+    // sample distinguishes stale existing connections from new dial failures.
+    private suspend fun verifyMihomoSoak() {
+        val started = SystemClock.elapsedRealtime()
+        val deadline = started + mihomoSoakSeconds * 1000L
+        val checks = JSONArray()
+        while (true) {
+            val elapsed = SystemClock.elapsedRealtime() - started
+            val network = requireNotNull(vpn("198.18.0.1")) { "Mihomo VPN disappeared during soak" }
+            val dnsMs = dns(network, "198.18.0.1", "198.18.0.2")
+            val destination = network.getAllByName("example.com").first { it is Inet4Address }
+            val sample = JSONObject()
+                .put("elapsedMs", elapsed)
+                .put("dnsMs", dnsMs)
+                .put("tlsMs", https(network, "198.18.0.1"))
+                .put("domainTlsMs", https(network, "198.18.0.1", "example.com", destination))
+                .put("pss", pss())
+            checks.put(sample)
+            runner.sendStatus(0, Bundle().apply { putString("mihomoSoakSample", sample.toString()) })
+            if (checks.length() >= 2 && elapsed >= mihomoSoakSeconds * 1000L) break
+            val remaining = deadline - SystemClock.elapsedRealtime()
+            if (remaining > 0) kotlinx.coroutines.delay(minOf(30_000L, remaining))
+        }
+        val report = JSONObject().put("phase", "mihomo-soak")
+            .put("durationSeconds", mihomoSoakSeconds).put("checks", checks)
+        reports.put(report)
     }
 
     private suspend fun verifySoak() {
@@ -243,14 +274,19 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
         waitFor("$name TUN") { vpn(address) != null }
         val network = requireNotNull(vpn(address))
         val latency = https(network, address)
-        val dnsLatency = if (active == ":singbox") dns(network) else null
+        val dnsLatency = if (active == ":singbox") dns(network) else dns(network, address, "198.18.0.2")
+        val domainLatency = if (active == ":mihomo") {
+            val destination = network.getAllByName("example.com").first { it is Inet4Address }
+            https(network, address, "example.com", destination)
+        } else null
         val samples = JSONArray()
         repeat(3) {
             samples.put(pss())
             SystemClock.sleep(1000)
         }
         val report = JSONObject().put("phase", name).put("tlsMs", latency).put("samples", samples)
-        if (dnsLatency != null) report.put("dnsMs", dnsLatency).put("egress", if (nativeProxy) "proxy" else "direct")
+        report.put("dnsMs", dnsLatency).put("egress", if (active == ":singbox" && nativeProxy) "proxy" else "direct")
+        if (domainLatency != null) report.put("domainTlsMs", domainLatency)
         reports.put(report)
         runner.sendStatus(0, Bundle().apply { putString("phase", report.toString()) })
     }
@@ -283,18 +319,19 @@ internal class DualCoreVpnAcceptance(private val runner: Instrumentation, privat
             cm.getLinkProperties(network)?.linkAddresses?.any { it.address.hostAddress == address } == true
     }
 
-    private fun https(network: Network, address: String): Long {
+    private fun https(network: Network, address: String, host: String = "cloudflare-dns.com",
+        destination: InetAddress = InetAddress.getByName("1.1.1.1")): Long {
         val started = SystemClock.elapsedRealtime()
         network.socketFactory.createSocket().use { raw ->
-            raw.connect(InetSocketAddress("1.1.1.1", 443), 5000)
+            raw.connect(InetSocketAddress(destination, 443), 5000)
             check(raw.localAddress.hostAddress == address) { "HTTPS bypassed expected TUN" }
             raw.soTimeout = 5000
             val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            (factory.createSocket(raw, "cloudflare-dns.com", 443, true) as SSLSocket).use { tls ->
+            (factory.createSocket(raw, host, 443, true) as SSLSocket).use { tls ->
                 tls.sslParameters = tls.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
                 tls.soTimeout = 5000
                 tls.startHandshake()
-                tls.outputStream.write("HEAD / HTTP/1.1\r\nHost: cloudflare-dns.com\r\nConnection: close\r\n\r\n".toByteArray())
+                tls.outputStream.write("HEAD / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n".toByteArray())
                 tls.outputStream.flush()
                 val line = tls.inputStream.bufferedReader().readLine()
                 check(line != null && Regex("HTTP/1\\.[01] [1-5][0-9]{2}.*").matches(line)) { "Invalid HTTPS response" }

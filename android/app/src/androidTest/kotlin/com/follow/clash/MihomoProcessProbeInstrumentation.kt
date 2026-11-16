@@ -30,11 +30,13 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
     private var handover = false
     private var nativeProxy = false
     private var soakSeconds = 0
+    private var mihomoSoakSeconds = 0
     override fun onCreate(arguments: Bundle?) {
         live = arguments?.getString("liveVpn") == "true"
         handover = arguments?.getString("handover") == "true"
         nativeProxy = arguments?.getString("nativeProxy") == "true"
         soakSeconds = arguments?.getString("soakSeconds")?.toIntOrNull() ?: 0
+        mihomoSoakSeconds = arguments?.getString("mihomoSoakSeconds")?.toIntOrNull() ?: 0
         super.onCreate(arguments)
         start()
     }
@@ -96,7 +98,7 @@ class MihomoProcessProbeInstrumentation : Instrumentation() {
         val result = Bundle()
         try {
             if (live) {
-                DualCoreVpnAcceptance(this, handover, nativeProxy, soakSeconds).run(result)
+                DualCoreVpnAcceptance(this, handover, nativeProxy, soakSeconds, mihomoSoakSeconds).run(result)
                 result.putString("stream", "PASS: live dual-core VPN acceptance\\n")
                 finish(Activity.RESULT_OK, result)
                 return

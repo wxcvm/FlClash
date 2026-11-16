@@ -66,6 +66,19 @@ class AcceptanceReportTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             summarize(report, soak_seconds=60)
 
+    def test_mihomo_soak_requires_elapsed_time_and_domain_measurements(self):
+        report = fixture()
+        sample = {"elapsedMs": 0, "tlsMs": 100, "dnsMs": 20,
+                  "domainTlsMs": 120, "pss": [{"pid": 1, "pssKiB": 200}]}
+        report.insert(1, {"phase": "mihomo-soak", "durationSeconds": 1800,
+                          "checks": [sample, {**sample, "elapsedMs": 1800000}]})
+        self.assertEqual(len(summarize(report, mihomo_soak_seconds=1800)), 7)
+        with self.assertRaises(ValueError):
+            summarize(report)
+        report[1]["checks"][1]["elapsedMs"] = 1000
+        with self.assertRaises(ValueError):
+            summarize(report, mihomo_soak_seconds=1800)
+
     def test_single_outbound_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "outbound.json"
