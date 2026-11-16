@@ -1121,8 +1121,7 @@ class ProxiesAction extends _$ProxiesAction {
         _latestDelayTestGeneration[target.key] == job.generation;
     if (targets.length < 2 ||
         !targets.every(
-          (target) =>
-              current(target) && (job.results[target.key] ?? 0) < 0,
+          (target) => current(target) && (job.results[target.key] ?? 0) < 0,
         )) {
       return;
     }
