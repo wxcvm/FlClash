@@ -49,11 +49,10 @@ func (th *TunHandler) start(fd int, stack, address, dns, options string) bool {
 	th.initHook()
 	th.mu.Unlock()
 
-	// t.Start runs outside th.mu on purpose. The hook is live from initHook
-	// onwards, and a socket opened anywhere inside Start reaches handleProtect
-	// on this very goroutine — an RLock taken while this one holds the write
-	// lock deadlocks the start outright. Nothing is lost by dropping it: both
-	// hooks return early until th.listener is set, which is below.
+	// t.Start runs outside th.mu on purpose. Android has already established
+	// its VPN routes, so sockets opened during Start must be protected too.
+	// The callbacks are installed before the listener; do not hold th.mu
+	// while Start can call the socket hook on this goroutine.
 	tunListener := t.Start(fd, stack, address, dns, options)
 
 	th.mu.Lock()
@@ -82,17 +81,14 @@ func (th *TunHandler) clear() {
 	th.listener = nil
 }
 
-// A refused protect never fails the dial: mihomo's tunnel retries a failed
-// dial ten times, and Android refuses only after the VPN was revoked, when the
-// routes are gone and an unprotected socket takes the default network.
-func (th *TunHandler) handleProtect(fd int) {
+// An active VPN must not let an unprotected outbound socket re-enter TUN.
+// The callback is valid before the listener is published, since Android
+// establishes the VPN before transferring its descriptor to the core.
+func (th *TunHandler) handleProtect(fd int) bool {
 	th.mu.RLock()
 	defer th.mu.RUnlock()
 
-	if th.listener == nil || th.callbacks == nil {
-		return
-	}
-	th.callbacks.Protect(fd)
+	return th.callbacks != nil && th.callbacks.Protect(fd)
 }
 
 func (th *TunHandler) handleResolveProcess(source, target net.Addr) (int, string) {
@@ -136,9 +132,7 @@ func installHooks() {
 			if th == nil {
 				return nil
 			}
-			return conn.Control(func(fd uintptr) {
-				th.handleProtect(int(fd))
-			})
+			return protectOutboundSocket(conn.Control, th.handleProtect)
 		}
 		process.DefaultPackageNameResolver = func(metadata *constant.Metadata) (string, error) {
 			th := activeTunHandler.Load()
