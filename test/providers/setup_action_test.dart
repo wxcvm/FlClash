@@ -1826,6 +1826,57 @@ void main() {
       );
     });
 
+    test('standard added rules load referenced providers without replacing '
+        'subscription providers', () async {
+      final profile = Profile.normal(label: 'p');
+      final core = _MockCoreHandlerInterface();
+      when(() => core.getProfileBase(any())).thenAnswer(
+        (_) async => const ProfileBase(
+          config: {
+            'rule-providers': {
+              'existing': {
+                'type': 'inline',
+                'behavior': 'domain',
+                'payload': ['example.com'],
+              },
+            },
+          },
+          digest: 'd',
+        ),
+      );
+      const appRule = ClashProvider(id: 12, label: 'appRules');
+      const existing = ClashProvider(id: 13, label: 'existing');
+      const unused = ClashProvider(id: 14, label: 'unused');
+      final setupState = nullProfileSetupState.copyWith(
+        profileId: profile.id,
+        addedRules: [
+          Rule.parse('AND,((RULE-SET,appRules),(NETWORK,UDP)),REJECT'),
+          Rule.parse('AND,((RULE-SET,existing),(NETWORK,UDP)),REJECT'),
+        ],
+        clashProviders: const [appRule, existing, unused],
+      );
+      final scoped = ProviderContainer(
+        overrides: [
+          coreHandlerProvider.overrideWithValue(CoreController.scoped(core)),
+          setupActionProvider.overrideWith(SetupAction.new),
+        ],
+      );
+      addTearDown(scoped.dispose);
+
+      final res = await scoped
+          .read(setupActionProvider.notifier)
+          .getProfile(
+            setupState: setupState,
+            patchConfig: const PatchClashConfig(),
+          );
+      final config = loadYaml(res.yaml) as YamlMap;
+      final providers = config['rule-providers'] as YamlMap;
+      expect(providers.keys, {'appRules', 'existing'});
+      expect(providers['appRules']['type'], 'file');
+      expect(providers['existing']['type'], 'inline');
+      expect(config['rules'], hasLength(2));
+    });
+
     test('a provider a custom profile names carries its options', () async {
       final profile = Profile.custom(label: 'p');
       final core = _MockCoreHandlerInterface();

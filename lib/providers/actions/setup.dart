@@ -576,7 +576,8 @@ class SetupAction extends _$SetupAction {
     final injected = await _resolveInjectedProviders(
       setupState,
       proxyGroups: proxyGroups,
-      rules: rules,
+      rules: isCustom ? rules : setupState.addedRules,
+      existingRuleProviders: rawConfig['rule-providers'],
     );
     final res = await makeRealProfileTask(
       MakeRealProfileState(
@@ -620,13 +621,14 @@ class SetupAction extends _$SetupAction {
     );
   }
 
-  /// Only what the custom profile actually references is injected, so an
+  /// Only what the profile actually references is injected, so an
   /// app-level provider costs nothing in the profiles that never name it.
   Future<({Map<String, dynamic> proxies, Map<String, dynamic> rules})>
   _resolveInjectedProviders(
     SetupState setupState, {
     required List<ProxyGroup> proxyGroups,
     required List<Rule> rules,
+    required Object? existingRuleProviders,
   }) async {
     final usedProxyProviders = <String>{
       for (final proxyGroup in proxyGroups) ...?proxyGroup.use,
@@ -659,7 +661,9 @@ class SetupAction extends _$SetupAction {
     );
     final ruleProviders = <String, dynamic>{};
     for (final provider in setupState.clashProviders) {
-      if (!usedRuleProviders.contains(provider.label)) {
+      if (!usedRuleProviders.contains(provider.label) ||
+          (existingRuleProviders is Map &&
+              existingRuleProviders.containsKey(provider.label))) {
         continue;
       }
       final prepared = await clashProvidersAction.prepare(provider);

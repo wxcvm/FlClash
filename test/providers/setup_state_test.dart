@@ -106,6 +106,39 @@ void main() {
     expect(state.rules.map((rule) => rule.id), [11]);
   });
 
+  testWidgets('standard setup carries providers referenced by added rules', (
+    tester,
+  ) async {
+    const profile = Profile(
+      id: 1,
+      type: ProfileType.file,
+      autoUpdateDuration: Duration.zero,
+    );
+    await testDatabase.profilesDao.putAll([profile.toCompanion()]);
+    await testDatabase.rulesDao.putRule(
+      Rule.parse('AND,((RULE-SET,appRules),(NETWORK,UDP)),REJECT', id: 10),
+    );
+    await testDatabase.clashProvidersDao.putAll([
+      const ClashProvider(id: 12, label: 'appRules').toCompanion(),
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        profilesProvider.overrideWith(() => TestProfiles([profile])),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const SizedBox.shrink(),
+      ),
+    );
+
+    final state = await container.read(setupStateProvider(profile.id).future);
+    expect(state.addedRules.single.ruleSets, contains('appRules'));
+    expect(state.clashProviders.single.label, 'appRules');
+  });
+
   testWidgets('a custom setup carries the dialers of its own profile', (
     tester,
   ) async {

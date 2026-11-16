@@ -99,6 +99,9 @@ Future<SetupState> setupState(Ref ref, int? profileId) async {
       };
     } else if (extendType == ExtendType.standard) {
       addedRules = await database.rulesDao.queryAddedRules(profileId).get();
+      if (addedRules.any((rule) => rule.ruleSets.isNotEmpty)) {
+        clashProviders = await database.clashProvidersDao.query().get();
+      }
     } else if (extendType == ExtendType.script) {
       script = scriptId == null
           ? null
