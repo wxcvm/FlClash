@@ -26,6 +26,11 @@ String? chooseDownloadSpeedWinner(
   return winner;
 }
 
+// Throughput optimization downloads real data. Defer it while applications
+// are already transferring data; health-only failover is not subject to this.
+bool automaticSpeedMaySample(Traffic traffic) =>
+    traffic.up + traffic.down < 128 * 1024;
+
 /// Retest the incumbent and known fast nodes, leaving room to explore.
 List<String> automaticSpeedCandidates(
   List<String> names,
@@ -192,7 +197,8 @@ class ProxiesAction extends _$ProxiesAction {
     }
     if (_autoSpeedRunning ||
         _speedTestingGroups.isNotEmpty ||
-        _speedTestPool.activeCount > 0) {
+        _speedTestPool.activeCount > 0 ||
+        _delayTestPool.activeCount > 0) {
       _scheduleAutoSpeed(delay: const Duration(seconds: 15));
       return;
     }
@@ -242,6 +248,10 @@ class ProxiesAction extends _$ProxiesAction {
         _nodeHealth.markFailoverAttempt();
         await _recoverAutoNode(group, incumbent, isCurrent);
       } else {
+        // Read all traffic, not the dashboard's optional proxy-only counter.
+        // A busy path can distort candidate throughput and interrupt normal
+        // downloads. Do not spend the optimization budget on a deferred test.
+        if (!await _networkIdleForSpeedOptimization(isCurrent)) return;
         _nodeHealth.markOptimizationAttempt(DateTime.now());
         await selectByDownloadSpeed(group.name, automatic: true);
       }
@@ -250,6 +260,21 @@ class ProxiesAction extends _$ProxiesAction {
       if (ref.mounted && _autoSpeedTimer?.isActive != true) {
         _scheduleAutoSpeed(delay: const Duration(seconds: 30));
       }
+    }
+  }
+
+  Future<bool> _networkIdleForSpeedOptimization(
+    bool Function() isCurrent,
+  ) async {
+    try {
+      final traffic = await _core.getTraffic(false);
+      return isCurrent() && automaticSpeedMaySample(traffic);
+    } catch (error) {
+      commonPrint.log(
+        'Automatic throughput optimization deferred: $error',
+        logLevel: coreFailureLogLevel(error),
+      );
+      return false;
     }
   }
 
