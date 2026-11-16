@@ -519,6 +519,100 @@ void main() {
       expect(container.read(pendingDelayTestsProvider), isEmpty);
     });
 
+    test(
+      'all-red batch retries sequentially then recovers remaining nodes',
+      () async {
+        final calls = <String, int>{};
+        var active = 0;
+        var peakRetry = 0;
+        when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((
+          invocation,
+        ) async {
+          final name =
+              (invocation.positionalArguments[0] as TestDelayParams).proxyName;
+          final count = calls.update(
+            name,
+            (value) => value + 1,
+            ifAbsent: () => 1,
+          );
+          if (count == 2) {
+            active++;
+            if (active > peakRetry) peakRetry = active;
+            await Future<void>.delayed(Duration.zero);
+            active--;
+          }
+          return Delay(name: name, url: _testUrl, value: count == 1 ? -1 : 42);
+        });
+        final container = _delayContainer(buildContainer);
+        final proxies = List.generate(
+          8,
+          (index) => Proxy(name: 'HK-$index', type: 'ss'),
+        );
+
+        await actionOf(container).delayTest(proxies);
+
+        expect(calls.values, everyElement(2));
+        expect(peakRetry, lessThanOrEqualTo(4));
+        expect(
+          container.read(delayDataSourceProvider)[_testUrl]!.values,
+          everyElement(42),
+        );
+        expect(container.read(pendingDelayTestsProvider), isEmpty);
+      },
+    );
+
+    test('persistent all-red batch only retries three samples', () async {
+      var calls = 0;
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((
+        invocation,
+      ) async {
+        calls++;
+        final name =
+            (invocation.positionalArguments[0] as TestDelayParams).proxyName;
+        return Delay(name: name, url: _testUrl, value: -1);
+      });
+      final container = _delayContainer(buildContainer);
+      await actionOf(container).delayTest(
+        List.generate(8, (index) => Proxy(name: 'HK-$index', type: 'ss')),
+      );
+      expect(calls, 11);
+      expect(
+        container.read(delayDataSourceProvider)[_testUrl]!.values,
+        everyElement(-1),
+      );
+      expect(container.read(pendingDelayTestsProvider), isEmpty);
+    });
+
+    test('network change during all-red retry drops stale results', () async {
+      final retry = Completer<Delay>();
+      final entered = Completer<void>();
+      var calls = 0;
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((
+        invocation,
+      ) async {
+        final name =
+            (invocation.positionalArguments[0] as TestDelayParams).proxyName;
+        if (++calls == 3) {
+          entered.complete();
+          return retry.future;
+        }
+        return Delay(name: name, url: _testUrl, value: -1);
+      });
+      final container = _delayContainer(buildContainer);
+      final action = actionOf(container);
+      final run = action.delayTest(const [
+        _proxy,
+        Proxy(name: 'HK-02', type: 'ss'),
+      ]);
+      await entered.future;
+      action.onAutoSpeedNetworkChange(false);
+      retry.complete(const Delay(name: 'HK-01', url: _testUrl, value: 42));
+      await run;
+      expect(calls, 3);
+      expect(container.read(delayDataSourceProvider)[_testUrl]?['HK-01'], -1);
+      expect(container.read(pendingDelayTestsProvider), isEmpty);
+    });
+
     test('lands a run of quick results in batches, not one per node', () async {
       when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer(
         (invocation) async => Delay(
