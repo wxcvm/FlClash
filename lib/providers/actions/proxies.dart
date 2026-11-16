@@ -72,6 +72,7 @@ class _DelayTestJob {
   final Duration timeout;
   final int generation;
   final Set<String> startedOnDispatch = {};
+  final Map<String, int?> results = {};
   bool cancelled = false;
 }
 
@@ -113,6 +114,7 @@ class ProxiesAction extends _$ProxiesAction {
     });
     ref.listen(currentProfileIdProvider, (previous, next) {
       if (previous != next) {
+        cancelDelayTests();
         _speedTestGeneration++;
         _autoSpeedTimer?.cancel();
         _autoSpeedCursor = 0;
@@ -1085,6 +1087,7 @@ class ProxiesAction extends _$ProxiesAction {
           (target) => _delayTestPool.run(() => _runDelayTest(job, target)),
         ),
       );
+      await _retryAllRed(job, targets);
     } finally {
       _delayTestJobs.remove(job);
       for (final target in targets) {
@@ -1101,6 +1104,58 @@ class ProxiesAction extends _$ProxiesAction {
           (key) => !job.startedOnDispatch.contains(key),
         ),
       );
+    }
+  }
+
+  // A batch of explicit failures can be a shared path or test congestion
+  // rather than independent dead nodes. Sample sequentially before spending
+  // another full batch on a genuinely unavailable network.
+  Future<void> _retryAllRed(
+    _DelayTestJob job,
+    List<_DelayTestTarget> targets,
+  ) async {
+    bool current(_DelayTestTarget target) =>
+        ref.mounted &&
+        !job.cancelled &&
+        _autoSpeedOnline &&
+        _latestDelayTestGeneration[target.key] == job.generation;
+    if (targets.length < 2 ||
+        !targets.every(
+          (target) =>
+              current(target) && (job.results[target.key] ?? 0) < 0,
+        )) {
+      return;
+    }
+
+    Future<void> retry(List<_DelayTestTarget> batch) async {
+      final active = batch.where(current).toList();
+      if (active.isEmpty) return;
+      _flushDelayResults();
+      final keys = active.map((target) => target.key);
+      job.held.addAll(keys);
+      job.startedOnDispatch.removeAll(keys);
+      ref.read(pendingDelayTestsProvider.notifier).apply(acquired: keys);
+      await Future.wait(
+        active.map(
+          (target) => _delayTestPool.run(() => _runDelayTest(job, target)),
+        ),
+      );
+    }
+
+    final samples = targets.take(3).toList();
+    var recovered = false;
+    for (final target in samples) {
+      if (!current(target)) return;
+      await retry([target]);
+      if (!current(target)) return;
+      if ((job.results[target.key] ?? 0) > 0) recovered = true;
+    }
+    if (!recovered) return;
+    // Retry the remaining nodes once, in small waves instead of another
+    // burst of 32. Never change a selection or reset working connections.
+    for (var offset = samples.length; offset < targets.length; offset += 4) {
+      if (!ref.mounted || job.cancelled || !_autoSpeedOnline) return;
+      await retry(targets.skip(offset).take(4).toList());
     }
   }
 
@@ -1124,6 +1179,7 @@ class ProxiesAction extends _$ProxiesAction {
       // An older request must not replace a fresher measurement.
       if (!job.cancelled &&
           _latestDelayTestGeneration[target.key] == job.generation) {
+        job.results[target.key] = delay.value;
         setDelay(delay);
       }
     } catch (error) {
