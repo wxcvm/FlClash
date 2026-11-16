@@ -73,3 +73,18 @@ TLS/HTTP through the specified native outbound; this is not proof of all
 protocol variants, all destinations, or the remote public egress IP. The optional
 soak checks actual DNS and HTTPS repeatedly for up to 120 seconds, not a battery
 or long-duration reliability benchmark.
+
+### Long-lived Mihomo VPN (system HTTP proxy disabled)
+
+With the same consented debug setup, run:
+
+    python tool/android-singbox/device_acceptance.py --confirm-debug --mihomo-soak-seconds 1800
+
+The optional Mihomo phase supports up to 3600 seconds without restarting the VPN
+or switching cores. Every 30 seconds it records virtual DNS, fixed-IP TLS,
+domain-resolved TLS, elapsed time and process memory samples. It reports each
+sample immediately, so the log retains earlier measurements if a later probe
+fails. This uses a DIRECT baseline, not the user's subscription or a throughput
+benchmark; repeat on a stable Wi-Fi or mobile connection and compare with the
+normal app when diagnosing a specific proxy node. Stop the production VPN
+before the debug acceptance run; see the existing device preparation above.
