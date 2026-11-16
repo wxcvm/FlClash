@@ -1,7 +1,19 @@
+import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/action.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('automatic throughput yields to active application traffic', () {
+    expect(automaticSpeedMaySample(const Traffic()), isTrue);
+    expect(automaticSpeedMaySample(const Traffic(down: 64 * 1024)), isTrue);
+    expect(automaticSpeedMaySample(const Traffic(down: 128 * 1024)), isFalse);
+    expect(automaticSpeedMaySample(const Traffic(up: 256 * 1024)), isFalse);
+    expect(
+      automaticSpeedMaySample(const Traffic(up: 64 * 1024, down: 64 * 1024)),
+      isFalse,
+    );
+  });
+
   test('auto probes keep the incumbent and fastest known alternatives', () {
     final candidates = automaticSpeedCandidates(
       ['a', 'b', 'c', 'd', 'e', 'f'],
