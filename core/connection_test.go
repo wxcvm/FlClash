@@ -150,3 +150,59 @@ func TestStopListenerClosesTrackedConnections(t *testing.T) {
 		t.Fatal("stopped listener left the tracked socket open")
 	}
 }
+
+func TestExplicitConnectionResetWaitsForResolver(t *testing.T) {
+	previous := resetNetworkResolver
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+	resetNetworkResolver = func() {
+		close(entered)
+		<-release
+	}
+	t.Cleanup(func() { resetNetworkResolver = previous })
+	go func() {
+		handleResetConnections()
+		close(done)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("resolver reset was not invoked")
+	}
+	select {
+	case <-done:
+		close(release)
+		t.Fatal("reset returned before DNS transports were reset")
+	default:
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("reset did not finish")
+	}
+}
+
+func TestListenerTransitionsResetResolverSynchronously(t *testing.T) {
+	previous := resetNetworkResolver
+	previousRunning := isRunning.Load()
+	previousConfig := currentConfig
+	calls := 0
+	resetNetworkResolver = func() { calls++ }
+	currentConfig = nil
+	t.Cleanup(func() {
+		resetNetworkResolver = previous
+		currentConfig = previousConfig
+		setRunning(previousRunning)
+	})
+	handleStartListener()
+	if calls != 1 {
+		t.Fatalf("start returned after %d DNS resets, want 1", calls)
+	}
+	handleStopListener()
+	if calls != 2 {
+		t.Fatalf("stop returned after %d DNS resets, want 2", calls)
+	}
+}
