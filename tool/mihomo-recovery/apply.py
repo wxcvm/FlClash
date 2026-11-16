@@ -59,4 +59,58 @@ if text.count(old) != 1:
     raise SystemExit("Mihomo DNS clear source changed")
 clear.write_text(text.replace(old, new, 1))
 shutil.copyfile(here / "flclash_system_dns_test.go", root / "dns/flclash_system_dns_test.go")
-print("Applied Mihomo failure recovery and DNS extensions")
+# A concurrent sender could enqueue after cancellation and after the final
+# drain, retaining packet buffers that never reach UDPPacket.Drop.
+udp = root / "tunnel/connection.go"
+text = udp.read_text()
+old = """func (s *packetSender) Send(packet C.PacketAdapter) {
+	select {
+	case <-s.ctx.Done():
+		packet.Drop() // sender closed before Send()
+		return
+	default:
+	}
+
+	select {
+	case s.ch <- packet:
+		// put ok, so don't drop packet, will process by other side of chan
+	case <-s.ctx.Done():
+		packet.Drop() // sender closed when putting data to chan
+	default:
+		packet.Drop() // chan is full
+	}
+}
+
+func (s *packetSender) Close() {
+	s.cancel()
+	s.dropAll()
+}"""
+new = """func (s *packetSender) Send(packet C.PacketAdapter) {
+	// Serialize the nonblocking enqueue with cancellation. A select can
+	// otherwise choose a ready send after Close has already drained the queue.
+	s.sendMu.Lock()
+	if s.ctx.Err() == nil {
+		select {
+		case s.ch <- packet:
+			s.sendMu.Unlock()
+			return
+		default:
+		}
+	}
+	s.sendMu.Unlock()
+	packet.Drop()
+}
+
+func (s *packetSender) Close() {
+	s.sendMu.Lock()
+	s.cancel()
+	s.sendMu.Unlock()
+	s.dropAll()
+}"""
+field = "\tch     chan C.PacketAdapter\n"
+if text.count(old) != 1 or text.count(field) != 1:
+    raise SystemExit("Mihomo UDP sender source changed")
+text = text.replace(field, field + "\tsendMu sync.Mutex\n", 1)
+udp.write_text(text.replace(old, new, 1))
+shutil.copyfile(here / "flclash_udp_sender_test.go", root / "tunnel/flclash_udp_sender_test.go")
+print("Applied Mihomo failure recovery, DNS and UDP extensions")

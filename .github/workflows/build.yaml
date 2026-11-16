@@ -253,6 +253,7 @@ jobs:
           go test -race adapter/outboundgroup/flclash_failure_gate.go adapter/outboundgroup/flclash_failure_gate_test.go
           go test ./adapter/outboundgroup
           go test ./dns -run '^Test(FlClashClearAllSystemResolver|ClearAll)'
+          go test -race ./tunnel -run '^TestFlClashUDPSender'
 
       - name: Validate the Android core library
         working-directory: core
