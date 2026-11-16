@@ -1,0 +1,21 @@
+name: Dispatch reviewed preview
+on:
+  push:
+    branches: [ci/dispatch-preview-f05c89b]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    if: github.repository == 'wxcvm/FlClash'
+    steps:
+      - name: Dispatch existing dual-platform preview workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: f05c89bf998a030426f95430d07ccbb3da0dfdc7
+        run: |
+          set -euo pipefail
+          actual="$(gh api repos/wxcvm/FlClash/git/ref/heads/main --jq .object.sha)"
+          test "$actual" = "$EXPECTED_SHA"
+          gh workflow run windows-preview.yaml --repo wxcvm/FlClash --ref main -f publish=true
