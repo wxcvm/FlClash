@@ -220,6 +220,13 @@ class App {
     await methodChannel.invokeMethod<bool>('clearDownloads');
   }
 
+  /// Hand off the verified APK without creating a system install session.
+  Future<bool> openPackageInstaller(String path) async =>
+      await methodChannel.invokeMethod<bool>('openPackageInstaller', {
+        'path': path,
+      }) ??
+      false;
+
   /// An accepted update ends this process before its status can arrive.
   Future<int?> installPackage(String path) {
     return methodChannel.invokeMethod<int>('installPackage', {'path': path});

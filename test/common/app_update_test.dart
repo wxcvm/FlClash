@@ -4,9 +4,31 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:fl_clash/common/app_update.dart';
+import 'package:fl_clash/plugins/app.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('APK handoff uses the external opener before a session', () async {
+    final plugin = App();
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(plugin.methodChannel, (call) async {
+      calls.add(call);
+      return call.method == 'openPackageInstaller';
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(plugin.methodChannel, null),
+    );
+
+    expect(await plugin.openPackageInstaller('/updates/FlClash.apk'), isTrue);
+    expect(calls.single.method, 'openPackageInstaller');
+    expect(calls.single.arguments, {'path': '/updates/FlClash.apk'});
+  });
+
   group('selfUpdateAssetSuffix', () {
     test('names the APK built for the running ABI', () {
       expect(

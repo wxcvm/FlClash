@@ -27,6 +27,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.getSystemService
 import androidx.core.content.IntentCompat
+import androidx.core.content.FileProvider
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -308,6 +309,19 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
                 true
             }
 
+            "openPackageInstaller" -> {
+                val path = call.argument<String>("path")
+                if (path == null) {
+                    result.error("INVALID_ARGUMENT", "openPackageInstaller needs a path", null)
+                } else {
+                    try {
+                        result.success(openPackageInstaller(File(path)))
+                    } catch (error: Exception) {
+                        result.error("INSTALLER_HANDOFF_FAILED", error.toString(), null)
+                    }
+                }
+            }
+
             "installPackage" -> {
                 val path = call.argument<String>("path")
                 if (path == null) {
@@ -448,6 +462,31 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
         }.orEmpty()
         if (ids.isNotEmpty()) {
             downloadManager.remove(*ids.toLongArray())
+        }
+    }
+
+    // Let Android resolve the regular APK opener. Third-party installers
+    // and installer interception modules can handle this intent before a
+    // PackageInstaller session has been created by FlClash.
+    private fun openPackageInstaller(apk: File): Boolean {
+        val application = GlobalState.application
+        require(apk.isFile && apk.extension.equals("apk", ignoreCase = true))
+        val uri = FileProvider.getUriForFile(application, "${application.packageName}.updates", apk)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return try {
+            val host = activity
+            if (host != null) {
+                host.startActivity(intent)
+            } else {
+                application.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            true
+        } catch (_: ActivityNotFoundException) {
+            // Devices without an APK activity retain the existing session path.
+            false
         }
     }
 
