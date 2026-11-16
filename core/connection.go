@@ -4,7 +4,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/tunnel/statistic"
 )
@@ -43,8 +42,13 @@ func handleCloseConnections() {
 	})
 }
 
+// Explicit DNS transport resets (including Android TUN reattachment) must
+// complete before the caller publishes the new route or starts another dial.
+// Serialize with config application, which replaces the resolver graph.
 func handleResetConnections() {
-	resolver.ResetConnection()
+	configMu.Lock()
+	defer configMu.Unlock()
+	resetNetworkResolver()
 }
 
 // A network change clears rather than waits out the TTLs: mihomo serves an

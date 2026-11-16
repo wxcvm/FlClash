@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
-	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/component/updater"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
@@ -49,7 +48,7 @@ func handleStartListener() {
 	defer configMu.Unlock()
 	setRunning(true)
 	updateListeners(currentConfig)
-	resolver.ResetConnection()
+	resetNetworkResolver()
 	// A probe already out left before the TUN routes and over the DNS
 	// connections just dropped, so its answer must not stand for this route.
 	bumpRouteEpoch()
@@ -65,7 +64,7 @@ func handleStopListener() {
 	// sessions. End them before releasing egress and DNS resources.
 	handleCloseConnections()
 	finishEgress()
-	resolver.ResetConnection()
+	resetNetworkResolver()
 }
 
 func updateListeners(cfg *config.Config) {
