@@ -23,6 +23,7 @@ var (
 
 	testURL                 atomic.Pointer[string]
 	missingDelayTestProxyAt atomic.Int64
+	failedDelayTestAt       atomic.Int64
 )
 
 func setTestURL(url string) {
@@ -99,9 +100,23 @@ func handleTestDelay(params *TestDelayParams) *Delay {
 	delay, err := proxy.URLTest(ctx, url, anyDelayTestStatus)
 	if err != nil {
 		delay = 0
+		reportDelayTestFailure(params.ProxyName, err)
 	}
 	result.Value = delayValue(delay, ctx.Err() != nil)
 	return result
+}
+
+// A shared failure can turn an entire group red. Keep the underlying dial
+// error available for diagnosis without flooding logs during a batch test.
+func reportDelayTestFailure(name string, err error) {
+	now := time.Now().UnixNano()
+	last := failedDelayTestAt.Load()
+	if last != 0 && now-last < int64(time.Second) {
+		return
+	}
+	if failedDelayTestAt.CompareAndSwap(last, now) {
+		logError("delay test: %q failed: %v", name, err)
+	}
 }
 
 type testTimeoutProvider interface {
