@@ -1,5 +1,6 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/dns_compatibility.dart';
+import 'package:fl_clash/common/direct_dns_ecs.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/form/form.dart';
 import 'package:fl_clash/l10n/l10n.dart';
@@ -39,7 +40,7 @@ extension on DnsOverrideKey {
     DnsOverrideKey.proxyServerNameserver => 'Proxy Server Nameserver',
     DnsOverrideKey.proxyServerNameserverPolicy =>
       'Proxy Server Nameserver Policy',
-    DnsOverrideKey.directNameserver => 'Direct Nameserver',
+    DnsOverrideKey.directNameserver => '直连流量 DNS',
     DnsOverrideKey.directNameserverFollowPolicy =>
       'Direct Nameserver Follow Policy',
     DnsOverrideKey.fallbackFilterGeoip => 'GeoIP',
@@ -53,6 +54,8 @@ extension on DnsOverrideKey {
     DnsOverrideKey.enable => (l) => l.statusDesc,
     DnsOverrideKey.listenRoutingMark => (l) => l.listenRoutingMarkDesc,
     DnsOverrideKey.respectRules => (l) => l.respectRulesDesc,
+    DnsOverrideKey.directNameserver => (_) =>
+      '直连流量专用解析器。ECS 可改善部分 CDN 的地域解析，也可能向 DNS 上游披露客户端子网；默认不启用。',
     _ => null,
   };
 
@@ -301,12 +304,7 @@ class _DnsOverrideSpec extends OverrideSpec<DnsOverrideKey, Dns> {
       (dns, value) => dns.copyWith(proxyServerNameserverPolicy: value),
       description: (l) => l.proxyServerNameserverPolicyDesc,
     ),
-    DnsOverrideKey.directNameserver => ListOverrideField(
-      (dns) => dns.directNameserver,
-      (dns, value) => dns.copyWith(directNameserver: value),
-      itemMaxLength: TextInputLimits.dnsServer,
-      description: (l) => l.directNameserverDesc,
-    ),
+    DnsOverrideKey.directNameserver => const _DirectNameserverField(),
     DnsOverrideKey.directNameserverFollowPolicy => ToggleOverrideField(
       (dns) => dns.directNameserverFollowPolicy,
       (dns, value) => dns.copyWith(directNameserverFollowPolicy: value),
@@ -340,6 +338,68 @@ class _DnsOverrideSpec extends OverrideSpec<DnsOverrideKey, Dns> {
       description: (l) => l.fallbackFilterDomainDesc,
     ),
   };
+}
+
+List<String> _directDnsOf(Dns dns) => dns.directNameserver;
+
+Dns _withDirectDns(Dns dns, List<String> servers) =>
+    dns.copyWith(directNameserver: servers);
+
+/// Karing-style direct-traffic ECS editor layered on the existing DNS override.
+class _DirectNameserverField extends ValueOverrideField<Dns, List<String>> {
+  const _DirectNameserverField() : super(_directDnsOf, _withDirectDns);
+
+  @override
+  Widget build(
+    OverrideModel<Dns> model, {
+    required ConfigLabel title,
+    required Widget leading,
+  }) {
+    return Column(
+      children: [
+        ListOverrideField<Dns>(
+          _directDnsOf,
+          _withDirectDns,
+          itemMaxLength: TextInputLimits.dnsServer,
+          description: (l) => l.directNameserverDesc,
+        ).build(model, title: title, leading: leading),
+        _DirectDnsEcsEditor(model: model),
+      ],
+    );
+  }
+}
+
+class _DirectDnsEcsEditor extends ConsumerWidget {
+  const _DirectDnsEcsEditor({required this.model});
+
+  final OverrideModel<Dns> model;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final upstreams = ref.watch(model.selectModel(_directDnsOf));
+    return ConfigTextItem(
+      title: (_) => '直连流量 ECS 子网',
+      selector: model.selectModel(
+        (dns) => sharedDirectDnsEcs(dns.directNameserver) ?? '',
+      ),
+      onChanged: (ref, value) {
+        final current = ref.read(model.selectModel(_directDnsOf));
+        final next = withDirectDnsEcs(current, value);
+        model.modelWriter<List<String>>(_withDirectDns)(ref, next);
+      },
+      normalize: (value) => value.trim(),
+      validator: (value, _) {
+        if (value == null || value.isEmpty) return null;
+        if (!validEcsSubnet(value)) return '请输入有效的 IPv4 或 IPv6 子网，例如 203.0.113.0/24';
+        if (!hasDirectDnsEcsTargets(upstreams)) {
+          return '请先设置可用的直连 DNS 服务器，system / DHCP 不支持指定 ECS';
+        }
+        return null;
+      },
+      maxLength: TextInputLimits.cidr,
+      allowEmpty: true,
+    );
+  }
 }
 
 class _ProfileDnsOverrideSpec extends _DnsOverrideSpec
