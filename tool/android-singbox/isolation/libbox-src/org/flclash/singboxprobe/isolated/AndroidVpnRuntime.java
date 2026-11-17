@@ -68,6 +68,12 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
         }
     }
 
+    public void verifyStopped() throws IOException {
+        if (!session.isStopped() || !platform.isStopped()) {
+            throw new IOException("VPN runtime still owns resources");
+        }
+    }
+
     @Override public void serviceStop() { service.stopSelf(); }
     @Override public void serviceReload() throws Exception {
         throw new IOException("Stop and restart the diagnostic VPN to reload");

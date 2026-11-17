@@ -90,6 +90,8 @@ public final class AndroidTunBridge implements Closeable {
         if (owned != null) owned.close();
     }
 
+    synchronized boolean isClosed() { return tun == null; }
+
     /** Real descriptor duplication test; does not request VPN permission or create routes. */
     public static void verifyDescriptorOwnership() throws IOException {
         ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
