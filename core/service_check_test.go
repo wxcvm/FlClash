@@ -414,3 +414,10 @@ func TestTraceValue(t *testing.T) {
 		t.Errorf("colo = %q, want empty", got)
 	}
 }
+
+func TestXServiceIsSelectable(t *testing.T) {
+	checkers := selectedCheckers([]string{"x"})
+	if len(checkers) != 1 || checkers[0].name != "x" {
+		t.Fatalf("X service not registered: %+v", checkers)
+	}
+}

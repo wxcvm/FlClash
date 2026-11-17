@@ -111,6 +111,8 @@ var serviceCheckers = []serviceChecker{
 	{name: "prime-video", check: checkPrimeVideo},
 	{name: "spotify", check: checkSpotify},
 	{name: "tiktok", check: checkTikTok},
+	// A lightweight HTTPS reachability check, not a guarantee that timelines load.
+	{name: "x", check: checkReachable("https://x.com/robots.txt")},
 	{name: "discord", check: checkDiscord},
 	{name: "bilibili", check: checkBilibili},
 }
