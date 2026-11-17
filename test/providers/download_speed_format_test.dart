@@ -200,8 +200,9 @@ void main() {
 
     results.finish('old-wifi-winner', 80000000);
     snapshot.publish(container.read(downloadSpeedResultsProvider));
-    expect(container.read(downloadSpeedSortSnapshotProvider),
-        {'old-wifi-winner': 80000000});
+    expect(container.read(downloadSpeedSortSnapshotProvider), {
+      'old-wifi-winner': 80000000,
+    });
 
     results.clear();
     snapshot.clear();
@@ -210,8 +211,9 @@ void main() {
 
     results.finish('new-cell-winner', 12000000);
     snapshot.publish(container.read(downloadSpeedResultsProvider));
-    expect(container.read(downloadSpeedSortSnapshotProvider),
-        {'new-cell-winner': 12000000});
+    expect(container.read(downloadSpeedSortSnapshotProvider), {
+      'new-cell-winner': 12000000,
+    });
   });
 
   test('download speeds use decimal byte units', () {
