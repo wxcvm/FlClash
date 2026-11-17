@@ -240,7 +240,7 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
     }
 
     synchronized boolean isStopped() {
-        return callback == null && monitorThread == null && underlying == null;
+        return callback == null && monitorThread == null && !networks.snapshot().isReady();
     }
 
     @Override public NetworkInterfaceIterator getInterfaces() throws Exception {
