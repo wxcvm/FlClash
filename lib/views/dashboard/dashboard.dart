@@ -345,7 +345,7 @@ class _MobileDashboard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     UpdateStatusSlot(gap: gap),
-                    if (platform == SupportPlatform.android)
+                    if (platform == SupportPlatform.Android)
                       Padding(
                         padding: EdgeInsets.only(bottom: gap),
                         child: const AndroidCoreStatusCard(),
