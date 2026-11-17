@@ -58,10 +58,11 @@ void main() {
   });
 
   test('does not pretend ECS can be configured on system-only DNS', () {
+    final entries = ['system', 'system://', 'dhcp://system'];
     expect(
-      () => withDirectDnsEcs(['system', 'system://', 'dhcp://system'], '203.0.113.0/24'),
+      () => withDirectDnsEcs(entries, '203.0.113.0/24'),
       throwsFormatException,
     );
-    expect(withDirectDnsEcs(['system', 'system://'], ''), ['system', 'system://']);
+    expect(withDirectDnsEcs(entries, ''), entries);
   });
 }
