@@ -29,3 +29,22 @@ A completed HTTPS response, even an HTTP error status, is not proof of successfu
 The copied PowerShell command now uses valid assignment syntax and all three proxy variables; the POSIX command sets both cases. This addresses one confirmed client-side configuration defect, not every possible Codex disconnection. Real WebSocket/HTTPS stream validation, network handover, and AdGuard coexistence still need device-side reproduction.
 
 References: https://github.com/openai/codex/issues/38402 and https://github.com/openai/codex/issues/44517 (community reports, not a confirmed diagnosis of this installation).
+
+## Native core handoff
+
+When switching from Mihomo to a desktop native core (for example sing-box,
+Xray or Hysteria), the HTTP listener may move to a different port. Use the
+tray's **Copy environment variables** action *again after the switch*:
+FlClash reads the HTTP port from the successfully activated native system
+proxy instead of copying the old Mihomo mixed port.
+
+If the native core only exposes TUN routing, or has not successfully taken
+over the HTTP system proxy, FlClash warns instead of copying a stale
+localhost endpoint. A native HTTP port being present does not, by itself,
+prove that the remote node can connect. Re-run the `curl.exe --proxy`
+check with the new port and restart Codex or the terminal that inherited
+the old environment.
+
+Do not turn off DNS or AdGuard to fix only an out-of-date proxy variable.
+This handoff behavior is already implemented; this section documents it,
+rather than changing routing or core selection.
