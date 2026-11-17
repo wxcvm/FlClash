@@ -1,0 +1,32 @@
+name: Bidirectional transfer benchmark tests
+
+on:
+  push:
+    branches: [feat/bidirectional-throughput-benchmark]
+    paths:
+      - 'tool/performance/download_benchmark.py'
+      - 'tool/performance/test_download_benchmark.py'
+      - '.github/workflows/throughput-benchmark-test.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Upload and download / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify curl and local HTTP transfers
+        run: |
+          curl --version
+          python -m unittest discover -v -s tool/performance -p test_download_benchmark.py
