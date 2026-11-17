@@ -14,6 +14,9 @@ test -f "$PLATFORM"
 for tool in aapt2 d8 zipalign apksigner; do test -x "$TOOLS/$tool"; done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+mkdir -p "$WORK/dns-test"
+javac --release 8 -d "$WORK/dns-test" "$ROOT/src/org/flclash/singboxprobe/ProbeDnsMessage.java" "$ROOT/tests/ProbeDnsMessageTest.java"
+java -cp "$WORK/dns-test" org.flclash.singboxprobe.ProbeDnsMessageTest
 mkdir -p "$WORK/host" "$WORK/dex" "$WORK/libbox" "$WORK/libbox-adapter"
 unzip -p "$AAR" classes.jar > "$WORK/libbox.jar"
 unzip -p "$AAR" jni/arm64-v8a/libbox.so > "$WORK/libbox.so"

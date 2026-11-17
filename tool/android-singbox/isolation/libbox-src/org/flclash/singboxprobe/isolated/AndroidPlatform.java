@@ -239,6 +239,10 @@ public final class AndroidPlatform implements PlatformInterface, AutoCloseable {
         }
     }
 
+    synchronized boolean isStopped() {
+        return callback == null && monitorThread == null && underlying == null;
+    }
+
     @Override public NetworkInterfaceIterator getInterfaces() throws Exception {
         return interfaces(connectivity);
     }
