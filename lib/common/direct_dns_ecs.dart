@@ -62,10 +62,7 @@ List<String> withDirectDnsEcs(List<String> entries, String subnet) {
   }
   return [
     for (final entry in entries)
-      if (!_isEligible(entry))
-        entry
-      else
-        _withEcs(entry, ecs),
+      if (!_isEligible(entry)) entry else _withEcs(entry, ecs),
   ];
 }
 
@@ -74,7 +71,9 @@ String _withEcs(String entry, String ecs) {
   final upstream = index < 0 ? entry : entry.substring(0, index);
   final original = index < 0 ? '' : entry.substring(index + 1);
   final options = original.isEmpty ? <String>[] : original.split('&');
-  final filtered = options.where((option) => !option.startsWith('ecs=')).toList();
+  final filtered = options
+      .where((option) => !option.startsWith('ecs='))
+      .toList();
   if (ecs.isNotEmpty) filtered.add('ecs=$ecs');
   return filtered.isEmpty ? upstream : '$upstream#${filtered.join('&')}';
 }
