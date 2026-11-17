@@ -77,6 +77,8 @@ class DownloadSpeedResults extends Notifier<Map<String, DownloadSpeedSample>> {
     }
     state = {...state}..remove(name);
   }
+
+  void clear() => state = {};
 }
 
 /// Freeze the sorting inputs at the end of a batch, rather than moving cards
@@ -101,6 +103,8 @@ class DownloadSpeedSortSnapshot extends Notifier<Map<String, int>> {
         if (!entry.value.running) entry.key: entry.value.bytesPerSecond,
     };
   }
+
+  void clear() => state = {};
 }
 
 String formatDownloadSpeed(int bytesPerSecond) {
