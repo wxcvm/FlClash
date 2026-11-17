@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/android_core_insight.dart';
 import 'package:fl_clash/core/clash_native_file.dart';
 import 'package:fl_clash/core/native_auto_recovery.dart';
 import 'package:fl_clash/plugins/service.dart';
@@ -28,6 +29,7 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
   String _result = '';
   bool _busy = false;
   bool _advanced = false;
+  bool _refreshFailed = false;
 
   @override
   void initState() {
@@ -38,8 +40,14 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
   Future<void> _refresh() async {
     try {
       await _service.getNativeStatus();
+      if (mounted) setState(() => _refreshFailed = false);
     } catch (error) {
-      if (mounted) setState(() => _result = error.toString());
+      if (mounted) {
+        setState(() {
+          _refreshFailed = true;
+          if (!widget.readOnly) _result = error.toString();
+        });
+      }
     }
   }
 
@@ -176,12 +184,11 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
           final owned = status?.nativeOwner == true;
           final busy = _busy || status?.state == 'STARTING';
           final canConfigure = available && !owned && !busy;
-          final engine = switch (status?.engine) {
-            'sing-box' => 'sing-box',
-            'mihomo' => 'Mihomo',
-            'idle' => owned ? '原生内核清理待完成' : '未运行',
-            _ => '正在读取',
-          };
+          final insight = AndroidCoreInsight.fromStatus(
+            status,
+            hasProfile: ref.watch(currentProfileProvider) != null,
+            refreshFailed: _refreshFailed,
+          );
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(
               top: context.sectionsTopPadding,
@@ -192,8 +199,12 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
                 title: '当前内核',
                 items: [
                   ListItem(
-                    title: Text(engine),
-                    subtitle: Text(status?.state ?? '正在读取状态'),
+                    title: Text('${insight.engine} · ${insight.status}'),
+                    subtitle: Text(insight.explanation),
+                  ),
+                  ListItem(
+                    title: const Text('运行判断'),
+                    subtitle: Text(insight.suggestion),
                   ),
                   ListItem(
                     title: const Text('Mihomo'),
