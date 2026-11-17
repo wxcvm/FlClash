@@ -52,8 +52,8 @@ extension on DnsOverrideKey {
     DnsOverrideKey.enable => (l) => l.statusDesc,
     DnsOverrideKey.listenRoutingMark => (l) => l.listenRoutingMarkDesc,
     DnsOverrideKey.respectRules => (l) => l.respectRulesDesc,
-    DnsOverrideKey.directNameserver => (_) =>
-      '直连流量专用解析器。ECS 可改善部分 CDN 的地域解析，也可能向 DNS 上游披露客户端子网；默认不启用。',
+    DnsOverrideKey.directNameserver =>
+      (_) => '直连流量专用解析器。ECS 可改善部分 CDN 的地域解析，也可能向 DNS 上游披露客户端子网；默认不启用。',
     _ => null,
   };
 
@@ -388,7 +388,8 @@ class _DirectDnsEcsEditor extends ConsumerWidget {
       normalize: (value) => value.trim(),
       validator: (value, _) {
         if (value == null || value.isEmpty) return null;
-        if (!validEcsSubnet(value)) return '请输入有效的 IPv4 或 IPv6 子网，例如 203.0.113.0/24';
+        if (!validEcsSubnet(value))
+          return '请输入有效的 IPv4 或 IPv6 子网，例如 203.0.113.0/24';
         if (!hasDirectDnsEcsTargets(upstreams)) {
           return '请先设置可用的直连 DNS 服务器，system / DHCP 不支持指定 ECS';
         }
