@@ -9,12 +9,13 @@ import java.io.IOException;
 public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHandler {
     private final VpnService service;
     private final AndroidPlatform platform;
+    private final AndroidTunBridge bridge;
     private final LibboxVpnSession session;
     private final NativeQuality quality;
 
     public AndroidVpnRuntime(VpnService service) {
         this.service = service;
-        AndroidTunBridge bridge = new AndroidTunBridge(service);
+        bridge = new AndroidTunBridge(service);
         platform = new AndroidPlatform(service, bridge);
         session = new LibboxVpnSession(bridge, platform, this);
         quality = new NativeQuality(platform::networkGeneration);
@@ -57,6 +58,8 @@ public final class AndroidVpnRuntime implements AutoCloseable, CommandServerHand
         NativeTelemetry.select(group, tag);
     }
     public void testOutbound(String tag) throws Exception { NativeTelemetry.test(tag); }
+
+    public int protectCount() { return bridge.protectCount(); }
 
     public void resetNetwork() { session.resetNetwork(); }
 

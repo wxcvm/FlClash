@@ -88,3 +88,13 @@ libbox, not a fallback to a physical socket. HTTPS and DNS must both succeed.
 Stop also checks that the Java TUN owner, command server and monitor references
 are released; it does not prove that Go heap memory has been reclaimed or that
 the process has exited. The service still runs only with explicit consent.
+
+## Offline emulator TCP smoke test
+
+The separate LocalVpnProbeService uses the typed AndroidVpnRuntime and routes
+only this diagnostic package and a synthetic /32 through libbox to a local TCP
+echo server. It requires VPN consent and verifies socket-protection callbacks.
+The CI emulator grants consent in its disposable instance, runs isolation
+instrumentation, and performs two complete VPN start/stop cycles. No internet
+endpoint is required by this local test. This is not a production FlClash VPN
+handover test or a replacement for physical-device checks.
