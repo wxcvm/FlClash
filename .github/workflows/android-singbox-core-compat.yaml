@@ -1,0 +1,144 @@
+name: Android sing-box upstream compatibility (experimental)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/android-singbox-core-compat]
+    paths:
+      - '.github/workflows/android-singbox-core-compat.yaml'
+      - 'tool/android-singbox/compat/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: singbox-core-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-compat:
+    name: Source config / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: upstream-stable
+            repository: SagerNet/sing-box
+            sha: c005f35300ce76427dc285481ec5695f5b179cd2
+          - name: karing-fork
+            repository: KaringX/sing-box
+            sha: 73603b201141ee9bab41af76995808ccfc45209f
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned candidate
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.sha }}
+          path: candidate-sing-box
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: candidate-sing-box/go.mod
+          cache: false
+      - name: Check VLESS WebSocket and Hysteria2 port hopping
+        run: |
+          test "$(git -C candidate-sing-box rev-parse HEAD)" = "${{ matrix.sha }}"
+          python3 -m json.tool tool/android-singbox/compat/base.json >/dev/null
+          cd candidate-sing-box
+          go run -tags with_quic,with_utls ./cmd/sing-box check -c ../tool/android-singbox/compat/base.json
+
+  alpha-android:
+    name: Official 1.15 alpha / Android libbox + adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Checkout official alpha at an immutable revision
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: 824dbcfb4dd0a95921840b1737b950cde590241e
+          path: candidate-sing-box
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: candidate-sing-box/go.mod
+          cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Check alpha-only certificate pinning and Hysteria2 port hopping
+        run: |
+          test "$(git -C candidate-sing-box rev-parse HEAD)" = "824dbcfb4dd0a95921840b1737b950cde590241e"
+          python3 -m json.tool tool/android-singbox/compat/base.json >/dev/null
+          python3 -m json.tool tool/android-singbox/compat/alpha-pin.json >/dev/null
+          cd candidate-sing-box
+          go run -tags with_quic,with_utls ./cmd/sing-box check -c ../tool/android-singbox/compat/base.json
+          go run -tags with_quic,with_utls ./cmd/sing-box check -c ../tool/android-singbox/compat/alpha-pin.json
+      - name: Build original alpha libbox (without 1.14 recovery patch)
+        working-directory: candidate-sing-box
+        run: |
+          make lib_install
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/arm64
+          unzip -t libbox.aar
+          echo "LIBBOX_AAR=$(realpath libbox.aar)" >> "$GITHUB_ENV"
+      - name: Install SDK and verify optional Android integration
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          test -n "$ANDROID_NDK_HOME"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+          sdkmanager_path="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$sdkmanager_path" 'platforms;android-35'
+          flutter pub get
+          cd android
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_ROOT" "$ANDROID_HOME" > local.properties
+          wrapper="$FLUTTER_ROOT/bin/cache/artifacts/gradle_wrapper"
+          test -d "$wrapper" || flutter precache
+          cp -R "$wrapper/." .
+          chmod +x gradlew
+          ./gradlew :service:assembleDebug :service:testDebugUnitTest :app:assembleDebug -Ptarget-platform=android-arm64 -PflclashSingBoxAar="$LIBBOX_AAR"
+      - name: Inspect the candidate, never replace the stable artifact
+        run: |
+          aar="$(find build/service/outputs/aar -name '*.aar' -print -quit)"
+          apk="$(find build/app/outputs/apk/debug -name '*.apk' -print -quit)"
+          test -s "$aar" && test -s "$apk"
+          python3 - "$aar" "$apk" <<'PY'
+          import sys, zipfile
+          required = ('assets/singbox/libbox.dex', 'lib/arm64-v8a/libbox.so')
+          for path in sys.argv[1:]:
+              with zipfile.ZipFile(path) as archive:
+                  names = set(archive.namelist())
+              for entry in required:
+                  assert entry in names or (path.endswith('.aar') and entry.replace('lib/', 'jni/') in names), (path, entry)
+          PY
+          mkdir -p alpha-candidate
+          cp "$apk" alpha-candidate/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flclash-singbox-1.15-alpha13-arm64-compat
+          path: alpha-candidate/*.apk
+          if-no-files-found: error
+          retention-days: 7
