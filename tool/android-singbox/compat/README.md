@@ -9,6 +9,12 @@ APK, built-in Mihomo, or the pinned recovery-enabled sing-box 1.14.4 build**.
 | KaringX/sing-box `dev-next` | `73603b201141ee9bab41af76995808ccfc45209f` | Base config validation (does **not** establish which libbox Karing's current APK uses) |
 | Official 1.15.0-alpha.13 | `824dbcfb4dd0a95921840b1737b950cde590241e` | Base and 1.15 certificate-pin config validation, clean upstream libbox build, compilation into FlClash's optional Android service/APK |
 
+A Windows Server 2022 job also compiles and launches the pinned official
+1.15.0-alpha.13 **CLI** and checks both synthetic configurations. It verifies
+Windows core binary/build compatibility only: it does not embed the new core
+into the FlClash Windows client, replace Mihomo, or measure network throughput.
+End-to-end upload/download comparisons are tracked independently in PR #111.
+
 The source-only checks use fictional TEST-NET IPs and synthetic credentials.
 They check JSON schema and outbound construction **not remote handshake or
 actual traffic**. The 1.15 fixture uses a synthetic 32-byte certificate
