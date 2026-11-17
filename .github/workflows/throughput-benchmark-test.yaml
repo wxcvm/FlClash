@@ -2,7 +2,12 @@ name: Bidirectional transfer benchmark tests
 
 on:
   push:
-    branches: [feat/bidirectional-throughput-benchmark]
+    branches: [main]
+    paths:
+      - 'tool/performance/download_benchmark.py'
+      - 'tool/performance/test_download_benchmark.py'
+      - '.github/workflows/throughput-benchmark-test.yaml'
+  pull_request:
     paths:
       - 'tool/performance/download_benchmark.py'
       - 'tool/performance/test_download_benchmark.py'
