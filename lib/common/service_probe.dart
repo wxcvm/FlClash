@@ -21,6 +21,7 @@ enum ServiceTarget {
   primeVideo('prime-video', 'Prime Video', 'primevideo'),
   spotify('spotify', 'Spotify', 'spotify'),
   tiktok('tiktok', 'TikTok', 'tiktok'),
+  x('x', 'X', 'x'),
   discord('discord', 'Discord', 'discord'),
   bilibili('bilibili', 'Bilibili', 'bilibili');
 
