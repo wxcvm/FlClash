@@ -24,11 +24,11 @@ class AdvancedConfigView extends StatelessWidget {
     final items = [
       if (system.isDesktop || system.isAndroid)
         ListItem.open(
-          title: const Text('内核管理'),
+          title: Text(system.isAndroid ? '内核配置与切换' : '内核管理'),
           leading: const GlyphIcon(AppGlyphs.cpu),
           widget: system.isDesktop
               ? const NativeCoreView()
-              : const AndroidCoreView(),
+              : const AndroidCoreView(readOnly: false),
         ),
       ListItem.open(
         title: Text(appLocalizations.network),
