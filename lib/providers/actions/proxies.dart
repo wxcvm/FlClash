@@ -174,6 +174,13 @@ class ProxiesAction extends _$ProxiesAction {
     // the current path. Cancel them before scheduling a fresh batch.
     cancelDelayTests();
     _speedTestGeneration++;
+    // An old network's transfer rate is not evidence of the new path.
+    // Reset both the UI sort and the candidate ranking, even when the
+    // route epoch has not changed during the handover.
+    ref.read(downloadSpeedResultsProvider.notifier).clear();
+    ref.read(downloadSpeedSortSnapshotProvider.notifier).clear();
+    _autoSpeedCursor = 0;
+    _autoRecoveryCursor = 0;
     if (service?.nativeOwnsRuntime != true &&
         _speedTestPool.activeCount > 0 &&
         ref.read(coreStatusProvider) == CoreStatus.connected) {
