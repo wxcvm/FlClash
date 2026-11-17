@@ -192,6 +192,30 @@ void main() {
     expect(container.read(downloadSpeedTestingGroupsProvider), isEmpty);
   });
 
+  test('handover clears obsolete throughput results and sort rankings', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final results = container.read(downloadSpeedResultsProvider.notifier);
+    final snapshot = container.read(downloadSpeedSortSnapshotProvider.notifier);
+
+    results.finish('old-wifi-winner', 80000000);
+    snapshot.publish(container.read(downloadSpeedResultsProvider));
+    expect(container.read(downloadSpeedSortSnapshotProvider), {
+      'old-wifi-winner': 80000000,
+    });
+
+    results.clear();
+    snapshot.clear();
+    expect(container.read(downloadSpeedResultsProvider), isEmpty);
+    expect(container.read(downloadSpeedSortSnapshotProvider), isEmpty);
+
+    results.finish('new-cell-winner', 12000000);
+    snapshot.publish(container.read(downloadSpeedResultsProvider));
+    expect(container.read(downloadSpeedSortSnapshotProvider), {
+      'new-cell-winner': 12000000,
+    });
+  });
+
   test('download speeds use decimal byte units', () {
     expect(formatDownloadSpeed(512), '512 B/s');
     expect(formatDownloadSpeed(125000), '125.0 KB/s');
