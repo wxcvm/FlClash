@@ -229,73 +229,73 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
               if (!widget.readOnly)
                 generateSection(
                   title: 'sing-box 原生配置',
-                items: [
-                  ListItem(
-                    title: const Text('使用当前订阅'),
-                    subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
-                    onTap: canConfigure
-                        ? () => _perform(() => _importClash(current: true))
-                        : null,
-                  ),
-                  ListItem(
-                    title: const Text('导入 Clash 配置'),
-                    subtitle: const Text('兼容配置自动转换并预检'),
-                    onTap: canConfigure ? () => _perform(_importClash) : null,
-                  ),
-                  ListItem(
-                    title: const Text('导入 sing-box 配置'),
-                    subtitle: Text(
-                      _configPath.isEmpty ? '尚未选择' : _configPath,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: canConfigure ? () => _perform(_choose) : null,
-                  ),
-                  ListItem(
-                    title: Text(_advanced ? '收起高级设置' : '展开高级设置'),
-                    onTap: busy
-                        ? null
-                        : () => setState(() => _advanced = !_advanced),
-                  ),
-                  if (_advanced)
+                  items: [
                     ListItem(
-                      title: const Text('检查配置'),
-                      onTap: canConfigure && _configPath.isNotEmpty
-                          ? () => _perform(_validate)
+                      title: const Text('使用当前订阅'),
+                      subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
+                      onTap: canConfigure
+                          ? () => _perform(() => _importClash(current: true))
                           : null,
                     ),
-                  if (_advanced)
                     ListItem(
-                      title: const Text('生成自动恢复配置副本'),
-                      subtitle: const Text('最多 5 个原有代理组成原生自动组；不改原文件或默认路由'),
+                      title: const Text('导入 Clash 配置'),
+                      subtitle: const Text('兼容配置自动转换并预检'),
+                      onTap: canConfigure ? () => _perform(_importClash) : null,
+                    ),
+                    ListItem(
+                      title: const Text('导入 sing-box 配置'),
+                      subtitle: Text(
+                        _configPath.isEmpty ? '尚未选择' : _configPath,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: canConfigure ? () => _perform(_choose) : null,
+                    ),
+                    ListItem(
+                      title: Text(_advanced ? '收起高级设置' : '展开高级设置'),
+                      onTap: busy
+                          ? null
+                          : () => setState(() => _advanced = !_advanced),
+                    ),
+                    if (_advanced)
+                      ListItem(
+                        title: const Text('检查配置'),
+                        onTap: canConfigure && _configPath.isNotEmpty
+                            ? () => _perform(_validate)
+                            : null,
+                      ),
+                    if (_advanced)
+                      ListItem(
+                        title: const Text('生成自动恢复配置副本'),
+                        subtitle: const Text('最多 5 个原有代理组成原生自动组；不改原文件或默认路由'),
+                        onTap: canConfigure && _configPath.isNotEmpty
+                            ? () => _perform(_createAutoProfile)
+                            : null,
+                      ),
+                    ListItem(
+                      title: const Text('启动 / 切换到 sing-box'),
                       onTap: canConfigure && _configPath.isNotEmpty
-                          ? () => _perform(_createAutoProfile)
+                          ? () => _perform(_start)
                           : null,
                     ),
-                  ListItem(
-                    title: const Text('启动 / 切换到 sing-box'),
-                    onTap: canConfigure && _configPath.isNotEmpty
-                        ? () => _perform(_start)
-                        : null,
-                  ),
-                  if (native)
+                    if (native)
+                      ListItem(
+                        title: const Text('切回 Mihomo'),
+                        subtitle: const Text('停止 sing-box 后恢复原订阅配置'),
+                        onTap: busy ? null : () => _perform(_switchToMihomo),
+                      ),
                     ListItem(
-                      title: const Text('切回 Mihomo'),
-                      subtitle: const Text('停止 sing-box 后恢复原订阅配置'),
-                      onTap: busy ? null : () => _perform(_switchToMihomo),
+                      title: const Text('停止 sing-box'),
+                      onTap: !busy && (native || owned)
+                          ? () => _perform(_stop)
+                          : null,
                     ),
-                  ListItem(
-                    title: const Text('停止 sing-box'),
-                    onTap: !busy && (native || owned)
-                        ? () => _perform(_stop)
-                        : null,
-                  ),
-                ],
-                footer:
-                    '支持兼容的 Clash 配置或带 TUN 的 sing-box 原生 JSON。'
-                    '启动失败时尝试恢复先前的 Mihomo VPN。'
-                    '节点、流量与日志可在运行管理查看；选择原生自动组后由内核重新选路。',
-              ),
+                  ],
+                  footer:
+                      '支持兼容的 Clash 配置或带 TUN 的 sing-box 原生 JSON。'
+                      '启动失败时尝试恢复先前的 Mihomo VPN。'
+                      '节点、流量与日志可在运行管理查看；选择原生自动组后由内核重新选路。',
+                ),
               if (!widget.readOnly && _busy)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
