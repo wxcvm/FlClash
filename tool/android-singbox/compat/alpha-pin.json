@@ -1,0 +1,20 @@
+{
+  "log": {"level": "warn"},
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "fixture-hy2-pinned",
+      "server": "192.0.2.11",
+      "server_ports": ["61000:62000"],
+      "password": "synthetic-only",
+      "tls": {
+        "enabled": true,
+        "server_name": "example.org",
+        "certificate_sha256": [
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        ]
+      }
+    }
+  ],
+  "route": {"final": "fixture-hy2-pinned"}
+}
