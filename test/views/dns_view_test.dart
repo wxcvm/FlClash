@@ -173,9 +173,9 @@ void main() {
 
     await openAddSheet(tester);
 
-    expect(find.text('Direct Nameserver'), findsOneWidget);
+    expect(find.text('Direct Traffic DNS'), findsOneWidget);
     expect(find.text(currentAppLocalizations.respectRules), findsNothing);
-    expect(find.text('Nameserver Policy'), findsNothing);
+    expect(find.text('DNS Policy'), findsNothing);
     expect(find.text(currentAppLocalizations.fallbackFilter), findsNothing);
   });
 
@@ -268,7 +268,7 @@ void main() {
     await tester.tap(find.text(currentAppLocalizations.submit));
     await tester.pumpAndSettle();
     final defaultNameserver = find.ancestor(
-      of: find.text('Default Nameserver'),
+      of: find.text('Bootstrap DNS'),
       matching: find.byType(ConfigListEditItem),
     );
     tester
@@ -363,7 +363,7 @@ void main() {
       final headers = [
         l.options,
         'Fake-IP',
-        'Nameserver',
+        'General Resolution & Policy',
         l.fallbackFilter,
       ].map(header).toList();
       for (var i = 1; i < headers.length; i++) {
@@ -392,14 +392,14 @@ void main() {
           );
       await tester.pump();
 
-      await tester.tap(find.text('Fallback'));
+      await tester.tap(find.text('Fallback DNS'));
       await tester.pumpAndSettle();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(overrides().dnsOverrideKeys, contains(DnsOverrideKey.fallback));
 
       final nameserver = find.ancestor(
-        of: find.text('Nameserver'),
+        of: find.text('General DNS'),
         matching: find.byType(ConfigListEditItem),
       );
       tester
@@ -504,12 +504,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.dragUntilVisible(
-        find.text('Nameserver Policy'),
+        find.text('DNS Policy'),
         find.byType(SelectionSheet<DnsOverrideKey>),
         const Offset(0, -200),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Nameserver Policy'));
+      await tester.tap(find.text('DNS Policy'));
       await tester.pumpAndSettle();
 
       expect(overrides().dnsOverrideKeys, {DnsOverrideKey.nameserverPolicy});
@@ -518,7 +518,7 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.byType(SelectionSheet<DnsOverrideKey>), findsNothing);
-      await tester.tap(find.text('Nameserver Policy'));
+      await tester.tap(find.text('DNS Policy'));
       await tester.pumpAndSettle();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
