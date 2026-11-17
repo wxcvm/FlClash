@@ -201,6 +201,47 @@ void main() {
       });
     }
   });
+  test('does not discard Hysteria2 certificate pinning', () {
+    expect(
+      () => convertClashOutbound({
+        ...endpoint,
+        'type': 'hysteria2',
+        'password': 'placeholder',
+        'sni': 'example.com',
+        'skip-cert-verify': true,
+        'ports': '61000-62000',
+        'fingerprint': 'a' * 64,
+      }),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('certificate fingerprint cannot be preserved'),
+        ),
+      ),
+    );
+  });
+
+  test('explains unsupported Hysteria2 port hopping separately', () {
+    expect(
+      () => convertClashOutbound({
+        ...endpoint,
+        'type': 'hysteria2',
+        'password': 'placeholder',
+        'sni': 'example.com',
+        'ports': '61000-62000',
+        'mport': '61000-62000',
+      }),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('port hopping is not yet converted'),
+        ),
+      ),
+    );
+  });
+
   test('assembles nested groups and preserves selected member', () {
     final graph = convertClashRoutingGraph(
       {
