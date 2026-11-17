@@ -16,6 +16,7 @@ bool _isEligible(String entry) {
   final source = entry.split('#').first.trim().toLowerCase();
   if (source.isEmpty ||
       source == 'system' ||
+      source == 'system://' ||
       source == 'dhcp' ||
       source.startsWith('dhcp://') ||
       source.startsWith('rcode://')) {
