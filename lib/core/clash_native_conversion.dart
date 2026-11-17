@@ -92,7 +92,8 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
       }
       if (network == 'ws') {
         final ws = proxy['ws-opts'];
-        if (ws is! Map || ws.keys.any((key) => key != 'path' && key != 'headers')) {
+        if (ws is! Map ||
+            ws.keys.any((key) => key != 'path' && key != 'headers')) {
           throw const FormatException('Unsupported WebSocket options');
         }
         final transport = <String, dynamic>{'type': 'ws'};
@@ -113,7 +114,9 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
         }
         result['transport'] = transport;
       } else if (proxy.containsKey('ws-opts')) {
-        throw const FormatException('WebSocket options require WebSocket transport');
+        throw const FormatException(
+          'WebSocket options require WebSocket transport',
+        );
       }
       if (proxy.containsKey('udp')) {
         if (proxy['udp'] is! bool) {
