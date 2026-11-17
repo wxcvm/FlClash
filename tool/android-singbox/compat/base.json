@@ -1,0 +1,34 @@
+{
+  "log": {"level": "warn"},
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "fixture-vless-ws",
+      "server": "192.0.2.10",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "tls": {
+        "enabled": true,
+        "server_name": "tls.example.org",
+        "utls": {"enabled": true, "fingerprint": "safari"}
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/test/ws",
+        "headers": {"Host": "ws.example.org"}
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "fixture-hy2-hop",
+      "server": "192.0.2.11",
+      "server_ports": ["61000:62000"],
+      "password": "synthetic-only",
+      "tls": {
+        "enabled": true,
+        "server_name": "example.org"
+      }
+    }
+  ],
+  "route": {"final": "fixture-vless-ws"}
+}
