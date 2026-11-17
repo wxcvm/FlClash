@@ -22,7 +22,15 @@ class _AndroidCoreStatusCardState extends State<AndroidCoreStatusCard> {
   @override
   void initState() {
     super.initState();
-    unawaited(_service.getNativeStatus());
+    unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    try {
+      await _service.getNativeStatus();
+    } catch (_) {
+      // A stopped VPN still leaves the home page usable.
+    }
   }
 
   @override
