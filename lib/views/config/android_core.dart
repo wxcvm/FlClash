@@ -13,7 +13,10 @@ import 'package:fl_clash/providers/action.dart';
 import 'package:fl_clash/providers/state.dart';
 
 class AndroidCoreView extends ConsumerStatefulWidget {
-  const AndroidCoreView({super.key});
+  /// A read-only status page. Configuration is available from Advanced.
+  const AndroidCoreView({super.key, this.readOnly = true});
+
+  final bool readOnly;
 
   @override
   ConsumerState<AndroidCoreView> createState() => _AndroidCoreViewState();
@@ -164,7 +167,7 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
   @override
   Widget build(BuildContext context) {
     return BaseScaffold(
-      title: '内核管理',
+      title: widget.readOnly ? '内核状态' : '内核配置与切换',
       body: ValueListenableBuilder<AndroidNativeStatus?>(
         valueListenable: _service.nativeStatus,
         builder: (context, status, _) {
@@ -212,7 +215,7 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
                   ),
                 ],
               ),
-              if (native)
+              if (!widget.readOnly && native)
                 generateSection(
                   title: 'sing-box 运行管理',
                   items: [
@@ -223,8 +226,9 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
                     ),
                   ],
                 ),
-              generateSection(
-                title: 'sing-box 原生配置',
+              if (!widget.readOnly)
+                generateSection(
+                  title: 'sing-box 原生配置',
                 items: [
                   ListItem(
                     title: const Text('使用当前订阅'),
@@ -292,12 +296,12 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
                     '启动失败时尝试恢复先前的 Mihomo VPN。'
                     '节点、流量与日志可在运行管理查看；选择原生自动组后由内核重新选路。',
               ),
-              if (_busy)
+              if (!widget.readOnly && _busy)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: Text('正在处理，请勿重复切换…'),
                 ),
-              if (_result.isNotEmpty)
+              if (_result.isNotEmpty && !widget.readOnly)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: SelectableText(_result),
