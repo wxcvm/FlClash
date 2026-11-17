@@ -32,17 +32,15 @@ extension on DnsOverrideKey {
     DnsOverrideKey.fakeIpFilter => l.fakeipFilter,
     DnsOverrideKey.fakeIpFilterMode => l.fakeipFilterMode,
     DnsOverrideKey.fakeIpTtl => l.fakeipTtl,
-    DnsOverrideKey.defaultNameserver => 'Default Nameserver',
-    DnsOverrideKey.nameserverPolicy => 'Nameserver Policy',
-    DnsOverrideKey.nameserver => 'Nameserver',
-    DnsOverrideKey.fallback => 'Fallback',
+    DnsOverrideKey.defaultNameserver => '引导 DNS',
+    DnsOverrideKey.nameserverPolicy => '域名解析策略',
+    DnsOverrideKey.nameserver => '通用 DNS',
+    DnsOverrideKey.fallback => '后备 DNS',
     DnsOverrideKey.fallbackLazyQuery => 'Fallback Lazy Query',
-    DnsOverrideKey.proxyServerNameserver => 'Proxy Server Nameserver',
-    DnsOverrideKey.proxyServerNameserverPolicy =>
-      'Proxy Server Nameserver Policy',
+    DnsOverrideKey.proxyServerNameserver => '代理节点 DNS',
+    DnsOverrideKey.proxyServerNameserverPolicy => '代理节点 DNS 策略',
     DnsOverrideKey.directNameserver => '直连流量 DNS',
-    DnsOverrideKey.directNameserverFollowPolicy =>
-      'Direct Nameserver Follow Policy',
+    DnsOverrideKey.directNameserverFollowPolicy => '直连 DNS 遵循域名策略',
     DnsOverrideKey.fallbackFilterGeoip => 'GeoIP',
     DnsOverrideKey.fallbackFilterGeoipCode => 'GeoIP Code',
     DnsOverrideKey.fallbackFilterGeosite => 'GeoSite',
@@ -77,15 +75,15 @@ extension on DnsOverrideKey {
     DnsOverrideKey.fakeIpFilter ||
     DnsOverrideKey.fakeIpFilterMode ||
     DnsOverrideKey.fakeIpTtl => 'Fake-IP',
-    DnsOverrideKey.defaultNameserver ||
+    DnsOverrideKey.defaultNameserver => 'DNS 引导解析',
     DnsOverrideKey.nameserverPolicy ||
     DnsOverrideKey.nameserver ||
     DnsOverrideKey.fallback ||
-    DnsOverrideKey.fallbackLazyQuery ||
+    DnsOverrideKey.fallbackLazyQuery => '通用解析与策略',
     DnsOverrideKey.proxyServerNameserver ||
-    DnsOverrideKey.proxyServerNameserverPolicy ||
+    DnsOverrideKey.proxyServerNameserverPolicy => '代理节点解析',
     DnsOverrideKey.directNameserver ||
-    DnsOverrideKey.directNameserverFollowPolicy => 'Nameserver',
+    DnsOverrideKey.directNameserverFollowPolicy => '直连流量解析',
     DnsOverrideKey.fallbackFilterGeoip ||
     DnsOverrideKey.fallbackFilterGeoipCode ||
     DnsOverrideKey.fallbackFilterGeosite ||
