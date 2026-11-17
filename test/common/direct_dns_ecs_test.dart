@@ -25,23 +25,26 @@ void main() {
         'https://dns.example/dns-query#proxy&ecs=203.0.113.0/24&h3=true',
         '223.5.5.5#ecs=198.51.100.0/24',
       ], ''),
-      [
-        'https://dns.example/dns-query#proxy&h3=true',
-        '223.5.5.5',
-      ],
+      ['https://dns.example/dns-query#proxy&h3=true', '223.5.5.5'],
     );
   });
 
   test('returns shared ECS only if all eligible entries agree', () {
-    expect(sharedDirectDnsEcs([
-      'system',
-      'https://dns.example/dns-query#ecs=203.0.113.0/24',
-      '223.5.5.5#ecs=203.0.113.0/24',
-    ]), '203.0.113.0/24');
-    expect(sharedDirectDnsEcs([
-      'https://dns.example/dns-query#ecs=203.0.113.0/24',
-      '223.5.5.5',
-    ]), isNull);
+    expect(
+      sharedDirectDnsEcs([
+        'system',
+        'https://dns.example/dns-query#ecs=203.0.113.0/24',
+        '223.5.5.5#ecs=203.0.113.0/24',
+      ]),
+      '203.0.113.0/24',
+    );
+    expect(
+      sharedDirectDnsEcs([
+        'https://dns.example/dns-query#ecs=203.0.113.0/24',
+        '223.5.5.5',
+      ]),
+      isNull,
+    );
   });
 
   test('validates both IPv4 and IPv6 subnet lengths', () {
