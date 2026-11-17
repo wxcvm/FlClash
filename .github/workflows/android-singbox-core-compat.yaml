@@ -50,6 +50,45 @@ jobs:
           cd candidate-sing-box
           go run -tags with_quic,with_utls ./cmd/sing-box check -c ../tool/android-singbox/compat/base.json
 
+  windows-alpha-cli:
+    name: Official 1.15 alpha / Windows core CLI
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned official 1.15 alpha
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: 824dbcfb4dd0a95921840b1737b950cde590241e
+          path: candidate-sing-box
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: candidate-sing-box/go.mod
+          cache: false
+      - name: Build Windows CLI with VLESS and Hysteria2 support
+        shell: pwsh
+        working-directory: candidate-sing-box
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne '824dbcfb4dd0a95921840b1737b950cde590241e') {
+            throw 'Source commit does not match pinned alpha'
+          }
+          New-Item -ItemType Directory -Force ../windows-core-candidate | Out-Null
+          go build -trimpath -tags with_quic,with_utls -o ../windows-core-candidate/sing-box.exe ./cmd/sing-box
+      - name: Validate Windows alpha config and certificate pin schema
+        shell: pwsh
+        run: |
+          $cli = '.\\windows-core-candidate\\sing-box.exe'
+          & $cli version
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot launch Windows sing-box' }
+          & $cli check -c tool/android-singbox/compat/base.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows VLESS/Hysteria2 config invalid' }
+          & $cli check -c tool/android-singbox/compat/alpha-pin.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows alpha certificate pin config invalid' }
+      # CLI compilation is not FlClash Windows client integration and does not
+      # measure real upload/download throughput. No automatic core switch.
+
   alpha-android:
     name: Official 1.15 alpha / Android libbox + adapter
     runs-on: ubuntu-latest
