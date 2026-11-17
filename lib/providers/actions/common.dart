@@ -270,11 +270,29 @@ class CommonAction extends _$CommonAction {
     final download = ref.read(updateDownloadStateProvider);
     if (download is! UpdateReady) return;
     if (system.isAndroid) {
-      ref.read(updateDownloadStateProvider.notifier).value = null;
-      final status = await app?.installPackage(download.path);
-      await clearUpdateDownloads();
-      if (status != null && packageInstallFailed(status)) {
-        await _showUpdateFailure(currentAppLocalizations.updateInstallFailed);
+      final installer = app;
+      if (installer == null) return;
+      try {
+        if (await installer.openPackageInstaller(download.path)) {
+          // The external activity owns the install flow and may read the
+          // content URI later. Keep the verified APK and the retry entry.
+          return;
+        }
+        ref.read(updateDownloadStateProvider.notifier).value = null;
+        final status = await installer.installPackage(download.path);
+        await clearUpdateDownloads();
+        if (status != null && packageInstallFailed(status)) {
+          await _showUpdateFailure(currentAppLocalizations.updateInstallFailed);
+        }
+      } on PlatformException catch (error) {
+        commonPrint.log(
+          'Update installer failed: ${compactError(error)}',
+          logLevel: LogLevel.warning,
+        );
+        if (ref.mounted) {
+          ref.read(updateDownloadStateProvider.notifier).value = download;
+          await _showUpdateFailure(currentAppLocalizations.updateInstallFailed);
+        }
       }
       return;
     }
