@@ -49,6 +49,19 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
     case 'trojan':
     case 'hysteria2':
     case 'anytls':
+      // Our packaged sing-box 1.14.4 has no certificate_sha256 pinning.
+      // Reject the pinned node instead of silently weakening TLS validation.
+      if (type == 'hysteria2' && proxy.containsKey('fingerprint')) {
+        throw const FormatException(
+          'Hysteria2 certificate fingerprint cannot be preserved by this sing-box core',
+        );
+      }
+      if (type == 'hysteria2' &&
+          (proxy.containsKey('ports') || proxy.containsKey('mport'))) {
+        throw const FormatException(
+          'Hysteria2 port hopping is not yet converted for sing-box',
+        );
+      }
       allowed.addAll(['password', 'sni', 'skip-cert-verify']);
       result.addAll({
         'type': type,
@@ -70,16 +83,59 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
         'flow',
         'tls',
         'servername',
+        'skip-cert-verify',
         'reality-opts',
         'client-fingerprint',
         'network',
+        'ws-opts',
+        'udp',
       ]);
       result.addAll({'type': 'vless', 'uuid': requiredString('uuid')});
-      if (proxy.containsKey('flow')) {
-        result['flow'] = requiredString('flow');
+      // An empty Clash flow is the ordinary VLESS mode, not Vision.
+      final flow = proxy['flow'];
+      if (flow != null && flow is! String) {
+        throw const FormatException('Invalid VLESS flow');
       }
-      if (proxy.containsKey('network') && proxy['network'] != 'tcp') {
+      if (flow is String && flow.isNotEmpty) {
+        result['flow'] = flow;
+      }
+      final network = proxy['network'];
+      if (network != null && network != 'tcp' && network != 'ws') {
         throw const FormatException('Unsupported VLESS transport');
+      }
+      if (network == 'ws') {
+        final ws = proxy['ws-opts'];
+        if (ws is! Map ||
+            ws.keys.any((key) => key != 'path' && key != 'headers')) {
+          throw const FormatException('Unsupported WebSocket options');
+        }
+        final transport = <String, dynamic>{'type': 'ws'};
+        if (ws.containsKey('path')) {
+          if (ws['path'] is! String) {
+            throw const FormatException('Invalid WebSocket path');
+          }
+          transport['path'] = ws['path'];
+        }
+        if (ws.containsKey('headers')) {
+          final headers = ws['headers'];
+          if (headers is! Map ||
+              headers.keys.any((key) => key is! String) ||
+              headers.values.any((value) => value is! String)) {
+            throw const FormatException('Invalid WebSocket headers');
+          }
+          transport['headers'] = Map<String, String>.from(headers);
+        }
+        result['transport'] = transport;
+      } else if (proxy.containsKey('ws-opts')) {
+        throw const FormatException(
+          'WebSocket options require WebSocket transport',
+        );
+      }
+      if (proxy.containsKey('udp')) {
+        if (proxy['udp'] is! bool) {
+          throw const FormatException('Invalid VLESS UDP option');
+        }
+        if (proxy['udp'] == false) result['network'] = 'tcp';
       }
       if (proxy['tls'] != true) {
         throw const FormatException('VLESS conversion requires TLS');
@@ -88,6 +144,12 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
         'enabled': true,
         'server_name': requiredString('servername'),
       };
+      if (proxy.containsKey('skip-cert-verify')) {
+        if (proxy['skip-cert-verify'] is! bool) {
+          throw const FormatException('Invalid TLS verification option');
+        }
+        tls['insecure'] = proxy['skip-cert-verify'];
+      }
       if (proxy.containsKey('client-fingerprint')) {
         tls['utls'] = {
           'enabled': true,

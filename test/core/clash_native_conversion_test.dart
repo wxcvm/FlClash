@@ -47,6 +47,66 @@ void main() {
     });
   });
 
+  test('preserves VLESS WebSocket TLS with separate SNI and Host', () {
+    final result = convertClashOutbound({
+      ...endpoint,
+      'type': 'vless',
+      'uuid': '00000000-0000-4000-8000-000000000001',
+      'flow': '',
+      'udp': true,
+      'tls': true,
+      'skip-cert-verify': false,
+      'servername': 'tls.example.org',
+      'client-fingerprint': 'safari',
+      'network': 'ws',
+      'ws-opts': {
+        'path': '/service/ai',
+        'headers': {'Host': 'ws.example.org'},
+      },
+    });
+    expect(result['flow'], isNull);
+    expect(result['network'], isNull);
+    expect(result['tls'], {
+      'enabled': true,
+      'server_name': 'tls.example.org',
+      'insecure': false,
+      'utls': {'enabled': true, 'fingerprint': 'safari'},
+    });
+    expect(result['transport'], {
+      'type': 'ws',
+      'path': '/service/ai',
+      'headers': {'Host': 'ws.example.org'},
+    });
+  });
+
+  test('retains VLESS UDP-disabled semantics', () {
+    final result = convertClashOutbound({
+      ...endpoint,
+      'type': 'vless',
+      'uuid': '00000000-0000-4000-8000-000000000001',
+      'network': 'tcp',
+      'tls': true,
+      'servername': 'example.org',
+      'udp': false,
+    });
+    expect(result['network'], 'tcp');
+  });
+
+  test('rejects unsupported WebSocket options rather than discarding them', () {
+    expect(
+      () => convertClashOutbound({
+        ...endpoint,
+        'type': 'vless',
+        'uuid': '00000000-0000-4000-8000-000000000001',
+        'network': 'ws',
+        'ws-opts': {'path': '/path', 'unsupported': true},
+        'tls': true,
+        'servername': 'example.org',
+      }),
+      throwsFormatException,
+    );
+  });
+
   test('rejects options that cannot be preserved', () {
     expect(
       () => convertClashOutbound({
@@ -141,6 +201,47 @@ void main() {
       });
     }
   });
+  test('does not discard Hysteria2 certificate pinning', () {
+    expect(
+      () => convertClashOutbound({
+        ...endpoint,
+        'type': 'hysteria2',
+        'password': 'placeholder',
+        'sni': 'example.com',
+        'skip-cert-verify': true,
+        'ports': '61000-62000',
+        'fingerprint': 'a' * 64,
+      }),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('certificate fingerprint cannot be preserved'),
+        ),
+      ),
+    );
+  });
+
+  test('explains unsupported Hysteria2 port hopping separately', () {
+    expect(
+      () => convertClashOutbound({
+        ...endpoint,
+        'type': 'hysteria2',
+        'password': 'placeholder',
+        'sni': 'example.com',
+        'ports': '61000-62000',
+        'mport': '61000-62000',
+      }),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('port hopping is not yet converted'),
+        ),
+      ),
+    );
+  });
+
   test('assembles nested groups and preserves selected member', () {
     final graph = convertClashRoutingGraph(
       {
