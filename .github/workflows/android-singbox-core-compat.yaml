@@ -94,7 +94,10 @@ jobs:
           go run -tags with_quic,with_utls ./cmd/sing-box check -c ../tool/android-singbox/compat/alpha-pin.json
       - name: Build original alpha libbox (without 1.14 recovery patch)
         working-directory: candidate-sing-box
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
+          grep -E '^Pkg.Revision *= *28\\.' "$ANDROID_NDK_HOME/source.properties"
           make lib_install
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           export PATH="$PATH:$(go env GOPATH)/bin"
