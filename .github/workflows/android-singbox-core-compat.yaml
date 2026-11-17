@@ -104,6 +104,8 @@ jobs:
           go run ./cmd/internal/build_libbox -target android -platform android/arm64
           unzip -t libbox.aar
           echo "LIBBOX_AAR=$(realpath libbox.aar)" >> "$GITHUB_ENV"
+      - name: Add new 1.15-only callbacks to temporary Android adapter
+        run: python3 tool/android-singbox/compat/prepare_alpha_adapter.py
       - name: Install SDK and verify optional Android integration
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
