@@ -6,12 +6,14 @@ void main() {
     expect(
       withDirectDnsEcs([
         'system',
+        'system://',
         'dhcp://system',
         'https://dns.example/dns-query#proxy&h3=true',
         'tls://1.1.1.1#ecs=1.2.3.0/24&skip-cert-verify=false',
       ], '203.0.113.0/24'),
       [
         'system',
+        'system://',
         'dhcp://system',
         'https://dns.example/dns-query#proxy&h3=true&ecs=203.0.113.0/24',
         'tls://1.1.1.1#skip-cert-verify=false&ecs=203.0.113.0/24',
@@ -57,9 +59,9 @@ void main() {
 
   test('does not pretend ECS can be configured on system-only DNS', () {
     expect(
-      () => withDirectDnsEcs(['system', 'dhcp://system'], '203.0.113.0/24'),
+      () => withDirectDnsEcs(['system', 'system://', 'dhcp://system'], '203.0.113.0/24'),
       throwsFormatException,
     );
-    expect(withDirectDnsEcs(['system'], ''), ['system']);
+    expect(withDirectDnsEcs(['system', 'system://'], ''), ['system', 'system://']);
   });
 }
