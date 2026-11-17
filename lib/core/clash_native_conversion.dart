@@ -49,6 +49,19 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
     case 'trojan':
     case 'hysteria2':
     case 'anytls':
+      // Our packaged sing-box 1.14.4 has no certificate_sha256 pinning.
+      // Reject the pinned node instead of silently weakening TLS validation.
+      if (type == 'hysteria2' && proxy.containsKey('fingerprint')) {
+        throw const FormatException(
+          'Hysteria2 certificate fingerprint cannot be preserved by this sing-box core',
+        );
+      }
+      if (type == 'hysteria2' &&
+          (proxy.containsKey('ports') || proxy.containsKey('mport'))) {
+        throw const FormatException(
+          'Hysteria2 port hopping is not yet converted for sing-box',
+        );
+      }
       allowed.addAll(['password', 'sni', 'skip-cert-verify']);
       result.addAll({
         'type': type,
