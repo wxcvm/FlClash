@@ -12,6 +12,12 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+// English fallback for other locales; preserve Chinese labels without changing
+// the existing generated localization catalogue in this focused DNS change.
+String _dnsText(String english, String chinese) =>
+    Intl.getCurrentLocale().startsWith('zh') ? chinese : english;
 
 extension on DnsOverrideKey {
   String label(AppLocalizations l) => switch (this) {
@@ -32,15 +38,16 @@ extension on DnsOverrideKey {
     DnsOverrideKey.fakeIpFilter => l.fakeipFilter,
     DnsOverrideKey.fakeIpFilterMode => l.fakeipFilterMode,
     DnsOverrideKey.fakeIpTtl => l.fakeipTtl,
-    DnsOverrideKey.defaultNameserver => '引导 DNS',
-    DnsOverrideKey.nameserverPolicy => '域名解析策略',
-    DnsOverrideKey.nameserver => '通用 DNS',
-    DnsOverrideKey.fallback => '后备 DNS',
+    DnsOverrideKey.defaultNameserver => _dnsText('Bootstrap DNS', '引导 DNS'),
+    DnsOverrideKey.nameserverPolicy => _dnsText('DNS Policy', '域名解析策略'),
+    DnsOverrideKey.nameserver => _dnsText('General DNS', '通用 DNS'),
+    DnsOverrideKey.fallback => _dnsText('Fallback DNS', '后备 DNS'),
     DnsOverrideKey.fallbackLazyQuery => 'Fallback Lazy Query',
-    DnsOverrideKey.proxyServerNameserver => '代理节点 DNS',
-    DnsOverrideKey.proxyServerNameserverPolicy => '代理节点 DNS 策略',
-    DnsOverrideKey.directNameserver => '直连流量 DNS',
-    DnsOverrideKey.directNameserverFollowPolicy => '直连 DNS 遵循域名策略',
+    DnsOverrideKey.proxyServerNameserver => _dnsText('Proxy Node DNS', '代理节点 DNS'),
+    DnsOverrideKey.proxyServerNameserverPolicy => _dnsText('Proxy Node DNS Policy', '代理节点 DNS 策略'),
+    DnsOverrideKey.directNameserver => _dnsText('Direct Traffic DNS', '直连流量 DNS'),
+    DnsOverrideKey.directNameserverFollowPolicy =>
+      _dnsText('Direct DNS Follows Policy', '直连 DNS 遵循域名策略'),
     DnsOverrideKey.fallbackFilterGeoip => 'GeoIP',
     DnsOverrideKey.fallbackFilterGeoipCode => 'GeoIP Code',
     DnsOverrideKey.fallbackFilterGeosite => 'GeoSite',
@@ -53,7 +60,10 @@ extension on DnsOverrideKey {
     DnsOverrideKey.listenRoutingMark => (l) => l.listenRoutingMarkDesc,
     DnsOverrideKey.respectRules => (l) => l.respectRulesDesc,
     DnsOverrideKey.directNameserver =>
-      (_) => '直连流量专用解析器。ECS 可改善部分 CDN 的地域解析，也可能向 DNS 上游披露客户端子网；默认不启用。',
+      (_) => _dnsText(
+        'Resolvers for direct connections. ECS may improve CDN locality but may disclose part of your network address to DNS providers; off by default.',
+        '直连流量专用解析器。ECS 可改善部分 CDN 的地域解析，也可能向 DNS 上游披露客户端子网；默认不启用。',
+      ),
     _ => null,
   };
 
@@ -75,15 +85,15 @@ extension on DnsOverrideKey {
     DnsOverrideKey.fakeIpFilter ||
     DnsOverrideKey.fakeIpFilterMode ||
     DnsOverrideKey.fakeIpTtl => 'Fake-IP',
-    DnsOverrideKey.defaultNameserver => 'DNS 引导解析',
+    DnsOverrideKey.defaultNameserver => _dnsText('DNS Bootstrap', 'DNS 引导解析'),
     DnsOverrideKey.nameserverPolicy ||
     DnsOverrideKey.nameserver ||
     DnsOverrideKey.fallback ||
-    DnsOverrideKey.fallbackLazyQuery => '通用解析与策略',
+    DnsOverrideKey.fallbackLazyQuery => _dnsText('General Resolution & Policy', '通用解析与策略'),
     DnsOverrideKey.proxyServerNameserver ||
-    DnsOverrideKey.proxyServerNameserverPolicy => '代理节点解析',
+    DnsOverrideKey.proxyServerNameserverPolicy => _dnsText('Proxy Node Resolution', '代理节点解析'),
     DnsOverrideKey.directNameserver ||
-    DnsOverrideKey.directNameserverFollowPolicy => '直连流量解析',
+    DnsOverrideKey.directNameserverFollowPolicy => _dnsText('Direct Traffic Resolution', '直连流量解析'),
     DnsOverrideKey.fallbackFilterGeoip ||
     DnsOverrideKey.fallbackFilterGeoipCode ||
     DnsOverrideKey.fallbackFilterGeosite ||
@@ -376,7 +386,7 @@ class _DirectDnsEcsEditor extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final upstreams = ref.watch(model.selectModel(_directDnsOf));
     return ConfigTextItem(
-      title: (_) => '直连流量 ECS 子网',
+      title: (_) => _dnsText('Direct DNS ECS Subnet', '直连流量 ECS 子网'),
       selector: model.selectModel(
         (dns) => sharedDirectDnsEcs(dns.directNameserver) ?? '',
       ),
@@ -389,9 +399,15 @@ class _DirectDnsEcsEditor extends ConsumerWidget {
       validator: (value, _) {
         if (value == null || value.isEmpty) return null;
         if (!validEcsSubnet(value))
-          return '请输入有效的 IPv4 或 IPv6 子网，例如 203.0.113.0/24';
+          return _dnsText(
+            'Enter a valid IPv4 or IPv6 subnet, e.g. 203.0.113.0/24',
+            '请输入有效的 IPv4 或 IPv6 子网，例如 203.0.113.0/24',
+          );
         if (!hasDirectDnsEcsTargets(upstreams)) {
-          return '请先设置可用的直连 DNS 服务器，system / DHCP 不支持指定 ECS';
+          return _dnsText(
+            'Add a direct DNS resolver first; system / DHCP do not support explicit ECS',
+            '请先设置可用的直连 DNS 服务器，system / DHCP 不支持指定 ECS',
+          );
         }
         return null;
       },
