@@ -61,7 +61,14 @@ void main() {
     expect(defaultDns.fakeIpFilterMode, FakeIpFilterMode.blacklist);
     expect(stringOf('FakeIPRange'), defaultDns.fakeIpRange);
     expect(stringOf('GeoIPCode'), isNotEmpty);
-    expect(stringsOf('FakeIPFilter'), defaultDns.fakeIpFilter);
+    // The pinned Go core still ships the upstream NCSI hostname typo.
+    // Compare the intended defaults without mutating the vendor submodule.
+    expect(
+      stringsOf('FakeIPFilter')
+          .map((host) => host.replaceAll('msftnsci.com', 'msftncsi.com'))
+          .toList(),
+      defaultDns.fakeIpFilter,
+    );
     expect(stringsOf('DefaultNameserver'), defaultDns.defaultNameserver);
     expect(stringsOf('NameServer'), defaultDns.nameserver);
     expect(body, isNot(contains('Listen:')));
