@@ -13,7 +13,7 @@ if subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=T
 # The pinned upstream spells Windows' NCSI probe hosts incorrectly.
 # Correct only its built-in defaults; do not rewrite user DNS profiles.
 ncsi_config = root / "config/config.go"
-ncsi_source = ncsi_config.read_text()
+ncsi_source = ncsi_config.read_text(encoding="utf-8")
 for old, new in (
     ('"dns.msftnsci.com"', '"dns.msftncsi.com"'),
     ('"www.msftnsci.com"', '"www.msftncsi.com"'),
@@ -21,7 +21,7 @@ for old, new in (
     if ncsi_source.count(old) != 1:
         raise SystemExit("Mihomo NCSI default source changed")
     ncsi_source = ncsi_source.replace(old, new, 1)
-ncsi_config.write_text(ncsi_source)
+ncsi_config.write_text(ncsi_source, encoding="utf-8", newline="\n")
 
 group = root / "adapter/outboundgroup"
 changes = json.loads((here / "changes.json").read_text())
