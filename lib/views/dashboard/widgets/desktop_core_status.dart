@@ -71,10 +71,14 @@ class _DesktopCoreStatusButtonState
     final compact =
         MediaQuery.sizeOf(context).width < 1100 ||
         MediaQuery.textScalerOf(context).scale(1) > 1.25;
-    void openManagement() => showSheet<void>(
-      context: context,
-      builder: (_) => const NativeCoreView(),
-    );
+    void openManagement() {
+      unawaited(
+        showSheet<void>(
+          context: context,
+          builder: (_) => const NativeCoreView(),
+        ),
+      );
+    }
     return Tooltip(
       message: '内核状态：$label · 打开内核管理',
       child: compact
