@@ -10,6 +10,7 @@ typedef MihomoRunSetter = Future<bool> Function(bool running);
 /// native JSON configurations.
 final class NativeCoreHandoff {
   final NativeCoreRuntime runtime;
+  final bool restartHttpCoreOnCrash;
   final bool Function() isMihomoRunning;
   final MihomoRunSetter setMihomoRunning;
   final Future<void> Function() releaseMihomoProxy;
@@ -29,9 +30,13 @@ final class NativeCoreHandoff {
   bool _unexpectedExit = false;
   bool _nativeProxyOwned = false;
   bool _nativeTunConfigured = false;
+  NativeCoreSpec? _restartSpec;
+  NativeHttpEndpoint? _restartEndpoint;
+  bool _restartAttempted = false;
 
   NativeCoreHandoff({
     required this.runtime,
+    this.restartHttpCoreOnCrash = false,
     required this.isMihomoRunning,
     required this.setMihomoRunning,
     required this.releaseMihomoProxy,
@@ -134,7 +139,13 @@ final class NativeCoreHandoff {
         } else {
           _emit('${spec.kind.label} running without system proxy takeover');
         }
+        // Only an HTTP endpoint whose readiness was verified is eligible for
+        // automatic restart. Native TUN route health cannot be inferred here.
+        _restartSpec = endpoint == null ? null : spec;
+        _restartEndpoint = endpoint;
+        _restartAttempted = false;
       } catch (error, stackTrace) {
+        _clearRestartCandidate();
         // The external core failed: put the previous route back.
         if (runtime.isRunning) await runtime.stop();
         _nativeTunConfigured = false;
@@ -157,6 +168,7 @@ final class NativeCoreHandoff {
     try {
       // Never re-enable Mihomo while the external process might still own TUN.
       await runtime.stop();
+      _clearRestartCandidate();
       await _releaseProxy();
       _nativeTunConfigured = false;
       runtime.setNativeMode(false);
@@ -186,17 +198,59 @@ final class NativeCoreHandoff {
   Future<void> _recoverAfterCrash() async {
     if (_busy || !_unexpectedExit || runtime.isRunning) return;
     _busy = true;
+    // Consume this exit so a second unexpected exit during restart can be
+    // handled after the current recovery completes.
+    _unexpectedExit = false;
     try {
+      final spec = _restartSpec;
+      final endpoint = _restartEndpoint;
+      if (restartHttpCoreOnCrash &&
+          !_restartAttempted &&
+          spec != null &&
+          endpoint != null) {
+        _restartAttempted = true;
+        _emit('${spec.kind.label} exited unexpectedly; retrying native core');
+        try {
+          // Restore a verifiable local HTTP listener before reclaiming the
+          // system proxy. Never run both native and Mihomo network listeners.
+          await _releaseProxy();
+          if (!await isHttpPortAvailable(endpoint)) {
+            throw StateError('Native HTTP port ${endpoint.port} is occupied');
+          }
+          await runtime.start(spec);
+          if (!await waitForHttpEndpoint(endpoint) || !runtime.isRunning) {
+            throw StateError('Native HTTP listener did not recover');
+          }
+          _nativeProxyOwned = true;
+          if (!await activateNativeProxy(endpoint.port) || !runtime.isRunning) {
+            throw StateError('Native system proxy recovery failed');
+          }
+          _emit('${spec.kind.label} automatically restarted');
+          return;
+        } catch (error) {
+          _emit('${spec.kind.label} restart failed: $error; restoring Mihomo');
+          if (runtime.isRunning) await runtime.stop();
+        }
+      }
       await _releaseProxy();
       _nativeTunConfigured = false;
       runtime.setNativeMode(false);
       await _restore();
-      _unexpectedExit = false;
+      _clearRestartCandidate();
     } catch (error) {
       _emit('Native core exited; Mihomo recovery failed: $error');
     } finally {
       _busy = false;
+      if (_unexpectedExit && !runtime.isRunning) {
+        unawaited(_recoverAfterCrash());
+      }
     }
+  }
+
+  void _clearRestartCandidate() {
+    _restartSpec = null;
+    _restartEndpoint = null;
+    _restartAttempted = false;
   }
 
   void _emit(String message) {

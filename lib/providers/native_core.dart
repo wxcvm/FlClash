@@ -8,6 +8,7 @@ import 'package:fl_clash/state.dart';
 /// Created once for the whole desktop process, not for each settings page.
 final nativeCoreHandoff = NativeCoreHandoff(
   runtime: nativeCoreRuntime,
+  restartHttpCoreOnCrash: true,
   useNativeSystemProxy: () {
     final config = globalState.container.read(networkSettingProvider);
     return config.systemProxy && !config.authentication.enable;
