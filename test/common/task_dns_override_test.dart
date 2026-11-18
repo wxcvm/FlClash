@@ -108,42 +108,45 @@ void main() {
     ]);
   });
 
-  test('legacy built-in NCSI typo is fixed without rewriting custom filters', () async {
-    final oldDefaults = await _dnsOf(
-      rawConfig: {
-        'dns': {
-          'enable': true,
-          'enhanced-mode': 'fake-ip',
-          'nameserver': ['https://resolver.example/dns-query'],
-          'fake-ip-filter': [
-            'dns.msftnsci.com',
-            'www.msftnsci.com',
-            'www.msftconnecttest.com',
-          ],
+  test(
+    'legacy built-in NCSI typo is fixed without rewriting custom filters',
+    () async {
+      final oldDefaults = await _dnsOf(
+        rawConfig: {
+          'dns': {
+            'enable': true,
+            'enhanced-mode': 'fake-ip',
+            'nameserver': ['https://resolver.example/dns-query'],
+            'fake-ip-filter': [
+              'dns.msftnsci.com',
+              'www.msftnsci.com',
+              'www.msftconnecttest.com',
+            ],
+          },
         },
-      },
-      keys: {},
-    );
-    expect(oldDefaults['fake-ip-filter'], [
-      'dns.msftncsi.com',
-      'www.msftncsi.com',
-      'www.msftconnecttest.com',
-      'resolver.example',
-    ]);
+        keys: {},
+      );
+      expect(oldDefaults['fake-ip-filter'], [
+        'dns.msftncsi.com',
+        'www.msftncsi.com',
+        'www.msftconnecttest.com',
+        'resolver.example',
+      ]);
 
-    final custom = await _dnsOf(
-      rawConfig: {
-        'dns': {
-          'enable': true,
-          'enhanced-mode': 'fake-ip',
-          'nameserver': ['9.9.9.9'],
-          'fake-ip-filter': ['dns.msftnsci.com', '*.lan'],
+      final custom = await _dnsOf(
+        rawConfig: {
+          'dns': {
+            'enable': true,
+            'enhanced-mode': 'fake-ip',
+            'nameserver': ['9.9.9.9'],
+            'fake-ip-filter': ['dns.msftnsci.com', '*.lan'],
+          },
         },
-      },
-      keys: {},
-    );
-    expect(custom['fake-ip-filter'], ['dns.msftnsci.com', '*.lan']);
-  });
+        keys: {},
+      );
+      expect(custom['fake-ip-filter'], ['dns.msftnsci.com', '*.lan']);
+    },
+  );
 
   test('explicit empty blacklist stays the configured baseline', () async {
     final dns = await _dnsOf(
