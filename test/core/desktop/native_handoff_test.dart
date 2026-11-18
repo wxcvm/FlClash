@@ -430,6 +430,154 @@ void main() {
     await proxyHandoff.close();
   });
 
+
+  test('HTTP native crash retries once before restoring Mihomo', () async {
+    final first = _Child();
+    final second = _Child();
+    var launches = 0;
+    final retryRuntime = NativeCoreRuntime(
+      run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
+      start: (_, _, {workingDirectory}) async {
+        launches++;
+        return launches == 1 ? first : second;
+      },
+    );
+    final retryHandoff = NativeCoreHandoff(
+      runtime: retryRuntime,
+      restartHttpCoreOnCrash: true,
+      isMihomoRunning: () => mihomoRunning,
+      setMihomoRunning: (running) async {
+        calls.add('mihomo:$running');
+        mihomoRunning = running;
+        return true;
+      },
+      releaseMihomoProxy: () async => calls.add('release mihomo proxy'),
+      useNativeSystemProxy: () => true,
+      detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+      isHttpPortAvailable: (_) async => true,
+      waitForHttpEndpoint: (_) async => true,
+      activateNativeProxy: (_) async {
+        calls.add('activate native proxy');
+        return true;
+      },
+      releaseNativeProxy: () async => calls.add('release native proxy'),
+    );
+    try {
+      await retryHandoff.activate(spec);
+      final restarted = retryHandoff.messages.firstWhere(
+        (message) => message.contains('automatically restarted'),
+      );
+      first.finish(2);
+      await restarted;
+      expect(launches, 2);
+      expect(retryRuntime.isRunning, isTrue);
+      expect(mihomoRunning, isFalse);
+      expect(
+        calls.where((call) => call == 'activate native proxy').length,
+        2,
+      );
+
+      final restored = retryHandoff.messages.firstWhere(
+        (message) => message.contains('Mihomo network listeners restored'),
+      );
+      second.finish(3);
+      await restored;
+      expect(launches, 2);
+      expect(retryRuntime.isRunning, isFalse);
+      expect(retryRuntime.blocksMihomoStart, isFalse);
+      expect(mihomoRunning, isTrue);
+      expect(calls.last, 'mihomo:true');
+    } finally {
+      if (retryRuntime.isRunning) await retryRuntime.stop();
+      await retryHandoff.close();
+      await retryRuntime.close();
+    }
+  });
+
+  test('failed automatic HTTP restart falls back to Mihomo', () async {
+    final first = _Child();
+    var launches = 0;
+    final retryRuntime = NativeCoreRuntime(
+      run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
+      start: (_, _, {workingDirectory}) async {
+        launches++;
+        if (launches == 1) return first;
+        throw const ProcessException('sing-box', [], 'restart failed');
+      },
+    );
+    final retryHandoff = NativeCoreHandoff(
+      runtime: retryRuntime,
+      restartHttpCoreOnCrash: true,
+      isMihomoRunning: () => mihomoRunning,
+      setMihomoRunning: (running) async {
+        mihomoRunning = running;
+        return true;
+      },
+      releaseMihomoProxy: () async {},
+      useNativeSystemProxy: () => true,
+      detectHttpEndpoint: (_) async => const NativeHttpEndpoint(8090),
+      isHttpPortAvailable: (_) async => true,
+      waitForHttpEndpoint: (_) async => true,
+      activateNativeProxy: (_) async => true,
+      releaseNativeProxy: () async {},
+    );
+    try {
+      await retryHandoff.activate(spec);
+      final restored = retryHandoff.messages.firstWhere(
+        (message) => message.contains('Mihomo network listeners restored'),
+      );
+      first.finish(1);
+      await restored;
+      expect(launches, 2);
+      expect(retryRuntime.isRunning, isFalse);
+      expect(mihomoRunning, isTrue);
+      expect(retryHandoff.ownsNativeSystemProxy, isFalse);
+    } finally {
+      if (retryRuntime.isRunning) await retryRuntime.stop();
+      await retryHandoff.close();
+      await retryRuntime.close();
+    }
+  });
+
+  test('automatic retry does not restart an unverified native TUN', () async {
+    final first = _Child();
+    var launches = 0;
+    final retryRuntime = NativeCoreRuntime(
+      run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
+      start: (_, _, {workingDirectory}) async {
+        launches++;
+        return first;
+      },
+    );
+    final retryHandoff = NativeCoreHandoff(
+      runtime: retryRuntime,
+      restartHttpCoreOnCrash: true,
+      isMihomoRunning: () => mihomoRunning,
+      setMihomoRunning: (running) async {
+        mihomoRunning = running;
+        return true;
+      },
+      releaseMihomoProxy: () async {},
+      useNativeSystemProxy: () => true,
+      detectTun: (_) async => const NativeTunConfiguration(),
+    );
+    try {
+      await retryHandoff.activate(spec);
+      final restored = retryHandoff.messages.firstWhere(
+        (message) => message.contains('Mihomo network listeners restored'),
+      );
+      first.finish(1);
+      await restored;
+      expect(launches, 1);
+      expect(mihomoRunning, isTrue);
+      expect(retryRuntime.isRunning, isFalse);
+    } finally {
+      if (retryRuntime.isRunning) await retryRuntime.stop();
+      await retryHandoff.close();
+      await retryRuntime.close();
+    }
+  });
+
   test('an originally stopped Mihomo is not started on native exit', () async {
     mihomoRunning = false;
     await handoff.activate(spec);
