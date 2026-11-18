@@ -68,16 +68,25 @@ class _DesktopCoreStatusButtonState
       mihomoRunning: ref.watch(isStartProvider),
       mihomoStatus: ref.watch(coreStatusProvider),
     );
+    final compact =
+        MediaQuery.sizeOf(context).width < 1100 ||
+        MediaQuery.textScalerOf(context).scale(1) > 1.25;
+    void openManagement() => showSheet<void>(
+      context: context,
+      builder: (_) => const NativeCoreView(),
+    );
     return Tooltip(
-      message: '内核状态 · 打开内核管理',
-      child: FilledButton.icon(
-        onPressed: () => showSheet<void>(
-          context: context,
-          builder: (_) => const NativeCoreView(),
-        ),
-        icon: const GlyphIcon(AppGlyphs.cpu, fill: 1),
-        label: Text(label),
-      ),
+      message: '内核状态：$label · 打开内核管理',
+      child: compact
+          ? IconButton.filled(
+              onPressed: openManagement,
+              icon: const GlyphIcon(AppGlyphs.cpu, fill: 1),
+            )
+          : FilledButton.icon(
+              onPressed: openManagement,
+              icon: const GlyphIcon(AppGlyphs.cpu, fill: 1),
+              label: Text(label),
+            ),
     );
   }
 }
