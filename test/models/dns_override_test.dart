@@ -64,9 +64,9 @@ void main() {
     // The pinned Go core still ships the upstream NCSI hostname typo.
     // Compare the intended defaults without mutating the vendor submodule.
     expect(
-      stringsOf('FakeIPFilter')
-          .map((host) => host.replaceAll('msftnsci.com', 'msftncsi.com'))
-          .toList(),
+      stringsOf(
+        'FakeIPFilter',
+      ).map((host) => host.replaceAll('msftnsci.com', 'msftncsi.com')).toList(),
       defaultDns.fakeIpFilter,
     );
     expect(stringsOf('DefaultNameserver'), defaultDns.defaultNameserver);
