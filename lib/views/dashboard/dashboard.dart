@@ -15,6 +15,7 @@ import 'layout.dart';
 import 'style.dart';
 import 'widget_registry.dart';
 import 'widgets/core_status_button.dart';
+import 'widgets/desktop_core_status.dart';
 import 'widgets/widgets.dart';
 
 // Narrower columns leave a pair of service cells too tight for a status, so
@@ -65,6 +66,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           : appLocalizations.dashboard,
       actions: [
         if (!editable) const UpdateStatusButton(),
+        if (!editing && system.isDesktop) const DesktopCoreStatusButton(),
         if (!editing && coreLib == null) const CoreStatusButton(),
       ],
       confirmationAction: editing
