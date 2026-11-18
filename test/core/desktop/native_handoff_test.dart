@@ -430,7 +430,6 @@ void main() {
     await proxyHandoff.close();
   });
 
-
   test('HTTP native crash retries once before restoring Mihomo', () async {
     final first = _Child();
     final second = _Child();
