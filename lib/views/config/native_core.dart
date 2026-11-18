@@ -399,7 +399,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
               ),
             ],
             footer:
-                '默认使用 Mihomo；独立内核支持导入配置自动识别，启动需手动确认，不会按节点协议自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。异常退出后恢复原 Mihomo 状态；TUN 路由状态未独立验证。',
+                '默认使用 Mihomo；独立内核支持导入配置自动识别，启动需手动确认，不会按节点协议自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。已验证本机 HTTP 代理入口的独立内核异常退出时自动重启一次，仍失败则恢复 Mihomo；TUN 异常直接恢复 Mihomo，路由状态未独立验证。',
           ),
           if (_result.isNotEmpty)
             Padding(
