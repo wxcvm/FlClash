@@ -7,6 +7,7 @@ import 'package:fl_clash/core/desktop/native_config_kind.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_installer.dart';
 import 'package:fl_clash/providers/native_core.dart';
+import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -352,7 +353,9 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                 title: const Text('运行状态'),
                 subtitle: Text(
                   active == null
-                      ? '未运行独立内核（默认 Mihomo）'
+                      ? ref.watch(isStartProvider)
+                            ? 'Mihomo 正在运行'
+                            : '内核未运行'
                       : '${active.label} 正在运行',
                 ),
               ),
