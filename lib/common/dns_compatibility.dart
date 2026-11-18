@@ -2,6 +2,13 @@ import 'dart:io';
 
 // Preserve the pinned Mihomo defaults when a blacklist is omitted.
 const _defaultFakeIpBlacklist = [
+  'dns.msftncsi.com',
+  'www.msftncsi.com',
+  'www.msftconnecttest.com',
+];
+
+// Exact legacy defaults shipped with a typo; avoid touching custom filters.
+const _legacyDefaultFakeIpBlacklist = [
   'dns.msftnsci.com',
   'www.msftnsci.com',
   'www.msftconnecttest.com',
@@ -99,8 +106,16 @@ void applyEncryptedDnsFakeIpCompatibility(Map<String, dynamic> dns) {
     return;
   }
   final hosts = encryptedDnsEndpointHosts(dns);
+  final baseline = entries is List
+      ? entries.cast<String>()
+      : _defaultFakeIpBlacklist;
+  final usedLegacyDefaults =
+      baseline.length == _legacyDefaultFakeIpBlacklist.length &&
+      baseline.asMap().entries.every(
+        (entry) => entry.value == _legacyDefaultFakeIpBlacklist[entry.key],
+      );
   final normalized = normalizeFakeIpBlacklist(
-    entries is List ? entries.cast<String>() : _defaultFakeIpBlacklist,
+    usedLegacyDefaults ? _defaultFakeIpBlacklist : baseline,
   );
   if (entries != null || hosts.isNotEmpty) {
     dns['fake-ip-filter'] = {...normalized, ...hosts}.toList();
