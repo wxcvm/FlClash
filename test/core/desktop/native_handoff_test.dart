@@ -471,10 +471,7 @@ void main() {
       expect(launches, 2);
       expect(retryRuntime.isRunning, isTrue);
       expect(mihomoRunning, isFalse);
-      expect(
-        calls.where((call) => call == 'activate native proxy').length,
-        2,
-      );
+      expect(calls.where((call) => call == 'activate native proxy').length, 2);
 
       final restored = retryHandoff.messages.firstWhere(
         (message) => message.contains('Mihomo network listeners restored'),
