@@ -95,7 +95,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     setState(() => _configPath = file!.path!);
   }
 
-  Future<String> _detectConfig() async {
+  Future<String> _detectConfig({bool start = false}) async {
     final file = await picker.pickerFile();
     final path = file?.path;
     if (!mounted || path == null) return '未选择配置';
@@ -112,7 +112,10 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
       _executable = _executablePaths[kind] ?? kind.executableName;
     });
     await _loadInstalledExecutable(kind);
-    return '已识别 ${kind.label}，启动时自动准备内核';
+    if (!start) return '已识别 ${kind.label}，启动时自动准备内核';
+    if (!mounted) return '页面已关闭，未启动内核';
+    final status = await _start();
+    return '已自动选择 ${kind.label}；$status';
   }
 
   Future<String> _importClash({bool current = false}) async {
@@ -276,6 +279,18 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                     : () => _perform(_importClash),
               ),
               ListItem(
+                title: const Text('自动识别并启动内核'),
+                subtitle: const Text('按原生配置选择内核、安装预检并安全接管；无法识别则不切换'),
+                onTap:
+                    _busy ||
+                        active != null ||
+                        nativeCoreHandoff.busy ||
+                        nativeCoreHandoff.ownsNativeSystemProxy ||
+                        nativeCoreHandoff.hasMihomoToRestore
+                    ? null
+                    : () => _perform(() => _detectConfig(start: true)),
+              ),
+              ListItem(
                 title: const Text('自动识别内核配置'),
                 subtitle: const Text('导入原生配置，启动时自动准备对应内核'),
                 onTap: _busy || active != null
@@ -399,7 +414,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
               ),
             ],
             footer:
-                '默认使用 Mihomo；独立内核支持导入配置自动识别，启动需手动确认，不会按节点协议自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。已验证本机 HTTP 代理入口的独立内核异常退出时自动重启一次，仍失败则恢复 Mihomo；TUN 异常直接恢复 Mihomo，路由状态未独立验证。',
+                '默认使用 Mihomo；独立内核配置可自动识别并一键启动，也可仅识别后手动启动；不会根据测速或当前节点自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。已验证本机 HTTP 代理入口的独立内核异常退出时自动重启一次，仍失败则恢复 Mihomo；TUN 异常直接恢复 Mihomo，路由状态未独立验证。',
           ),
           if (_result.isNotEmpty)
             Padding(
