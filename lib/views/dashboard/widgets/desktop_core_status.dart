@@ -79,6 +79,7 @@ class _DesktopCoreStatusButtonState
         ),
       );
     }
+
     return Tooltip(
       message: '内核状态：$label · 打开内核管理',
       child: compact
