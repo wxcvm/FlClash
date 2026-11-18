@@ -222,8 +222,7 @@ final class NativeCoreHandoff {
             throw StateError('Native HTTP listener did not recover');
           }
           _nativeProxyOwned = true;
-          if (!await activateNativeProxy(endpoint.port) ||
-              !runtime.isRunning) {
+          if (!await activateNativeProxy(endpoint.port) || !runtime.isRunning) {
             throw StateError('Native system proxy recovery failed');
           }
           _emit('${spec.kind.label} automatically restarted');
