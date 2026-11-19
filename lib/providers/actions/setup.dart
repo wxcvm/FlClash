@@ -549,6 +549,8 @@ class SetupAction extends _$SetupAction {
       ),
     );
     final appendSystemDns = networkSetting.appendSystemDns;
+    final followWindowsSystemDns =
+        system.isWindows && await preferences.getFollowWindowsSystemDns();
     final isCustom = setupState.profileType == ProfileType.custom;
     final scriptContent =
         !isCustom && setupState.extendType == ExtendType.script
@@ -588,7 +590,9 @@ class SetupAction extends _$SetupAction {
         profilesPath: directory,
         profileId: profileId,
         rawConfig: rawConfig,
-        realPatchConfig: patchConfig,
+        realPatchConfig: followWindowsSystemDns
+            ? withWindowsSystemDns(patchConfig)
+            : patchConfig,
         overrides: setupState.overrides,
         bypassPrivateRoute: networkSetting.bypassPrivateRoute,
         keepEmptyDnsOverrides: setupState.profileType != ProfileType.custom,

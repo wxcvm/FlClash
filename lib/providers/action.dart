@@ -8,6 +8,7 @@ import 'package:fl_clash/common/boot_guard.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/mitm_module.dart';
 import 'package:fl_clash/common/system_dns.dart';
+import 'package:fl_clash/common/windows_adguard_dns.dart';
 import 'package:fl_clash/core/core.dart';
 import 'package:fl_clash/core/desktop/network_recovery.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';

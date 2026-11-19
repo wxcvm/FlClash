@@ -135,6 +135,18 @@ class Preferences {
     return preferences?.setString(configKey, json.encode(config)) ?? false;
   }
 
+  /// This selects the OS resolver path in generated Mihomo configuration.
+  /// AdGuard keeps ownership of its own DNS provider and private URL.
+  Future<bool> getFollowWindowsSystemDns() async {
+    final shared = await _store.value;
+    return shared?.getBool('followWindowsSystemDns') ?? false;
+  }
+
+  Future<bool> setFollowWindowsSystemDns(bool value) async {
+    final shared = await _store.value;
+    return await shared?.setBool('followWindowsSystemDns', value) ?? false;
+  }
+
   Future<SystemDnsRecord?> getSystemDnsRecord() async {
     try {
       final sharedPreferencesIns = await _store.value;
