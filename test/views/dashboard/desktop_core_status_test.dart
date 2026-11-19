@@ -4,19 +4,22 @@ import 'package:fl_clash/views/dashboard/widgets/desktop_core_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('desktop status does not mistake native process for network takeover', () {
-    expect(
-      desktopCoreStatusLabel(
-        externalCore: NativeCoreKind.singBox,
-        nativeSystemProxy: false,
-        nativeTunConfigured: false,
-        switching: false,
-        mihomoRunning: false,
-        mihomoStatus: CoreStatus.disconnected,
-      ),
-      'sing-box · 仅进程运行',
-    );
-  });
+  test(
+    'desktop status does not mistake native process for network takeover',
+    () {
+      expect(
+        desktopCoreStatusLabel(
+          externalCore: NativeCoreKind.singBox,
+          nativeSystemProxy: false,
+          nativeTunConfigured: false,
+          switching: false,
+          mihomoRunning: false,
+          mihomoStatus: CoreStatus.disconnected,
+        ),
+        'sing-box · 仅进程运行',
+      );
+    },
+  );
 
   test('desktop status labels a handoff without claiming either engine', () {
     expect(
@@ -47,19 +50,22 @@ void main() {
     expect(label(false, CoreStatus.connected), '内核未运行');
   });
 
-  test('desktop status distinguishes configured HTTP proxy from reachability', () {
-    expect(
-      desktopCoreStatusLabel(
-        externalCore: NativeCoreKind.xray,
-        nativeSystemProxy: true,
-        nativeTunConfigured: false,
-        switching: false,
-        mihomoRunning: false,
-        mihomoStatus: CoreStatus.disconnected,
-      ),
-      'Xray-core · 系统代理已设置',
-    );
-  });
+  test(
+    'desktop status distinguishes configured HTTP proxy from reachability',
+    () {
+      expect(
+        desktopCoreStatusLabel(
+          externalCore: NativeCoreKind.xray,
+          nativeSystemProxy: true,
+          nativeTunConfigured: false,
+          switching: false,
+          mihomoRunning: false,
+          mihomoStatus: CoreStatus.disconnected,
+        ),
+        'Xray-core · 系统代理已设置',
+      );
+    },
+  );
 
   test('configured TUN is not presented as verified routing', () {
     expect(
