@@ -574,6 +574,34 @@ void main() {
     }
   });
 
+  test('handoff publishes settled state after start and stop', () async {
+    final transitions = <bool>[];
+    final subscription = handoff.busyChanges.listen(transitions.add);
+    await handoff.activate(spec);
+    await handoff.deactivate();
+    await Future<void>.delayed(Duration.zero);
+    expect(transitions, [true, false, true, false]);
+    await subscription.cancel();
+  });
+
+  test(
+    'crash recovery publishes settled state after restoring Mihomo',
+    () async {
+      final transitions = <bool>[];
+      final subscription = handoff.busyChanges.listen(transitions.add);
+      await handoff.activate(spec);
+      final restored = handoff.messages.firstWhere(
+        (message) => message.contains('Mihomo network listeners restored'),
+      );
+      child.finish(1);
+      await restored;
+      await Future<void>.delayed(Duration.zero);
+      expect(transitions, [true, false, true, false]);
+      expect(mihomoRunning, isTrue);
+      await subscription.cancel();
+    },
+  );
+
   test('an originally stopped Mihomo is not started on native exit', () async {
     mihomoRunning = false;
     await handoff.activate(spec);
