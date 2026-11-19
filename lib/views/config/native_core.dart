@@ -35,6 +35,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   final List<String> _logs = [];
   StreamSubscription<String>? _logSubscription;
   StreamSubscription<String>? _handoffSubscription;
+  StreamSubscription<bool>? _handoffStateSubscription;
   bool _busy = false;
   bool _advanced = false;
 
@@ -52,12 +53,16 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
 
     _logSubscription = nativeCoreRuntime.logs.listen(addLog);
     _handoffSubscription = nativeCoreHandoff.messages.listen(addLog);
+    _handoffStateSubscription = nativeCoreHandoff.busyChanges.listen((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     unawaited(_logSubscription?.cancel());
     unawaited(_handoffSubscription?.cancel());
+    unawaited(_handoffStateSubscription?.cancel());
     super.dispose();
   }
 
@@ -369,15 +374,17 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                 subtitle: Text(
                   active == null
                       ? ref.watch(isStartProvider)
-                            ? 'Mihomo 正在运行'
+                            ? 'Mihomo 已启动（外网连通性未验证）'
                             : '内核未运行'
-                      : '${active.label} 正在运行',
+                      : '${active.label} 进程运行中（外网连通性未验证）',
                 ),
               ),
               ListItem(
                 title: const Text('系统代理接管'),
                 subtitle: Text(
-                  nativeCoreHandoff.ownsNativeSystemProxy ? '外部内核已接管' : '未接管',
+                  nativeCoreHandoff.ownsNativeSystemProxy
+                      ? '系统代理已设置（不代表代理出口可用）'
+                      : '未由独立内核设置',
                 ),
               ),
               ListItem(
