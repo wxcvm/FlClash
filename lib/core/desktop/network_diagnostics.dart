@@ -170,13 +170,16 @@ final class DesktopNetworkDiagnostics {
     try {
       final routes = await windowsRoutes().timeout(const Duration(seconds: 5));
       final defaultCount = RegExp(
-        r'(?m)^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+',
+        r'^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+',
+        multiLine: true,
       ).allMatches(routes).length;
       final lowerHalf = RegExp(
-        r'(?m)^\s*0\.0\.0\.0\s+128\.0\.0\.0\s+',
+        r'^\s*0\.0\.0\.0\s+128\.0\.0\.0\s+',
+        multiLine: true,
       ).hasMatch(routes);
       final upperHalf = RegExp(
-        r'(?m)^\s*128\.0\.0\.0\s+128\.0\.0\.0\s+',
+        r'^\s*128\.0\.0\.0\s+128\.0\.0\.0\s+',
+        multiLine: true,
       ).hasMatch(routes);
       checks.add(
         NetworkCheck(
