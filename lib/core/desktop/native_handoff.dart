@@ -23,6 +23,8 @@ final class NativeCoreHandoff {
   final Future<void> Function() releaseNativeProxy;
   final StreamController<String> _messages =
       StreamController<String>.broadcast();
+  final StreamController<bool> _busyChanges =
+      StreamController<bool>.broadcast();
 
   late final StreamSubscription<NativeCoreExit> _exitSubscription;
   bool _busy = false;
@@ -57,7 +59,14 @@ final class NativeCoreHandoff {
 
   Stream<String> get messages => _messages.stream;
 
+  Stream<bool> get busyChanges => _busyChanges.stream;
+
   bool get busy => _busy;
+
+  void _setBusy(bool value) {
+    _busy = value;
+    if (!_busyChanges.isClosed) _busyChanges.add(value);
+  }
 
   bool get hasMihomoToRestore => _restoreMihomo;
 
@@ -73,7 +82,7 @@ final class NativeCoreHandoff {
     if (_busy || runtime.isRunning || _restoreMihomo || _nativeProxyOwned) {
       throw StateError('An external core is active or switching');
     }
-    _busy = true;
+    _setBusy(true);
     try {
       // Reject an invalid configuration before taking down a working route.
       final validation = await runtime.validate(spec);
@@ -154,7 +163,7 @@ final class NativeCoreHandoff {
         Error.throwWithStackTrace(error, stackTrace);
       }
     } finally {
-      _busy = false;
+      _setBusy(false);
       if (!runtime.isRunning && !_restoreMihomo && !_nativeProxyOwned) {
         runtime.setNativeMode(false);
       }
@@ -164,7 +173,7 @@ final class NativeCoreHandoff {
 
   Future<void> deactivate() async {
     if (_busy) throw StateError('Core switching is already in progress');
-    _busy = true;
+    _setBusy(true);
     try {
       // Never re-enable Mihomo while the external process might still own TUN.
       await runtime.stop();
@@ -175,7 +184,7 @@ final class NativeCoreHandoff {
       await _restore();
       _unexpectedExit = false;
     } finally {
-      _busy = false;
+      _setBusy(false);
     }
   }
 
@@ -197,7 +206,7 @@ final class NativeCoreHandoff {
 
   Future<void> _recoverAfterCrash() async {
     if (_busy || !_unexpectedExit || runtime.isRunning) return;
-    _busy = true;
+    _setBusy(true);
     // Consume this exit so a second unexpected exit during restart can be
     // handled after the current recovery completes.
     _unexpectedExit = false;
@@ -240,7 +249,7 @@ final class NativeCoreHandoff {
     } catch (error) {
       _emit('Native core exited; Mihomo recovery failed: $error');
     } finally {
-      _busy = false;
+      _setBusy(false);
       if (_unexpectedExit && !runtime.isRunning) {
         unawaited(_recoverAfterCrash());
       }
@@ -259,6 +268,7 @@ final class NativeCoreHandoff {
 
   Future<void> close() async {
     await _exitSubscription.cancel();
+    await _busyChanges.close();
     await _messages.close();
   }
 }
