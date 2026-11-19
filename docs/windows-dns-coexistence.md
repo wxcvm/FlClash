@@ -13,6 +13,40 @@ whitelist and rule modes are not changed. No subscription file is rewritten.
 If AdGuard uses a private DoH endpoint which does not appear in FlClash, its
 hostname is not discovered automatically.
 
+## Follow AdGuard's configured DNS from FlClash (opt-in)
+
+On Windows, open **Advanced → Network → Follow Windows / AdGuard DNS**
+(高级设置 → 网络 → 跟随 Windows / AdGuard DNS). The switch is off
+by default. It stores a separate preference; the original FlClash DNS fields,
+subscriptions and AdGuard private DoH URLs are **not overwritten or read**.
+Turning it off rebuilds the original effective DNS configuration. When Mihomo
+is running, switching the option reapplies its profile; this can briefly
+interrupt active connections.
+
+With the switch on, the effective Mihomo DNS uses `system://` for general,
+proxy-node and direct-traffic resolution. Any existing
+`nameserver-policy` and `proxy-server-nameserver-policy` selectors remain
+intact but their upstream values use `system://`, and the previous
+`fallback` upstream pool is suppressed. Fake-IP mode, exclusions, routing
+rules, TUN settings and user-defined subscription files are not rewritten.
+The existing bootstrap DNS field is left untouched; the overridden system
+upstreams have no encrypted DNS hostname requiring bootstrap.
+
+`system://` means **Mihomo uses Windows system DNS servers**; it does not
+read AdGuard's private encrypted DNS URL. AdGuard for Windows DNS protection
+must be enabled and must actually intercept that process's DNS traffic for
+its selected resolver to be used. This cannot be inferred from the Windows
+adapter nameserver alone, nor verified by a successful `nslookup` alone.
+Confirm the query appears in AdGuard's DNS query log, especially with
+FlClash TUN/Fake-IP enabled. Do not claim AdGuard ownership merely because
+the system resolver succeeds. Avoid pointing Windows DNS back to a listener
+that loops through Mihomo's own `dns-hijack`; if queries stall or cycle,
+turn this switch off and use the original DNS configuration.
+
+This option affects the generated **Mihomo** config. Independent sing-box,
+Xray and Hysteria native configurations still own their own DNS and are not
+silently modified.
+
 ## Diagnose without changing system settings
 
 Run `tool/windows/check-dns-path.ps1` from PowerShell while the issue is
