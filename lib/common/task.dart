@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/dns_compatibility.dart';
+import 'package:fl_clash/common/windows_adguard_dns.dart';
 import 'package:fl_clash/common/mitm_module.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
@@ -304,6 +305,9 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
       keepEmpty: data.keepEmptyDnsOverrides,
     ),
   );
+  if (followsWindowsSystemDns(realPatchConfig)) {
+    rawDns = applyWindowsSystemDns(rawDns);
+  }
   applyEncryptedDnsFakeIpCompatibility(rawDns);
   rawConfig['dns'] = rawDns;
   final ntpOverride = overrides.ntp.overrideJson(overrides.ntpOverrideKeys);
