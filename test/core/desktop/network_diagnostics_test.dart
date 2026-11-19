@@ -125,6 +125,38 @@ void main() {
     expect(checks.last.state, NetworkCheckState.warning);
   });
 
+  test(
+    'AdGuard follow diagnostics distinguish Fake-IP and unverified ownership',
+    () async {
+      Future<List<NetworkCheck>> check(String answer) =>
+          DesktopNetworkDiagnostics(
+            systemDns: (_) async => [InternetAddress(answer)],
+            windowsRoutes: () async => '',
+          ).run(
+            engine: 'Mihomo',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: false,
+            proxyPort: null,
+            tunConfigured: true,
+            followingWindowsDns: true,
+          );
+
+      final synthetic = await check('198.18.0.8');
+      expect(synthetic[3].title, 'Windows 系统 DNS');
+      expect(synthetic[3].state, NetworkCheckState.warning);
+      expect(synthetic[4].title, 'AdGuard DNS 接管');
+      expect(synthetic[4].state, NetworkCheckState.warning);
+      expect(synthetic[4].summary, contains('查询日志'));
+
+      final real = await check('93.184.215.14');
+      expect(real[3].state, NetworkCheckState.ok);
+      expect(real[4].state, NetworkCheckState.warning);
+    },
+  );
+
   test('handoff in progress never reports stale proxy results', () async {
     final diagnostics = DesktopNetworkDiagnostics(
       localPort: (_) async => fail('No probe during handoff'),
