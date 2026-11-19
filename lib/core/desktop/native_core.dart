@@ -230,7 +230,13 @@ final class NativeCoreRuntime {
     _stopping = true;
     try {
       process.kill();
-      await process.exitCode.timeout(timeout);
+      try {
+        await process.exitCode.timeout(timeout);
+      } on TimeoutException {
+        // A stuck child must exit before another core can acquire its routes.
+        process.kill(ProcessSignal.sigkill);
+        await process.exitCode.timeout(timeout);
+      }
       if (identical(_process, process)) {
         _process = null;
         _activeKind = null;
