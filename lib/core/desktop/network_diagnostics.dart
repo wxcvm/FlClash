@@ -215,13 +215,11 @@ Future<int> _checkProxiedHttps(int port) async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
   client.findProxy = (_) => 'PROXY 127.0.0.1:$port';
   try {
-    final request = await client.getUrl(
-      Uri.parse('https://www.cloudflare.com/cdn-cgi/trace'),
-    ).timeout(const Duration(seconds: 5));
+    final request = await client
+        .getUrl(Uri.parse('https://www.cloudflare.com/cdn-cgi/trace'))
+        .timeout(const Duration(seconds: 5));
     request.followRedirects = false;
-    final response = await request.close().timeout(
-      const Duration(seconds: 8),
-    );
+    final response = await request.close().timeout(const Duration(seconds: 8));
     await response.drain<void>().timeout(const Duration(seconds: 3));
     return response.statusCode;
   } finally {
