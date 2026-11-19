@@ -27,8 +27,12 @@ With the switch on, the effective Mihomo DNS uses `system://` for general,
 proxy-node and direct-traffic resolution. Any existing
 `nameserver-policy` and `proxy-server-nameserver-policy` selectors remain
 intact but their upstream values use `system://`, and the previous
-`fallback` upstream pool is suppressed. Fake-IP mode, exclusions, routing
-rules, TUN settings and user-defined subscription files are not rewritten.
+`fallback` upstream pool is suppressed. Fake-IP mode, exclusions, and routing
+rules remain configured as before; the subscription files are not rewritten.
+When Mihomo TUN is enabled, this mode also writes `tun.dns-mode: disabled`
+and `tun.dns-hijack: []` **only into the generated configuration**. This
+prevents the TUN from replacing Windows' DNS server or redirecting the
+AdGuard-bound port 53 requests straight back into Mihomo.
 The existing bootstrap DNS field is left untouched; the overridden system
 upstreams have no encrypted DNS hostname requiring bootstrap.
 
@@ -38,7 +42,11 @@ must be enabled and must actually intercept that process's DNS traffic for
 its selected resolver to be used. This cannot be inferred from the Windows
 adapter nameserver alone, nor verified by a successful `nslookup` alone.
 Confirm the query appears in AdGuard's DNS query log, especially with
-FlClash TUN/Fake-IP enabled. Do not claim AdGuard ownership merely because
+FlClash TUN/Fake-IP enabled. Disabling TUN DNS hijacking means that applications
+using Windows DNS may receive real addresses rather than Mihomo synthetic
+Fake-IPs; TUN IP connections without a sniffable domain may match IP rules
+instead of DNS-derived domain rules. Existing rule lists are unchanged.
+Use the prior DNS mode if those routing semantics are required. Do not claim AdGuard ownership merely because
 the system resolver succeeds. Avoid pointing Windows DNS back to a listener
 that loops through Mihomo's own `dns-hijack`; if queries stall or cycle,
 turn this switch off and use the original DNS configuration.

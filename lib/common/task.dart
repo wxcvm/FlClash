@@ -213,6 +213,7 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
   // interface-name wins over the detected interface anyway. A profile's own
   // dns-hijack may leave queries to other resolvers unhijacked, so only a
   // picked key replaces any:53.
+  final followWindowsDns = followsWindowsSystemDns(realPatchConfig);
   final tun = {
     if (rawConfig['tun'] is Map) ...rawConfig['tun'] as Map,
     'dns-hijack': defaultDnsHijack,
@@ -220,6 +221,12 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
     ...realPatchConfig.tun.coreJson,
     'auto-detect-interface': true,
   };
+  if (followWindowsDns && tun['enable'] == true) {
+    // The OS resolver must not be replaced by this TUN adapter or
+    // re-enter Mihomo through its wildcard DNS hijack.
+    tun['dns-mode'] = 'disabled';
+    tun['dns-hijack'] = <String>[];
+  }
   if (data.bypassPrivateRoute) {
     tun['route-exclude-address'] = [
       if (tun['route-exclude-address'] case final List routes) ...routes,
@@ -305,7 +312,7 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
       keepEmpty: data.keepEmptyDnsOverrides,
     ),
   );
-  if (followsWindowsSystemDns(realPatchConfig)) {
+  if (followWindowsDns) {
     rawDns = applyWindowsSystemDns(rawDns);
   }
   applyEncryptedDnsFakeIpCompatibility(rawDns);

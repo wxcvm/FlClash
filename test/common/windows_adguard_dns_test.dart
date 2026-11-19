@@ -120,4 +120,59 @@ void main() {
       expect(enabled['enhanced-mode'], 'fake-ip');
     },
   );
+
+  test(
+    'AdGuard mode avoids TUN DNS takeover only while Windows TUN is enabled',
+    () async {
+      Future<YamlMap> generate({
+        required bool follow,
+        required bool tunOn,
+      }) async {
+        final patch = PatchClashConfig(tun: Tun(enable: tunOn));
+        final result = await makeRealProfileTask(
+          MakeRealProfileState(
+            profilesPath: '/profiles',
+            profileId: 1,
+            rawConfig: {
+              'tun': {
+                'dns-mode': 'native',
+                'dns-hijack': ['tcp://any:53'],
+              },
+              'dns': {
+                'enable': true,
+                'enhanced-mode': 'fake-ip',
+                'nameserver': ['9.9.9.9'],
+              },
+            },
+            realPatchConfig: follow ? withWindowsSystemDns(patch) : patch,
+            appendSystemDns: false,
+            proxyGroups: const [],
+            rules: const [],
+            addedRules: const [],
+            defaultUA: 'FlClash-test',
+          ),
+        );
+        return loadYaml(result.yaml) as YamlMap;
+      }
+
+      final normal = await generate(follow: false, tunOn: true);
+      final normalTun = normal['tun'] as YamlMap;
+      expect(normalTun['dns-mode'], 'native');
+      expect(normalTun['dns-hijack'], defaultDnsHijack);
+
+      final active = await generate(follow: true, tunOn: true);
+      final activeTun = active['tun'] as YamlMap;
+      expect(activeTun['enable'], isTrue);
+      expect(activeTun['dns-mode'], 'disabled');
+      expect(activeTun['dns-hijack'], isEmpty);
+      expect((active['dns'] as YamlMap)['nameserver'], [windowsSystemResolver]);
+      expect((active['dns'] as YamlMap)['enhanced-mode'], 'fake-ip');
+
+      final stopped = await generate(follow: true, tunOn: false);
+      final stoppedTun = stopped['tun'] as YamlMap;
+      expect(stoppedTun['enable'], isFalse);
+      expect(stoppedTun['dns-mode'], 'native');
+      expect(stoppedTun['dns-hijack'], defaultDnsHijack);
+    },
+  );
 }

@@ -587,7 +587,7 @@ class _WindowsAdGuardDnsItemState extends ConsumerState<WindowsAdGuardDnsItem> {
             (enabled == null
                 ? '读取设置中'
                 : enabled
-                ? '已启用：Mihomo 解析使用 Windows 系统 DNS；请确认 AdGuard DNS 保护已开启'
+                ? '已启用：使用 Windows DNS；TUN 不再接管 DNS。请到 AdGuard 查询日志确认生效'
                 : '未启用：保留当前 DNS 配置。开启后由 Windows / AdGuard 处理解析，原设置不会被覆盖'),
       ),
       onTap: _busy || enabled == null ? null : _toggle,

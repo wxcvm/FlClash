@@ -50,6 +50,7 @@ final class DesktopNetworkDiagnostics {
     required bool nativeEngine,
     required int? proxyPort,
     required bool tunConfigured,
+    bool followingWindowsDns = false,
   }) async {
     if (switching) {
       return const [
@@ -152,7 +153,9 @@ final class DesktopNetworkDiagnostics {
       checks.add(
         NetworkCheck(
           'Windows 系统 DNS',
-          NetworkCheckState.ok,
+          followingWindowsDns && fakeIp
+              ? NetworkCheckState.warning
+              : NetworkCheckState.ok,
           'example.com → $answer${fakeIp ? '（疑似 Fake-IP）' : ''}；'
               '仅验证系统解析，不代表代理内核 DNS 正常',
         ),
@@ -163,6 +166,17 @@ final class DesktopNetworkDiagnostics {
           'Windows 系统 DNS',
           NetworkCheckState.failed,
           '系统解析 example.com 失败：$error；代理内核 DNS 未独立测试',
+        ),
+      );
+    }
+
+    if (followingWindowsDns) {
+      checks.add(
+        const NetworkCheck(
+          'AdGuard DNS 接管',
+          NetworkCheckState.warning,
+          '已选择 Windows 系统 DNS，无法仅凭解析结果证明由 AdGuard 的私人 DNS 处理；'
+              '请在 AdGuard DNS 查询日志中核对 example.com',
         ),
       );
     }

@@ -260,6 +260,8 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     final kind = nativeCoreRuntime.activeKind;
     final mihomoRunning = ref.read(isStartProvider);
     final config = ref.read(patchClashConfigProvider);
+    final followingWindowsDns =
+        kind == null && await preferences.getFollowWindowsSystemDns();
     final checks = await DesktopNetworkDiagnostics().run(
       engine: kind?.label ?? 'Mihomo',
       running: kind != null || mihomoRunning,
@@ -275,6 +277,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
       tunConfigured: kind != null
           ? nativeCoreHandoff.nativeTunConfigured
           : config.tun.enable,
+      followingWindowsDns: followingWindowsDns,
     );
     if (nativeCoreHandoff.busy ||
         nativeCoreRuntime.activeKind != kind ||
