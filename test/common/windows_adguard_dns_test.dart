@@ -124,7 +124,10 @@ void main() {
   test(
     'AdGuard mode avoids TUN DNS takeover only while Windows TUN is enabled',
     () async {
-      Future<YamlMap> generate({required bool follow, required bool tunOn}) async {
+      Future<YamlMap> generate({
+        required bool follow,
+        required bool tunOn,
+      }) async {
         final patch = PatchClashConfig(tun: Tun(enable: tunOn));
         final result = await makeRealProfileTask(
           MakeRealProfileState(
