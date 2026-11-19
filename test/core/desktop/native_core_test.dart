@@ -141,6 +141,40 @@ void main() {
     await runtime.close();
   });
 
+  test('an unresponsive child is force-stopped before core release', () async {
+    final process = _FakeProcess(ignoreSigterm: true);
+    final runtime = NativeCoreRuntime(
+      run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
+      start: (_, _, {workingDirectory}) async => process,
+    );
+
+    await runtime.start(spec);
+    await runtime.stop(timeout: const Duration(milliseconds: 20));
+    expect(process.signals, [ProcessSignal.sigterm, ProcessSignal.sigkill]);
+    expect(runtime.isRunning, isFalse);
+    expect(runtime.blocksMihomoStart, isFalse);
+    await runtime.close();
+  });
+
+  test('an unconfirmed child exit keeps Mihomo start blocked', () async {
+    final process = _FakeProcess(ignoreSigterm: true, ignoreSigkill: true);
+    final runtime = NativeCoreRuntime(
+      run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
+      start: (_, _, {workingDirectory}) async => process,
+    );
+
+    await runtime.start(spec);
+    await expectLater(
+      runtime.stop(timeout: const Duration(milliseconds: 20)),
+      throwsA(isA<TimeoutException>()),
+    );
+    expect(process.signals, [ProcessSignal.sigterm, ProcessSignal.sigkill]);
+    expect(runtime.isRunning, isTrue);
+    expect(runtime.blocksMihomoStart, isTrue);
+    process.finish(1);
+    await runtime.close();
+  });
+
   test('a failed native config check never launches the process', () async {
     var launches = 0;
     final runtime = NativeCoreRuntime(
@@ -223,10 +257,15 @@ class _FakeProcess implements Process {
 
   final Stream<List<int>> output;
   final Stream<List<int>> errors;
+  final bool ignoreSigterm;
+  final bool ignoreSigkill;
+  final List<ProcessSignal> signals = [];
 
   _FakeProcess({
     this.output = const Stream.empty(),
     this.errors = const Stream.empty(),
+    this.ignoreSigterm = false,
+    this.ignoreSigkill = false,
   });
 
   bool killed = false;
@@ -250,7 +289,11 @@ class _FakeProcess implements Process {
   @override
   bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
     killed = true;
-    finish(0);
+    signals.add(signal);
+    if ((signal == ProcessSignal.sigterm && !ignoreSigterm) ||
+        (signal == ProcessSignal.sigkill && !ignoreSigkill)) {
+      finish(0);
+    }
     return true;
   }
 
