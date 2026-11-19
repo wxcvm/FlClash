@@ -35,8 +35,8 @@ void main() {
   test('desktop status distinguishes Mihomo readiness and connection', () {
     String label(bool running, CoreStatus status) => desktopCoreStatusLabel(
       externalCore: null,
-        nativeSystemProxy: false,
-        nativeTunConfigured: false,
+      nativeSystemProxy: false,
+      nativeTunConfigured: false,
       switching: false,
       mihomoRunning: running,
       mihomoStatus: status,
