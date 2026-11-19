@@ -538,8 +538,7 @@ class WindowsAdGuardDnsItem extends ConsumerStatefulWidget {
       _WindowsAdGuardDnsItemState();
 }
 
-class _WindowsAdGuardDnsItemState
-    extends ConsumerState<WindowsAdGuardDnsItem> {
+class _WindowsAdGuardDnsItemState extends ConsumerState<WindowsAdGuardDnsItem> {
   bool? _enabled;
   bool _busy = false;
   String? _error;

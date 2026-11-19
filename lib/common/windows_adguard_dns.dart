@@ -12,15 +12,14 @@ const _systemDnsMarkerKeys = {
 };
 
 /// An in-memory marker for the profile builder; the stored patch is untouched.
-PatchClashConfig withWindowsSystemDns(PatchClashConfig patch) =>
-    patch.copyWith(
-      dns: patch.dns.copyWith(
-        nameserver: const [windowsSystemResolver],
-        proxyServerNameserver: const [windowsSystemResolver],
-        directNameserver: const [windowsSystemResolver],
-      ),
-      dnsOverrideKeys: {...patch.dnsOverrideKeys, ..._systemDnsMarkerKeys},
-    );
+PatchClashConfig withWindowsSystemDns(PatchClashConfig patch) => patch.copyWith(
+  dns: patch.dns.copyWith(
+    nameserver: const [windowsSystemResolver],
+    proxyServerNameserver: const [windowsSystemResolver],
+    directNameserver: const [windowsSystemResolver],
+  ),
+  dnsOverrideKeys: {...patch.dnsOverrideKeys, ..._systemDnsMarkerKeys},
+);
 
 bool followsWindowsSystemDns(PatchClashConfig patch) =>
     patch.dnsOverrideKeys.containsAll(_systemDnsMarkerKeys) &&
@@ -49,8 +48,7 @@ Map<String, dynamic> applyWindowsSystemDns(Map<String, dynamic> dns) {
   ]) {
     if (result[key] case final Map policy) {
       result[key] = {
-        for (final entry in policy.entries)
-          entry.key: [windowsSystemResolver],
+        for (final entry in policy.entries) entry.key: [windowsSystemResolver],
       };
     }
   }
