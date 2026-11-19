@@ -6,6 +6,7 @@ import 'package:fl_clash/core/clash_native_file.dart';
 import 'package:fl_clash/core/desktop/native_config_kind.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_installer.dart';
+import 'package:fl_clash/core/desktop/network_diagnostics.dart';
 import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/widgets/widgets.dart';
@@ -255,6 +256,39 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     return '独立内核已停止；已按先前状态恢复 Mihomo';
   }
 
+  Future<String> _diagnose() async {
+    final kind = nativeCoreRuntime.activeKind;
+    final mihomoRunning = ref.read(isStartProvider);
+    final config = ref.read(patchClashConfigProvider);
+    final checks = await DesktopNetworkDiagnostics().run(
+      engine: kind?.label ?? 'Mihomo',
+      running: kind != null || mihomoRunning,
+      switching: nativeCoreHandoff.busy,
+      systemProxyEnabled: ref.read(networkSettingProvider).systemProxy,
+      nativeSystemProxy: nativeCoreHandoff.ownsNativeSystemProxy,
+      nativeEngine: kind != null,
+      proxyPort: kind != null
+          ? systemProxyQueue?.nativeHttpPort
+          : mihomoRunning
+          ? config.mixedPort
+          : null,
+      tunConfigured: kind != null
+          ? nativeCoreHandoff.nativeTunConfigured
+          : config.tun.enable,
+    );
+    if (nativeCoreHandoff.busy ||
+        nativeCoreRuntime.activeKind != kind ||
+        (kind == null && ref.read(isStartProvider) != mihomoRunning)) {
+      return '诊断过程中内核状态已变化，请重新运行';
+    }
+    return [
+      'Windows 只读网络诊断（不修改代理、DNS 或 TUN）',
+      ...checks.map((check) => check.summary),
+      '说明：代理 HTTPS 仅验证 Cloudflare 测试地址；'
+          '系统 DNS 和 Windows 路由读取结果不等于代理内核 DNS 或 TUN 实际接管。',
+    ].join('\n');
+  }
+
   @override
   Widget build(BuildContext context) {
     final active = nativeCoreRuntime.activeKind;
@@ -395,6 +429,14 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                       : '未启动原生 TUN 自动路由',
                 ),
               ),
+              if (system.isWindows)
+                ListItem(
+                  title: const Text('一键诊断 Windows 网络'),
+                  subtitle: const Text('只读检查内核、本地代理、代理 HTTPS、系统 DNS 与 IPv4 路由'),
+                  onTap: _busy || nativeCoreHandoff.busy
+                      ? null
+                      : () => _perform(_diagnose),
+                ),
               ListItem(
                 title: const Text('检查配置'),
                 onTap: _busy ? null : () => _perform(_validate),
