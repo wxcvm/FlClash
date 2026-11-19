@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
@@ -5,6 +6,8 @@ import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/form/form.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/config.dart';
+import 'package:fl_clash/providers/action.dart';
+import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/views/config/override.dart';
 import 'package:fl_clash/views/config/tun.dart';
 import 'package:fl_clash/widgets/widgets.dart';
@@ -525,6 +528,74 @@ class VpnSections extends ConsumerWidget {
   }
 }
 
+/// AdGuard owns its DNS server choice. FlClash only switches Mihomo's
+/// generated upstreams to the Windows resolver; the saved DNS config is intact.
+class WindowsAdGuardDnsItem extends ConsumerStatefulWidget {
+  const WindowsAdGuardDnsItem({super.key});
+
+  @override
+  ConsumerState<WindowsAdGuardDnsItem> createState() =>
+      _WindowsAdGuardDnsItemState();
+}
+
+class _WindowsAdGuardDnsItemState
+    extends ConsumerState<WindowsAdGuardDnsItem> {
+  bool? _enabled;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final enabled = await preferences.getFollowWindowsSystemDns();
+    if (mounted) setState(() => _enabled = enabled);
+  }
+
+  Future<void> _toggle() async {
+    final enabled = _enabled;
+    if (enabled == null || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final setup = ref.read(setupActionProvider.notifier);
+      if (!await preferences.setFollowWindowsSystemDns(!enabled)) {
+        throw StateError('无法保存 Windows DNS 设置');
+      }
+      if (mounted) setState(() => _enabled = !enabled);
+      if (ref.read(isStartProvider) && !await setup.applyProfile(force: true)) {
+        throw StateError('配置暂未应用；下次重新加载配置时生效');
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = compactError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = _enabled;
+    return ListItem(
+      title: const Text('跟随 Windows / AdGuard DNS'),
+      subtitle: Text(
+        _error ??
+            (enabled == null
+                ? '读取设置中'
+                : enabled
+                ? '已启用：Mihomo 解析使用 Windows 系统 DNS；请确认 AdGuard DNS 保护已开启'
+                : '未启用：保留当前 DNS 配置。开启后由 Windows / AdGuard 处理解析，原设置不会被覆盖'),
+      ),
+      onTap: _busy || enabled == null ? null : _toggle,
+    );
+  }
+}
+
 class SystemProxySection extends StatelessWidget {
   const SystemProxySection({super.key});
 
@@ -535,6 +606,7 @@ class SystemProxySection extends StatelessWidget {
       title: appLocalizations.system,
       items: [
         const SystemProxyItem(),
+        if (system.isWindows) const WindowsAdGuardDnsItem(),
         const BypassDomainItem(),
         if (system.isWindows) const LoopbackItem(),
       ],
