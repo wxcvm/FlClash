@@ -14,17 +14,25 @@ import 'package:prism_ui/prism_ui.dart';
 /// Report the active desktop engine, not just the Mihomo controller connection.
 String desktopCoreStatusLabel({
   required NativeCoreKind? externalCore,
+  required bool nativeSystemProxy,
+  required bool nativeTunConfigured,
   required bool switching,
   required bool mihomoRunning,
   required CoreStatus mihomoStatus,
 }) {
   if (switching) return '内核切换中';
-  if (externalCore != null) return '${externalCore.label} · 运行中';
+  if (externalCore != null) {
+    if (nativeSystemProxy) return '${externalCore.label} · 系统代理已设置';
+    if (nativeTunConfigured) return '${externalCore.label} · TUN 未验证';
+    return '${externalCore.label} · 仅进程运行';
+  }
+  if (nativeSystemProxy) return '内核已退出 · 代理待恢复';
+  if (nativeTunConfigured) return '内核已退出 · TUN 待核实';
   if (!mihomoRunning) return '内核未运行';
   return switch (mihomoStatus) {
-    CoreStatus.connecting => 'Mihomo · 连接中',
-    CoreStatus.connected => 'Mihomo · 运行中',
-    CoreStatus.disconnected => 'Mihomo · 连接异常',
+    CoreStatus.connecting => 'Mihomo · 控制连接中',
+    CoreStatus.connected => 'Mihomo · 控制连接正常',
+    CoreStatus.disconnected => 'Mihomo · 控制连接异常',
   };
 }
 
@@ -41,12 +49,14 @@ class _DesktopCoreStatusButtonState
     extends ConsumerState<DesktopCoreStatusButton> {
   late final StreamSubscription<NativeCoreExit> _exits;
   late final StreamSubscription<String> _handoff;
+  late final StreamSubscription<bool> _busyChanges;
 
   @override
   void initState() {
     super.initState();
     _exits = nativeCoreRuntime.exits.listen((_) => _refresh());
     _handoff = nativeCoreHandoff.messages.listen((_) => _refresh());
+    _busyChanges = nativeCoreHandoff.busyChanges.listen((_) => _refresh());
   }
 
   void _refresh() {
@@ -57,6 +67,7 @@ class _DesktopCoreStatusButtonState
   void dispose() {
     unawaited(_exits.cancel());
     unawaited(_handoff.cancel());
+    unawaited(_busyChanges.cancel());
     super.dispose();
   }
 
@@ -64,6 +75,8 @@ class _DesktopCoreStatusButtonState
   Widget build(BuildContext context) {
     final label = desktopCoreStatusLabel(
       externalCore: nativeCoreRuntime.activeKind,
+      nativeSystemProxy: nativeCoreHandoff.ownsNativeSystemProxy,
+      nativeTunConfigured: nativeCoreHandoff.nativeTunConfigured,
       switching: nativeCoreHandoff.busy,
       mihomoRunning: ref.watch(isStartProvider),
       mihomoStatus: ref.watch(coreStatusProvider),
@@ -81,7 +94,7 @@ class _DesktopCoreStatusButtonState
     }
 
     return Tooltip(
-      message: '内核状态：$label · 打开内核管理',
+      message: '内核状态：$label；DNS、TUN 路由和外网连通性未独立验证。打开内核管理',
       child: compact
           ? IconButton.filled(
               onPressed: openManagement,
