@@ -8,6 +8,7 @@ typedef SystemDnsProbe = Future<List<InternetAddress>> Function(String host);
 typedef WindowsRouteProbe = Future<String> Function();
 typedef CoreHealthProbe = Future<Map<String, dynamic>> Function();
 typedef NodeDnsProbe = Future<Map<String, dynamic>> Function(String name);
+typedef NodeHttpsProbe = Future<Map<String, dynamic>> Function(String name);
 
 enum NetworkCheckState { ok, warning, failed, skipped }
 
@@ -36,6 +37,7 @@ final class DesktopNetworkDiagnostics {
   final WindowsRouteProbe windowsRoutes;
   final CoreHealthProbe? coreHealth;
   final NodeDnsProbe? nodeDns;
+  final NodeHttpsProbe? nodeHttps;
 
   DesktopNetworkDiagnostics({
     LocalPortProbe? localPort,
@@ -44,6 +46,7 @@ final class DesktopNetworkDiagnostics {
     WindowsRouteProbe? windowsRoutes,
     this.coreHealth,
     this.nodeDns,
+    this.nodeHttps,
   }) : localPort = localPort ?? _checkLocalPort,
        proxiedHttps = proxiedHttps ?? _checkProxiedHttps,
        systemDns = systemDns ?? InternetAddress.lookup,
@@ -320,6 +323,68 @@ final class DesktopNetworkDiagnostics {
               '所选策略组节点入口 DNS（Mihomo）',
               NetworkCheckState.warning,
               '查询未正常完成；不能据此判断节点入口 DNS 失败',
+            ),
+          );
+        }
+      }
+    }
+
+    if (nodeHttps != null) {
+      if (!running ||
+          nativeEngine ||
+          selectedNodeName == null ||
+          selectedNodeName.isEmpty) {
+        checks.add(
+          NetworkCheck(
+            '所选策略组节点 HTTPS 通路（Mihomo）',
+            NetworkCheckState.skipped,
+            !running
+                ? '内核未运行'
+                : nativeEngine
+                ? '独立内核不适用 Mihomo 查询'
+                : '当前策略组没有可识别的选中节点',
+          ),
+        );
+      } else {
+        try {
+          final result = await nodeHttps!(
+            selectedNodeName,
+          ).timeout(const Duration(seconds: 10));
+          final state = result['state'];
+          final status = result['http-status'];
+          final code = status is int && status > 0 ? '；HTTP $status' : '';
+          final description = switch (state) {
+            'reachable' => '经所选节点收到 Cloudflare HTTPS 正常响应$code',
+            'http-response' => '经所选节点收到 HTTPS 响应$code，但目标返回异常状态',
+            'timeout' => '经所选节点请求 Cloudflare 超时',
+            'failed' => '经所选节点请求 Cloudflare 失败，原因未能进一步分类',
+            'busy' => '没有取得探针执行名额，未检测',
+            'stale' => '检测时内核或节点已发生变化，结果作废',
+            'stopped' => 'Mihomo 已停止',
+            'missing-node' => '诊断时未找到该节点，可能已更新订阅',
+            'group' => '当前目标为策略组，未取得具体节点',
+            'no-selection' => '没有选中节点',
+            _ => '未取得有效的 HTTPS 通路检测结果',
+          };
+          checks.add(
+            NetworkCheck(
+              '所选策略组节点 HTTPS 通路（Mihomo）',
+              switch (state) {
+                'reachable' => NetworkCheckState.ok,
+                'timeout' || 'failed' => NetworkCheckState.failed,
+                'http-response' || 'stale' => NetworkCheckState.warning,
+                _ => NetworkCheckState.skipped,
+              },
+              '$description；仅验证当前所选节点至单一测试地址的 HTTPS 通路，'
+                  '无法单凭失败结果断定节点协议握手或所有网站均不可用',
+            ),
+          );
+        } on Exception {
+          checks.add(
+            const NetworkCheck(
+              '所选策略组节点 HTTPS 通路（Mihomo）',
+              NetworkCheckState.warning,
+              '探针调用未完成，未能判断当前节点通路',
             ),
           );
         }

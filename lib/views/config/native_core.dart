@@ -273,6 +273,8 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
         await DesktopNetworkDiagnostics(
           coreHealth: () => ref.read(coreHandlerProvider).getNetworkHealth(),
           nodeDns: (name) => ref.read(coreHandlerProvider).checkNodeDns(name),
+          nodeHttps: (name) =>
+              ref.read(coreHandlerProvider).checkNodeHttps(name),
         ).run(
           engine: kind?.label ?? 'Mihomo',
           running: kind != null || mihomoRunning,
@@ -458,7 +460,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                 ListItem(
                   title: const Text('一键诊断 Windows 网络'),
                   subtitle: const Text(
-                    '只读检查代理、系统 DNS、当前节点入口 DNS、内核历史证据和 TUN 路由',
+                    '只读检查代理、系统 DNS、节点入口 DNS、节点 HTTPS、历史证据和 TUN 路由',
                   ),
                   onTap: _busy || nativeCoreHandoff.busy
                       ? null

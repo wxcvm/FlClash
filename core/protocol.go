@@ -67,6 +67,7 @@ const (
 	networkRecoverMethod     CoreMethod = "network.recover"
 	networkHealthMethod      CoreMethod = "network.health"
 	networkNodeDNSMethod     CoreMethod = "network.nodeDns"
+	networkNodeHTTPSMethod   CoreMethod = "network.nodeHttps"
 	networkCheckMethod       CoreMethod = "network.check"
 
 	logStartMethod      CoreMethod = "log.start"
