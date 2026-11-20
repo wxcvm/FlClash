@@ -102,12 +102,12 @@ WindowsIpv4Route? bestWindowsRoute(
   }
 
   final referenceIsTun =
-      local.interfaceAddress == '198.18.0.1' &&
-      local.prefixLength >= 30;
+      local.interfaceAddress == '198.18.0.1' && local.prefixLength >= 30;
   if (!referenceIsTun) {
     return (
       escaped: null,
-      detail: '未检测到标准 TUN /30 链路基准；'
+      detail:
+          '未检测到标准 TUN /30 链路基准；'
           '198.18.0.8 当前经 ${sample.interfaceAddress}（/${sample.prefixLength}）。'
           '自定义 Fake-IP 网段需另行检查',
     );
@@ -116,7 +116,8 @@ WindowsIpv4Route? bestWindowsRoute(
   final escaped = local.interfaceAddress != sample.interfaceAddress;
   return (
     escaped: escaped,
-    detail: '默认 Fake-IP 样本 198.18.0.8 → ${sample.interfaceAddress}'
+    detail:
+        '默认 Fake-IP 样本 198.18.0.8 → ${sample.interfaceAddress}'
         '（/${sample.prefixLength}），TUN 基准 198.18.0.1；'
         '${escaped ? '路由出口不同，疑似 TUN 路由覆盖丢失' : '样本出口一致，不代表全部路由完整'}',
   );

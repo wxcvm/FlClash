@@ -2,10 +2,8 @@ import 'package:fl_clash/core/desktop/windows_ipv4_routes.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _physical = '0.0.0.0 0.0.0.0 192.0.2.1 192.0.2.20 20\n';
-const _tunLocal =
-    '198.18.0.0 255.255.255.252 在链路上 198.18.0.1 256\n';
-const _tunCoverage =
-    '196.0.0.0 252.0.0.0 On-link 198.18.0.1 256\n';
+const _tunLocal = '198.18.0.0 255.255.255.252 在链路上 198.18.0.1 256\n';
+const _tunCoverage = '196.0.0.0 252.0.0.0 On-link 198.18.0.1 256\n';
 
 void main() {
   test('reads localized Windows route rows without relying on headings', () {
@@ -38,10 +36,7 @@ void main() {
 
   test('unknown or customized TUN route never claims route loss', () {
     expect(inspectWindowsTunFakeIpRoute('').escaped, isNull);
-    expect(
-      inspectWindowsTunFakeIpRoute(_physical).escaped,
-      isNull,
-    );
+    expect(inspectWindowsTunFakeIpRoute(_physical).escaped, isNull);
   });
 
   test('longest prefix and metric win over route order', () {
@@ -52,9 +47,6 @@ void main() {
       '198.18.0.0 255.255.0.0 On-link 198.18.0.1 100\n',
     );
     expect(bestWindowsRoute(rows, '198.18.0.8')?.prefixLength, 16);
-    expect(
-      bestWindowsRoute(rows, '197.0.0.1')?.interfaceAddress,
-      '198.18.0.1',
-    );
+    expect(bestWindowsRoute(rows, '197.0.0.1')?.interfaceAddress, '198.18.0.1');
   });
 }

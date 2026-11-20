@@ -101,26 +101,30 @@ void main() {
     expect(checks.last.summary, contains('TUN 已配置'));
   });
 
-  test('diagnostic highlights a TUN route mismatch without changing routes', () async {
-    const routes =
-        '0.0.0.0 0.0.0.0 192.0.2.1 192.0.2.20 20\n'
-        '198.18.0.0 255.255.255.252 On-link 198.18.0.1 256\n';
-    final checks = await DesktopNetworkDiagnostics(
-      systemDns: (_) async => [InternetAddress('93.184.215.14')],
-      windowsRoutes: () async => routes,
-    ).run(
-      engine: 'Mihomo',
-      running: true,
-      switching: false,
-      systemProxyEnabled: false,
-      nativeSystemProxy: false,
-      nativeEngine: false,
-      proxyPort: null,
-      tunConfigured: true,
-    );
-    expect(checks.last.summary, contains('198.18.0.8'));
-    expect(checks.last.summary, contains('疑似 TUN 路由覆盖丢失'));
-  });
+  test(
+    'diagnostic highlights a TUN route mismatch without changing routes',
+    () async {
+      const routes =
+          '0.0.0.0 0.0.0.0 192.0.2.1 192.0.2.20 20\n'
+          '198.18.0.0 255.255.255.252 On-link 198.18.0.1 256\n';
+      final checks =
+          await DesktopNetworkDiagnostics(
+            systemDns: (_) async => [InternetAddress('93.184.215.14')],
+            windowsRoutes: () async => routes,
+          ).run(
+            engine: 'Mihomo',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: false,
+            proxyPort: null,
+            tunConfigured: true,
+          );
+      expect(checks.last.summary, contains('198.18.0.8'));
+      expect(checks.last.summary, contains('疑似 TUN 路由覆盖丢失'));
+    },
+  );
 
   test('DNS failure does not suppress route inspection', () async {
     var routeRead = false;
