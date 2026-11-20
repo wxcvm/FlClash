@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:fl_clash/core/desktop/windows_ipv4_routes.dart';
+
 typedef LocalPortProbe = Future<void> Function(int port);
 typedef ProxiedHttpsProbe = Future<int> Function(int port);
 typedef SystemDnsProbe = Future<List<InternetAddress>> Function(String host);
@@ -218,6 +220,9 @@ final class DesktopNetworkDiagnostics {
         r'^\s*128\.0\.0\.0\s+128\.0\.0\.0\s+',
         multiLine: true,
       ).hasMatch(routes);
+      final coverage = running && tunConfigured && !nativeEngine
+          ? inspectWindowsTunFakeIpRoute(routes)
+          : null;
       checks.add(
         NetworkCheck(
           'IPv4 路由与 TUN',
@@ -225,6 +230,7 @@ final class DesktopNetworkDiagnostics {
           "${tunConfigured ? 'TUN 已配置' : 'TUN 未配置'}；"
               '默认路由 $defaultCount 条，'
               "成对 /1 分流${lowerHalf && upperHalf ? '存在' : '未发现'}。"
+              '${coverage == null ? '' : '${coverage.detail}。'}'
               '只读路由快照不能证明流量实际由哪个内核接管',
         ),
       );
