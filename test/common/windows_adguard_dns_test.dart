@@ -41,6 +41,8 @@ void main() {
         'fake-ip-filter': ['*.lan'],
         'nameserver': ['https://private.example/secret-path'],
         'fallback': ['tls://1.1.1.1'],
+        'respect-rules': true,
+        'default-nameserver': ['8.8.8.8', '1.1.1.1'],
         'proxy-server-nameserver': ['8.8.8.8'],
         'direct-nameserver': ['223.5.5.5'],
         'nameserver-policy': {
@@ -54,6 +56,8 @@ void main() {
       final effective = applyWindowsSystemDns(profile);
 
       expect(effective['nameserver'], [windowsSystemResolver]);
+      expect(effective['respect-rules'], isFalse);
+      expect(effective['default-nameserver'], [windowsSystemResolver]);
       expect(effective['proxy-server-nameserver'], [windowsSystemResolver]);
       expect(effective['direct-nameserver'], [windowsSystemResolver]);
       expect(effective['fallback'], isEmpty);
@@ -67,6 +71,8 @@ void main() {
       expect(effective['enhanced-mode'], 'fake-ip');
       expect(effective['fake-ip-filter'], ['*.lan']);
       expect(profile['nameserver'], ['https://private.example/secret-path']);
+      expect(profile['respect-rules'], isTrue);
+      expect(profile['default-nameserver'], ['8.8.8.8', '1.1.1.1']);
       expect(profile['nameserver-policy'], {
         '+.lan': ['192.0.2.53'],
         'rule-set:cn': ['https://example.net/dns-query'],
@@ -88,6 +94,8 @@ void main() {
                 'enhanced-mode': 'fake-ip',
                 'nameserver': ['https://private.example/secret-path'],
                 'fallback': ['tls://1.1.1.1'],
+                'respect-rules': true,
+                'default-nameserver': ['8.8.8.8', '1.1.1.1', '119.29.29.29'],
                 'nameserver-policy': {
                   '+.example.com': ['https://dns.example/dns-query'],
                 },
@@ -110,9 +118,17 @@ void main() {
       final normal = await generate(patch);
       expect(normal['nameserver'], ['https://private.example/secret-path']);
       expect(normal['fallback'], ['tls://1.1.1.1']);
+      expect(normal['respect-rules'], isTrue);
+      expect(normal['default-nameserver'], [
+        '8.8.8.8',
+        '1.1.1.1',
+        '119.29.29.29',
+      ]);
 
       final enabled = await generate(withWindowsSystemDns(patch));
       expect(enabled['nameserver'], [windowsSystemResolver]);
+      expect(enabled['respect-rules'], isFalse);
+      expect(enabled['default-nameserver'], [windowsSystemResolver]);
       expect(enabled['fallback'], isEmpty);
       expect(enabled['nameserver-policy'], {
         '+.example.com': [windowsSystemResolver],
