@@ -273,7 +273,8 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
         await DesktopNetworkDiagnostics(
           coreHealth: () => ref.read(coreHandlerProvider).getNetworkHealth(),
           nodeDns: (name) => ref.read(coreHandlerProvider).checkNodeDns(name),
-          nodeHttps: (name) => ref.read(coreHandlerProvider).checkNodeHttps(name),
+          nodeHttps: (name) =>
+              ref.read(coreHandlerProvider).checkNodeHttps(name),
         ).run(
           engine: kind?.label ?? 'Mihomo',
           running: kind != null || mihomoRunning,
