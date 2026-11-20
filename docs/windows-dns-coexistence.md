@@ -144,6 +144,27 @@ handover. The diagnostic does not repair or modify the route table.
 Keep this report local if interface names or addresses are sensitive.
 No extra software or administrator permissions are requested by the script.
 
+## Distinguish a lost TUN route from a live listener
+
+The Windows one-click diagnosis now inspects the effective IPv4 route for
+`198.18.0.8` (outside the standard `198.18.0.1/30` TUN interface subnet),
+compared with that standard TUN interface address. It uses a **read-only**
+`route print -4` snapshot, selects the longest matching route and then the
+lowest route metric. If the TUN interface's own link route still exists but
+`198.18.0.8` chooses another interface, it flags **possible TUN route
+coverage loss**, even if the application and listener still report running.
+
+This is only a standard Fake-IP sample. A healthy match cannot verify all
+aggregate prefixes, and a customized Fake-IP range or missing reference route
+is explicitly reported as inconclusive. It does not reinstall routes or
+restart TUN, because a transient `default interface lost by monitor` log
+by itself is not proof of an absent Windows route. Rerun diagnostics a few
+minutes after a network handover to identify delayed disappearance.
+
+Upstream discussion: https://github.com/MetaCubeX/mihomo/issues/3411 .
+Its route-loss scenario is relevant for investigation, not proof that an
+individual FlClash device has the same fault.
+
 ## Mihomo reconnect fix
 
 The pinned core's ClearAll already synchronously resets resolver clients, including
