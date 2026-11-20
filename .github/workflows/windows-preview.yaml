@@ -1,6 +1,12 @@
 name: Windows and Android preview
 
 on:
+  # A release-request commit to main may trigger the existing validated pipeline.
+  # Routine code pushes cannot publish a release.
+  push:
+    branches: [main]
+    paths:
+      - '.github/preview-release-request.txt'
   workflow_dispatch:
     inputs:
       publish:
@@ -131,7 +137,7 @@ jobs:
     secrets: inherit
 
   publish:
-    if: inputs.publish
+    if: inputs.publish || github.event_name == 'push'
     needs: [release-checks, preview, android]
     runs-on: ubuntu-latest
     env:
@@ -204,6 +210,10 @@ jobs:
           set -euo pipefail
           cat > preview-notes.md <<'NOTES'
           Windows x64 and Android ARM64 preview of wxcvm/FlClash.
+
+          Includes Windows/AdGuard DNS coexistence fixes, Fake-IP TUN route diagnostics,
+          separate Mihomo node-entry DNS checks, and an on-demand selected-node HTTPS
+          path probe. DNS answers or one HTTPS check alone do not certify all traffic.
 
           Includes network reconnect and DNS recovery, protocol enhancements, real download-speed selection, background polling and download cancellation, bounded history storage, core memory reclamation, VPN stop cleanup, and streamed subscription processing. Android uses the unified application ID and pinned release certificate.
 
