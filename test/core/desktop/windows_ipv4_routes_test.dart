@@ -7,16 +7,13 @@ const _tunCoverage = '196.0.0.0 252.0.0.0 On-link 198.18.0.1 256\n';
 
 void main() {
   test('reads localized Windows route rows without relying on headings', () {
-    final rows = parseWindowsIpv4Routes(
+    final finding = inspectWindowsTunFakeIpRoute(
       'IPv4 活动路由：\n'
       '网络目标 网络掩码 网关 接口 跃点数\n'
       '$_physical$_tunLocal$_tunCoverage',
     );
-    expect(rows, hasLength(3));
-    final selected = bestWindowsRoute(rows, '198.18.0.8');
-    expect(selected?.interfaceAddress, '198.18.0.1');
-    expect(selected?.prefixLength, 6);
-    expect(bestWindowsRoute(rows, '192.0.2.42')?.prefixLength, 0);
+    expect(finding.escaped, isFalse);
+    expect(finding.detail, contains('（/6）'));
   });
 
   test('missing aggregated Fake-IP coverage reports a different exit', () {
@@ -39,14 +36,23 @@ void main() {
     expect(inspectWindowsTunFakeIpRoute(_physical).escaped, isNull);
   });
 
-  test('longest prefix and metric win over route order', () {
-    final rows = parseWindowsIpv4Routes(
-      '$_physical'
-      '196.0.0.0 252.0.0.0 On-link 198.18.0.1 300\n'
-      '196.0.0.0 252.0.0.0 192.0.2.1 192.0.2.20 400\n'
-      '198.18.0.0 255.255.0.0 On-link 198.18.0.1 100\n',
+  test('a more specific route overrides a lower metric broad route', () {
+    final finding = inspectWindowsTunFakeIpRoute(
+      '$_physical$_tunLocal'
+      '196.0.0.0 252.0.0.0 On-link 198.18.0.1 10\n'
+      '198.18.0.0 255.255.0.0 192.0.2.1 192.0.2.20 300\n',
     );
-    expect(bestWindowsRoute(rows, '198.18.0.8')?.prefixLength, 16);
-    expect(bestWindowsRoute(rows, '197.0.0.1')?.interfaceAddress, '198.18.0.1');
+    expect(finding.escaped, isTrue);
+    expect(finding.detail, contains('（/16）'));
+  });
+
+  test('a lower metric wins between equal-length routes', () {
+    final finding = inspectWindowsTunFakeIpRoute(
+      '$_physical$_tunLocal'
+      '196.0.0.0 252.0.0.0 On-link 198.18.0.1 300\n'
+      '196.0.0.0 252.0.0.0 192.0.2.1 192.0.2.20 400\n',
+    );
+    expect(finding.escaped, isFalse);
+    expect(finding.detail, contains('（/6）'));
   });
 }
