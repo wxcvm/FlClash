@@ -87,18 +87,16 @@ _WindowsIpv4Route? _bestWindowsRoute(
   return best;
 }
 
-/// Compare an address outside Mihomo's standard /30 interface subnet with
-/// the interface subnet itself. This is a diagnostic sample, not proof that
-/// every aggregated Windows route or the TUN listener remains healthy.
+/// Compare two samples across Mihomo's usual 198.18.0.0/16 Fake-IP range
+/// with its standard /30 TUN interface subnet. This is a read-only heuristic,
+/// not proof that every TUN route or listener remains healthy.
 ({bool? escaped, String detail}) inspectWindowsTunFakeIpRoute(String output) {
   final routes = _parseWindowsIpv4Routes(output);
   final local = _bestWindowsRoute(routes, '198.18.0.1');
-  final sample = _bestWindowsRoute(routes, '198.18.0.8');
-  if (local == null || sample == null) {
-    return (
-      escaped: null,
-      detail: '默认 Fake-IP 样本 198.18.0.8 的路由信息不足，无法判断 TUN 覆盖情况',
-    );
+  final near = _bestWindowsRoute(routes, '198.18.0.8');
+  final far = _bestWindowsRoute(routes, '198.18.255.8');
+  if (local == null) {
+    return (escaped: null, detail: '未获得默认 TUN /30 基准路由，无法判断 Fake-IP 覆盖情况');
   }
 
   final referenceIsTun =
@@ -108,17 +106,40 @@ _WindowsIpv4Route? _bestWindowsRoute(
       escaped: null,
       detail:
           '未检测到标准 TUN /30 链路基准；'
-          '198.18.0.8 当前经 ${sample.interfaceAddress}（/${sample.prefixLength}）。'
           '自定义 Fake-IP 网段需另行检查',
     );
   }
 
-  final escaped = local.interfaceAddress != sample.interfaceAddress;
+  final samples = [
+    (address: '198.18.0.8', route: near),
+    (address: '198.18.255.8', route: far),
+  ];
+  final mismatched = samples.where(
+    (sample) =>
+        sample.route != null &&
+        sample.route!.interfaceAddress != local.interfaceAddress,
+  );
+  final escaped = mismatched.isNotEmpty
+      ? true
+      : samples.any((sample) => sample.route == null)
+      ? null
+      : false;
+  final paths = samples
+      .map(
+        (sample) => sample.route == null
+            ? '${sample.address} → 无路由信息'
+            : '${sample.address} → ${sample.route!.interfaceAddress}'
+                  '（/${sample.route!.prefixLength}）',
+      )
+      .join('；');
   return (
     escaped: escaped,
     detail:
-        '默认 Fake-IP 样本 198.18.0.8 → ${sample.interfaceAddress}'
-        '（/${sample.prefixLength}），TUN 基准 198.18.0.1；'
-        '${escaped ? '路由出口不同，疑似 TUN 路由覆盖丢失' : '样本出口一致，不代表全部路由完整'}',
+        '默认 Fake-IP 双样本：$paths；TUN 基准 198.18.0.1；'
+        '${escaped == true
+            ? '存在路由出口不同，疑似 TUN 路由覆盖丢失'
+            : escaped == null
+            ? '路由信息不足，无法判断覆盖情况'
+            : '样本出口一致，不代表全部路由完整'}',
   );
 }
