@@ -62,55 +62,61 @@ void main() {
     expect(applyCount, 1);
   });
 
-  test('a failed reload restores the old preference and core profile', () async {
-    var selected = false;
-    final appliedModes = <bool>[];
-    await expectLater(
-      updateWindowsDnsPreference(
-        previous: false,
-        coreRunning: true,
-        save: (value) async {
-          selected = value;
-          return true;
-        },
-        apply: () async {
-          appliedModes.add(selected);
-          return appliedModes.length == 2;
-        },
-      ),
-      throwsA(isA<StateError>()),
-    );
-    expect(selected, isFalse);
-    expect(appliedModes, [true, false]);
-  });
-
-  test('a failed rollback does not claim the active profile was restored', () async {
-    var selected = false;
-    final appliedModes = <bool>[];
-    await expectLater(
-      updateWindowsDnsPreference(
-        previous: false,
-        coreRunning: true,
-        save: (value) async {
-          selected = value;
-          return true;
-        },
-        apply: () async {
-          appliedModes.add(selected);
-          return false;
-        },
-      ),
-      throwsA(
-        isA<StateError>().having(
-          (error) => error.message.toString(),
-          'message',
-          contains('运行中的配置未能重新加载'),
+  test(
+    'a failed reload restores the old preference and core profile',
+    () async {
+      var selected = false;
+      final appliedModes = <bool>[];
+      await expectLater(
+        updateWindowsDnsPreference(
+          previous: false,
+          coreRunning: true,
+          save: (value) async {
+            selected = value;
+            return true;
+          },
+          apply: () async {
+            appliedModes.add(selected);
+            return appliedModes.length == 2;
+          },
         ),
-      ),
-    );
-    expect(selected, isFalse);
-    expect(appliedModes, [true, false]);
-  });
+        throwsA(isA<StateError>()),
+      );
+      expect(selected, isFalse);
+      expect(appliedModes, [true, false]);
+    },
+  );
+
+  test(
+    'a failed rollback does not claim the active profile was restored',
+    () async {
+      var selected = false;
+      final appliedModes = <bool>[];
+      await expectLater(
+        updateWindowsDnsPreference(
+          previous: false,
+          coreRunning: true,
+          save: (value) async {
+            selected = value;
+            return true;
+          },
+          apply: () async {
+            appliedModes.add(selected);
+            return false;
+          },
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message.toString(),
+            'message',
+            contains('运行中的配置未能重新加载'),
+          ),
+        ),
+      );
+      expect(selected, isFalse);
+      expect(appliedModes, [true, false]);
+    },
+  );
 
   test('refused persistence does not try to reload the core', () async {
     var applyCount = 0;

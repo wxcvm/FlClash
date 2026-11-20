@@ -173,23 +173,24 @@ void main() {
 
   test('stopped Mihomo does not generate an AdGuard DNS challenge', () async {
     final names = <String>[];
-    final checks = await DesktopNetworkDiagnostics(
-      systemDns: (host) async {
-        names.add(host);
-        return [InternetAddress('93.184.215.14')];
-      },
-      windowsRoutes: () async => '',
-    ).run(
-      engine: 'Mihomo',
-      running: false,
-      switching: false,
-      systemProxyEnabled: false,
-      nativeSystemProxy: false,
-      nativeEngine: false,
-      proxyPort: null,
-      tunConfigured: false,
-      followingWindowsDns: true,
-    );
+    final checks =
+        await DesktopNetworkDiagnostics(
+          systemDns: (host) async {
+            names.add(host);
+            return [InternetAddress('93.184.215.14')];
+          },
+          windowsRoutes: () async => '',
+        ).run(
+          engine: 'Mihomo',
+          running: false,
+          switching: false,
+          systemProxyEnabled: false,
+          nativeSystemProxy: false,
+          nativeEngine: false,
+          proxyPort: null,
+          tunConfigured: false,
+          followingWindowsDns: true,
+        );
     expect(names, ['example.com']);
     expect(checks[4].state, NetworkCheckState.skipped);
   });
