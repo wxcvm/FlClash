@@ -231,6 +231,7 @@ var methodHandlers = map[CoreMethod]methodHandler{
 	networkChangedMethod:     action(handleNetworkChanged),
 	networkRecoverMethod:     action(handleResetNetwork),
 	networkHealthMethod:      withoutArguments(handleNetworkHealth),
+	networkNodeDNSMethod:     withArguments(handleNodeDNS),
 	networkCheckMethod:       action(handleCheckNetworkHealth),
 
 	logStartMethod:      action(handleStartLog),
