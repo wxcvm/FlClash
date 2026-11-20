@@ -364,6 +364,15 @@ abstract class CoreHandlerInterface {
     );
   }
 
+  Future<Map<String, dynamic>> checkNodeHttps(String name) {
+    return _query(
+      CoreMethod.networkNodeHttps,
+      _json,
+      arguments: {'name': name},
+      timeout: const Duration(seconds: 10),
+    );
+  }
+
   Future<void> startLog() => _commandUnobserved(CoreMethod.logStart);
 
   Future<void> stopLog() => _commandUnobserved(CoreMethod.logStop);
