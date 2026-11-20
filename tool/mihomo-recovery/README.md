@@ -20,3 +20,18 @@ then build normally. The Windows artifact is a core executable, not a full
 installer. Real traffic, protocol handshakes and failure/recovery under load
 still require device testing. Provider health checks can be shared across
 groups and use their own scheduling; no instantaneous switch guarantee.
+
+## GeoIP.dat / GEOIP.metadb separation
+
+The pinned Mihomo `constant.Path.MMDB()` incorrectly assigns the MMDB file
+name to the global `constant.GeoipName`. If an MMDB lookup occurs before a
+protobuf `GEOIP` rule finishes loading, the rule may decode `GEOIP.metadb`
+as `GeoIP.dat` and reject the whole profile. The reviewed source extension
+removes only this MMDB-side assignment; `Path.GeoIP()` still chooses the
+protobuf filename, while `Path.MMDB()` still returns the metadata DB path.
+
+`flclash_geo_path_test.go` reproduces both packaged files being present and
+ensures MMDB discovery cannot change the protobuf filename. This is applied
+by the existing source-extension step for GitHub Windows, Android and desktop
+builds; ordinary local builds must run `apply.py` before compiling the core.
+No user subscription, GEOIP rules or GeoIP resource files are rewritten.
