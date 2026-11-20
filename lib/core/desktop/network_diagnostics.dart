@@ -6,6 +6,7 @@ typedef LocalPortProbe = Future<void> Function(int port);
 typedef ProxiedHttpsProbe = Future<int> Function(int port);
 typedef SystemDnsProbe = Future<List<InternetAddress>> Function(String host);
 typedef WindowsRouteProbe = Future<String> Function();
+typedef CoreHealthProbe = Future<Map<String, dynamic>> Function();
 
 enum NetworkCheckState { ok, warning, failed, skipped }
 
@@ -32,12 +33,14 @@ final class DesktopNetworkDiagnostics {
   final ProxiedHttpsProbe proxiedHttps;
   final SystemDnsProbe systemDns;
   final WindowsRouteProbe windowsRoutes;
+  final CoreHealthProbe? coreHealth;
 
   DesktopNetworkDiagnostics({
     LocalPortProbe? localPort,
     ProxiedHttpsProbe? proxiedHttps,
     SystemDnsProbe? systemDns,
     WindowsRouteProbe? windowsRoutes,
+    this.coreHealth,
   }) : localPort = localPort ?? _checkLocalPort,
        proxiedHttps = proxiedHttps ?? _checkProxiedHttps,
        systemDns = systemDns ?? InternetAddress.lookup,
@@ -203,6 +206,61 @@ final class DesktopNetworkDiagnostics {
                 '只有日志出现该请求才能确认由 AdGuard 接管',
           ),
         );
+      }
+    }
+
+    if (coreHealth != null) {
+      if (!running || nativeEngine) {
+        checks.add(
+          NetworkCheck(
+            'Mihomo 内核 DNS 历史证据',
+            NetworkCheckState.skipped,
+            !running ? 'Mihomo 未运行，无法读取运行时快照' : '当前为独立内核，Mihomo 快照不适用',
+          ),
+        );
+      } else {
+        try {
+          final snapshot = await coreHealth!().timeout(
+            const Duration(seconds: 3),
+          );
+          final checkedAt = snapshot['checked-at'];
+          final valid =
+              checkedAt is int &&
+              checkedAt > 0 &&
+              snapshot['state'] != 'checking' &&
+              snapshot['state'] != 'idle' &&
+              snapshot['state'] != 'stopped';
+          final dns = valid ? snapshot['dns'] : null;
+          final evidence = switch (dns) {
+            'resolved' => '前次测试地址失败后，核心独立 DNS 查询解析成功',
+            'failed' => '前次测试地址失败后，核心独立 DNS 查询解析失败',
+            'not-required' => '前次测试使用 IP 地址，无需解析',
+            _ => '没有可用的核心独立 DNS 查询证据',
+          };
+          final time = valid
+              ? DateTime.fromMillisecondsSinceEpoch(
+                  checkedAt,
+                ).toLocal().toIso8601String()
+              : null;
+          checks.add(
+            NetworkCheck(
+              'Mihomo 内核 DNS 历史证据',
+              dns == 'resolved' || dns == 'failed'
+                  ? NetworkCheckState.warning
+                  : NetworkCheckState.skipped,
+              '$evidence${time == null ? '' : '；记录时间：$time'}；'
+                  '仅为此前一次测试地址的结果，不证明当前节点入口域名可解析',
+            ),
+          );
+        } on Exception {
+          checks.add(
+            const NetworkCheck(
+              'Mihomo 内核 DNS 历史证据',
+              NetworkCheckState.warning,
+              '无法读取内核历史快照；不代表 DNS 解析失败',
+            ),
+          );
+        }
       }
     }
 
