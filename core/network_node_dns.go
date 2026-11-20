@@ -42,8 +42,8 @@ func checkNodeDNSAddress(
 	return "answered"
 }
 
-func handleNodeDNS(params NameParams) NodeDNSResult {
-	result := NodeDNSResult{State: "unavailable"}
+func handleNodeDNS(params NameParams) (result NodeDNSResult) {
+	result = NodeDNSResult{State: "unavailable"}
 	defer func() { result.CheckedAt = time.Now().UnixMilli() }()
 	if !isRunning.Load() {
 		result.State = "stopped"
