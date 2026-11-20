@@ -36,8 +36,14 @@ When Mihomo TUN is enabled, this mode also writes `tun.dns-mode: disabled`
 and `tun.dns-hijack: []` **only into the generated configuration**. This
 prevents the TUN from replacing Windows' DNS server or redirecting the
 AdGuard-bound port 53 requests straight back into Mihomo.
-The existing bootstrap DNS field is left untouched; the overridden system
-upstreams have no encrypted DNS hostname requiring bootstrap.
+The DNS bootstrap `default-nameserver` is also set to `system://`, and
+`dns.respect-rules` is set to `false` in the generated config while the
+option is enabled. This prevents stale public UDP resolvers and DNS-to-proxy
+bootstrap loops: the proxy hostname must resolve before the proxy can carry
+traffic. The original bootstrap and routing settings remain in the saved
+profile and return when this option is disabled. The system resolver can still
+fail if AdGuard filters or upstream DNS settings reject the queried hostname;
+a successful system lookup alone does not prove private DoH interception.
 
 `system://` means **Mihomo uses Windows system DNS servers**; it does not
 read AdGuard's private encrypted DNS URL. AdGuard for Windows DNS protection
