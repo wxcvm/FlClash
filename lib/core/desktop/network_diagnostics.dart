@@ -237,7 +237,7 @@ final class DesktopNetworkDiagnostics {
             'not-required' => '前次测试使用 IP 地址，无需解析',
             _ => '没有可用的核心独立 DNS 查询证据',
           };
-          final time = valid && checkedAt is int
+          final time = valid
               ? DateTime.fromMillisecondsSinceEpoch(
                   checkedAt,
                 ).toLocal().toIso8601String()
