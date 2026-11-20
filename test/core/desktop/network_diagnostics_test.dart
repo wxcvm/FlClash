@@ -507,7 +507,7 @@ void main() {
     );
     expect(https.state, NetworkCheckState.warning);
     expect(https.detail, contains('HTTP 403'));
-    expect(https.detail, contains('不能单凭失败结果断定节点协议握手'));
+    expect(https.detail, contains('无法单凭失败结果断定节点协议握手'));
   });
 
   test('HTTPS probe is skipped when native engine owns network', () async {
