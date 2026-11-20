@@ -2,8 +2,8 @@ import 'dart:io';
 
 /// One active-route row from the numeric columns of Windows `route print -4`.
 /// Gateway text is deliberately ignored because it is localized.
-final class WindowsIpv4Route {
-  const WindowsIpv4Route({
+final class _WindowsIpv4Route {
+  const _WindowsIpv4Route({
     required this.network,
     required this.mask,
     required this.interfaceAddress,
@@ -39,12 +39,12 @@ int? _ipv4(String value) {
   );
 }
 
-List<WindowsIpv4Route> parseWindowsIpv4Routes(String output) {
+List<_WindowsIpv4Route> parse_WindowsIpv4Routes(String output) {
   final pattern = RegExp(
     r'^\s*(\S+)\s+(\S+)\s+\S+\s+(\S+)\s+(\d+)\s*$',
     multiLine: true,
   );
-  final routes = <WindowsIpv4Route>[];
+  final routes = <_WindowsIpv4Route>[];
   for (final match in pattern.allMatches(output)) {
     final network = _ipv4(match[1]!);
     final mask = _ipv4(match[2]!);
@@ -57,7 +57,7 @@ List<WindowsIpv4Route> parseWindowsIpv4Routes(String output) {
       continue;
     }
     routes.add(
-      WindowsIpv4Route(
+      _WindowsIpv4Route(
         network: network,
         mask: mask,
         interfaceAddress: interfaceAddress,
@@ -68,13 +68,13 @@ List<WindowsIpv4Route> parseWindowsIpv4Routes(String output) {
   return routes;
 }
 
-WindowsIpv4Route? bestWindowsRoute(
-  List<WindowsIpv4Route> routes,
+_WindowsIpv4Route? _bestWindowsRoute(
+  List<_WindowsIpv4Route> routes,
   String address,
 ) {
   final target = _ipv4(address);
   if (target == null) return null;
-  WindowsIpv4Route? best;
+  _WindowsIpv4Route? best;
   for (final route in routes) {
     if (!route.contains(target)) continue;
     if (best == null ||
@@ -91,9 +91,9 @@ WindowsIpv4Route? bestWindowsRoute(
 /// the interface subnet itself. This is a diagnostic sample, not proof that
 /// every aggregated Windows route or the TUN listener remains healthy.
 ({bool? escaped, String detail}) inspectWindowsTunFakeIpRoute(String output) {
-  final routes = parseWindowsIpv4Routes(output);
-  final local = bestWindowsRoute(routes, '198.18.0.1');
-  final sample = bestWindowsRoute(routes, '198.18.0.8');
+  final routes = parse_WindowsIpv4Routes(output);
+  final local = _bestWindowsRoute(routes, '198.18.0.1');
+  final sample = _bestWindowsRoute(routes, '198.18.0.8');
   if (local == null || sample == null) {
     return (
       escaped: null,
