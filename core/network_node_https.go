@@ -24,10 +24,10 @@ func probeNodeHTTPS(
 	probe func(context.Context, probeRequest) *ProbeResult,
 ) NodeHTTPSResult {
 	answer := probe(ctx, probeRequest{
-		method:    http.MethodHead,
-		url:       nodeHTTPSProbeURL,
-		proxyName: name,
-		timeout:   6 * time.Second,
+		method:     http.MethodHead,
+		url:        nodeHTTPSProbeURL,
+		proxyName:  name,
+		timeout:    6 * time.Second,
 		noRedirect: true,
 	})
 	switch {
