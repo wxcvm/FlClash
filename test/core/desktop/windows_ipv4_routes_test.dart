@@ -31,6 +31,25 @@ void main() {
     expect(finding.detail, contains('不代表全部路由完整'));
   });
 
+  test('detects upper Fake-IP route loss when the near sample still works', () {
+    final finding = inspectWindowsTunFakeIpRoute(
+      '$_physical$_tunLocal'
+      '198.18.0.0 255.255.128.0 On-link 198.18.0.1 256\n',
+    );
+    expect(finding.escaped, isTrue);
+    expect(finding.detail, contains('198.18.0.8 → 198.18.0.1'));
+    expect(finding.detail, contains('198.18.255.8 → 192.0.2.20'));
+  });
+
+  test('missing distant route stays inconclusive rather than healthy', () {
+    final finding = inspectWindowsTunFakeIpRoute(
+      '$_tunLocal'
+      '198.18.0.0 255.255.128.0 On-link 198.18.0.1 256\n',
+    );
+    expect(finding.escaped, isNull);
+    expect(finding.detail, contains('路由信息不足'));
+  });
+
   test('unknown or customized TUN route never claims route loss', () {
     expect(inspectWindowsTunFakeIpRoute('').escaped, isNull);
     expect(inspectWindowsTunFakeIpRoute(_physical).escaped, isNull);
