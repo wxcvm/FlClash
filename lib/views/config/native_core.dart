@@ -260,11 +260,18 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     final kind = nativeCoreRuntime.activeKind;
     final mihomoRunning = ref.read(isStartProvider);
     final config = ref.read(patchClashConfigProvider);
+    final selectedGroupName =
+        kind == null ? ref.read(currentProfileProvider)?.currentGroupName : null;
+    final selectedNodeName =
+        selectedGroupName == null || selectedGroupName.isEmpty
+        ? null
+        : ref.read(realSelectedProxyStateProvider(selectedGroupName)).proxyName;
     final followingWindowsDns =
         kind == null && await preferences.getFollowWindowsSystemDns();
     final checks =
         await DesktopNetworkDiagnostics(
           coreHealth: () => ref.read(coreHandlerProvider).getNetworkHealth(),
+          nodeDns: (name) => ref.read(coreHandlerProvider).checkNodeDns(name),
         ).run(
           engine: kind?.label ?? 'Mihomo',
           running: kind != null || mihomoRunning,
@@ -281,10 +288,21 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
               ? nativeCoreHandoff.nativeTunConfigured
               : config.tun.enable,
           followingWindowsDns: followingWindowsDns,
+          selectedNodeName: selectedNodeName,
         );
     if (nativeCoreHandoff.busy ||
         nativeCoreRuntime.activeKind != kind ||
-        (kind == null && ref.read(isStartProvider) != mihomoRunning)) {
+        (kind == null && ref.read(isStartProvider) != mihomoRunning) ||
+        (kind == null &&
+            ref.read(currentProfileProvider)?.currentGroupName !=
+                selectedGroupName) ||
+        (kind == null &&
+            selectedGroupName != null &&
+            selectedGroupName.isNotEmpty &&
+            ref.read(
+                  realSelectedProxyStateProvider(selectedGroupName),
+                ).proxyName !=
+                selectedNodeName)) {
       return '诊断过程中内核状态已变化，请重新运行';
     }
     return [
@@ -438,7 +456,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
               if (system.isWindows)
                 ListItem(
                   title: const Text('一键诊断 Windows 网络'),
-                  subtitle: const Text('只读检查代理、系统 DNS、核心 DNS 历史证据及 IPv4 路由'),
+                  subtitle: const Text('只读检查代理、系统 DNS、当前节点入口 DNS、内核历史证据和 TUN 路由'),
                   onTap: _busy || nativeCoreHandoff.busy
                       ? null
                       : () => _perform(_diagnose),
