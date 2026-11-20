@@ -354,6 +354,100 @@ void main() {
     },
   );
 
+  test(
+    'selected node DNS answer is not proof of a real upstream address',
+    () async {
+      String? queried;
+      final checks =
+          await DesktopNetworkDiagnostics(
+            nodeDns: (name) async {
+              queried = name;
+              return {'state': 'answered'};
+            },
+            systemDns: (_) async => [InternetAddress('93.184.215.14')],
+            windowsRoutes: () async => '',
+          ).run(
+            engine: 'Mihomo',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: false,
+            proxyPort: null,
+            tunConfigured: false,
+            selectedNodeName: 'selected-leaf',
+          );
+      expect(queried, 'selected-leaf');
+      final node = checks.singleWhere(
+        (check) => check.title == '所选策略组节点入口 DNS（Mihomo）',
+      );
+      expect(node.state, NetworkCheckState.warning);
+      expect(node.detail, contains('可能为 Fake-IP'));
+      expect(node.detail, contains('未验证真实上游'));
+    },
+  );
+
+  test('failed node entry DNS does not change Windows DNS result', () async {
+    final checks =
+        await DesktopNetworkDiagnostics(
+          nodeDns: (_) async => {'state': 'failed'},
+          systemDns: (_) async => [InternetAddress('93.184.215.14')],
+          windowsRoutes: () async => '',
+        ).run(
+          engine: 'Mihomo',
+          running: true,
+          switching: false,
+          systemProxyEnabled: false,
+          nativeSystemProxy: false,
+          nativeEngine: false,
+          proxyPort: null,
+          tunConfigured: false,
+          selectedNodeName: 'selected-leaf',
+        );
+    expect(
+      checks.singleWhere((check) => check.title == 'Windows 系统 DNS').state,
+      NetworkCheckState.ok,
+    );
+    expect(
+      checks
+          .singleWhere((check) => check.title == '所选策略组节点入口 DNS（Mihomo）')
+          .state,
+      NetworkCheckState.failed,
+    );
+  });
+
+  test('native engine and missing node never query Mihomo node DNS', () async {
+    var calls = 0;
+    final diagnostics = DesktopNetworkDiagnostics(
+      nodeDns: (_) async {
+        calls++;
+        return {'state': 'answered'};
+      },
+      systemDns: (_) async => [InternetAddress('93.184.215.14')],
+      windowsRoutes: () async => '',
+    );
+    for (final (native, name) in [(true, 'selected-leaf'), (false, '')]) {
+      final checks = await diagnostics.run(
+        engine: native ? 'sing-box' : 'Mihomo',
+        running: true,
+        switching: false,
+        systemProxyEnabled: false,
+        nativeSystemProxy: false,
+        nativeEngine: native,
+        proxyPort: null,
+        tunConfigured: false,
+        selectedNodeName: name,
+      );
+      expect(
+        checks
+            .singleWhere((check) => check.title == '所选策略组节点入口 DNS（Mihomo）')
+            .state,
+        NetworkCheckState.skipped,
+      );
+    }
+    expect(calls, 0);
+  });
+
   test('handoff in progress never reports stale proxy results', () async {
     final diagnostics = DesktopNetworkDiagnostics(
       localPort: (_) async => fail('No probe during handoff'),

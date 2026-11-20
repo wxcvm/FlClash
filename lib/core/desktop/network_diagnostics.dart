@@ -7,6 +7,7 @@ typedef ProxiedHttpsProbe = Future<int> Function(int port);
 typedef SystemDnsProbe = Future<List<InternetAddress>> Function(String host);
 typedef WindowsRouteProbe = Future<String> Function();
 typedef CoreHealthProbe = Future<Map<String, dynamic>> Function();
+typedef NodeDnsProbe = Future<Map<String, dynamic>> Function(String name);
 
 enum NetworkCheckState { ok, warning, failed, skipped }
 
@@ -34,6 +35,7 @@ final class DesktopNetworkDiagnostics {
   final SystemDnsProbe systemDns;
   final WindowsRouteProbe windowsRoutes;
   final CoreHealthProbe? coreHealth;
+  final NodeDnsProbe? nodeDns;
 
   DesktopNetworkDiagnostics({
     LocalPortProbe? localPort,
@@ -41,6 +43,7 @@ final class DesktopNetworkDiagnostics {
     SystemDnsProbe? systemDns,
     WindowsRouteProbe? windowsRoutes,
     this.coreHealth,
+    this.nodeDns,
   }) : localPort = localPort ?? _checkLocalPort,
        proxiedHttps = proxiedHttps ?? _checkProxiedHttps,
        systemDns = systemDns ?? InternetAddress.lookup,
@@ -56,6 +59,7 @@ final class DesktopNetworkDiagnostics {
     required int? proxyPort,
     required bool tunConfigured,
     bool followingWindowsDns = false,
+    String? selectedNodeName,
   }) async {
     if (switching) {
       return const [
@@ -258,6 +262,64 @@ final class DesktopNetworkDiagnostics {
               'Mihomo 内核 DNS 历史证据',
               NetworkCheckState.warning,
               '无法读取内核历史快照；不代表 DNS 解析失败',
+            ),
+          );
+        }
+      }
+    }
+
+    if (nodeDns != null) {
+      if (!running ||
+          nativeEngine ||
+          selectedNodeName == null ||
+          selectedNodeName.isEmpty) {
+        checks.add(
+          NetworkCheck(
+            '所选策略组节点入口 DNS（Mihomo）',
+            NetworkCheckState.skipped,
+            !running
+                ? '内核未运行'
+                : nativeEngine
+                ? '独立内核不适用 Mihomo 查询'
+                : '当前策略组没有可识别的选中节点',
+          ),
+        );
+      } else {
+        try {
+          final result = await nodeDns!(
+            selectedNodeName,
+          ).timeout(const Duration(seconds: 7));
+          final state = result['state'];
+          final description = switch (state) {
+            'answered' => 'Mihomo 解析器返回地址（可能为 Fake-IP，未验证真实上游或节点握手）',
+            'failed' => 'Mihomo 解析器未能返回节点入口地址；不代表所有节点均不可用',
+            'ip-address' => '节点入口已配置 IP 地址，无需域名解析',
+            'no-endpoint' => '该节点没有可检查的标准服务器地址',
+            'missing-node' => '诊断时未找到该节点，可能已更新订阅',
+            'group' => '当前目标为策略组，未取得具体节点',
+            'stale' => '检测时网络或路由已变化，结果作废',
+            'stopped' => 'Mihomo 已停止',
+            'no-selection' => '没有选中节点',
+            _ => '未获得可判定的节点 DNS 结果',
+          };
+          checks.add(
+            NetworkCheck(
+              '所选策略组节点入口 DNS（Mihomo）',
+              switch (state) {
+                'failed' => NetworkCheckState.failed,
+                'answered' || 'stale' => NetworkCheckState.warning,
+                _ => NetworkCheckState.skipped,
+              },
+              '$description；此项只检查当前界面所选策略组的节点，'
+                  '不代表所有规则流量或实际协议握手',
+            ),
+          );
+        } on Exception {
+          checks.add(
+            const NetworkCheck(
+              '所选策略组节点入口 DNS（Mihomo）',
+              NetworkCheckState.warning,
+              '查询未正常完成；不能据此判断节点入口 DNS 失败',
             ),
           );
         }

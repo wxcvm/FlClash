@@ -355,6 +355,15 @@ abstract class CoreHandlerInterface {
 
   Future<void> checkNetworkHealth() => _command(CoreMethod.networkCheck);
 
+  Future<Map<String, dynamic>> checkNodeDns(String name) {
+    return _query(
+      CoreMethod.networkNodeDns,
+      _json,
+      arguments: {'name': name},
+      timeout: const Duration(seconds: 7),
+    );
+  }
+
   Future<void> startLog() => _commandUnobserved(CoreMethod.logStart);
 
   Future<void> stopLog() => _commandUnobserved(CoreMethod.logStop);

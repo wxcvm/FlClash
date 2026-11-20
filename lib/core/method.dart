@@ -49,6 +49,7 @@ enum CoreMethod {
   networkChanged('network.changed'),
   networkRecover('network.recover'),
   networkHealth('network.health'),
+  networkNodeDns('network.nodeDns'),
   networkCheck('network.check'),
   logStart('log.start'),
   logStop('log.stop'),
