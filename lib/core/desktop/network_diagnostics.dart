@@ -269,7 +269,9 @@ final class DesktopNetworkDiagnostics {
     }
 
     if (nodeDns != null) {
-      if (!running || nativeEngine || selectedNodeName == null ||
+      if (!running ||
+          nativeEngine ||
+          selectedNodeName == null ||
           selectedNodeName.isEmpty) {
         checks.add(
           NetworkCheck(
@@ -284,9 +286,9 @@ final class DesktopNetworkDiagnostics {
         );
       } else {
         try {
-          final result = await nodeDns!(selectedNodeName).timeout(
-            const Duration(seconds: 7),
-          );
+          final result = await nodeDns!(
+            selectedNodeName,
+          ).timeout(const Duration(seconds: 7));
           final state = result['state'];
           final description = switch (state) {
             'answered' => 'Mihomo 解析器返回地址（可能为 Fake-IP，未验证真实上游或节点握手）',
