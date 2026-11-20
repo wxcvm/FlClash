@@ -448,93 +448,107 @@ void main() {
     expect(calls, 0);
   });
 
-  test('selected HTTPS probe is independent of Windows and entry DNS', () async {
-    String? target;
-    final checks = await DesktopNetworkDiagnostics(
-      nodeDns: (_) async => {'state': 'failed'},
-      nodeHttps: (name) async {
-        target = name;
-        return {'state': 'reachable', 'http-status': 204, 'delay': 12};
-      },
-      systemDns: (_) async => [InternetAddress('93.184.215.14')],
-      windowsRoutes: () async => '',
-    ).run(
-      engine: 'Mihomo',
-      running: true,
-      switching: false,
-      systemProxyEnabled: false,
-      nativeSystemProxy: false,
-      nativeEngine: false,
-      proxyPort: null,
-      tunConfigured: false,
-      selectedNodeName: 'selected-leaf',
-    );
-    expect(target, 'selected-leaf');
-    expect(
-      checks.singleWhere((check) => check.title == 'Windows 系统 DNS').state,
-      NetworkCheckState.ok,
-    );
-    expect(
-      checks.singleWhere((check) => check.title == '所选策略组节点入口 DNS（Mihomo）').state,
-      NetworkCheckState.failed,
-    );
-    final https = checks.singleWhere(
-      (check) => check.title == '所选策略组节点 HTTPS 通路（Mihomo）',
-    );
-    expect(https.state, NetworkCheckState.ok);
-    expect(https.detail, contains('HTTP 204'));
-    expect(https.detail, contains('单一测试地址'));
-  });
+  test(
+    'selected HTTPS probe is independent of Windows and entry DNS',
+    () async {
+      String? target;
+      final checks =
+          await DesktopNetworkDiagnostics(
+            nodeDns: (_) async => {'state': 'failed'},
+            nodeHttps: (name) async {
+              target = name;
+              return {'state': 'reachable', 'http-status': 204, 'delay': 12};
+            },
+            systemDns: (_) async => [InternetAddress('93.184.215.14')],
+            windowsRoutes: () async => '',
+          ).run(
+            engine: 'Mihomo',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: false,
+            proxyPort: null,
+            tunConfigured: false,
+            selectedNodeName: 'selected-leaf',
+          );
+      expect(target, 'selected-leaf');
+      expect(
+        checks.singleWhere((check) => check.title == 'Windows 系统 DNS').state,
+        NetworkCheckState.ok,
+      );
+      expect(
+        checks
+            .singleWhere((check) => check.title == '所选策略组节点入口 DNS（Mihomo）')
+            .state,
+        NetworkCheckState.failed,
+      );
+      final https = checks.singleWhere(
+        (check) => check.title == '所选策略组节点 HTTPS 通路（Mihomo）',
+      );
+      expect(https.state, NetworkCheckState.ok);
+      expect(https.detail, contains('HTTP 204'));
+      expect(https.detail, contains('单一测试地址'));
+    },
+  );
 
-  test('HTTPS server rejection is not mislabeled as transport failure', () async {
-    final checks = await DesktopNetworkDiagnostics(
-      nodeHttps: (_) async => {'state': 'http-response', 'http-status': 403},
-      systemDns: (_) async => [InternetAddress('93.184.215.14')],
-      windowsRoutes: () async => '',
-    ).run(
-      engine: 'Mihomo',
-      running: true,
-      switching: false,
-      systemProxyEnabled: false,
-      nativeSystemProxy: false,
-      nativeEngine: false,
-      proxyPort: null,
-      tunConfigured: false,
-      selectedNodeName: 'selected-leaf',
-    );
-    final https = checks.singleWhere(
-      (check) => check.title == '所选策略组节点 HTTPS 通路（Mihomo）',
-    );
-    expect(https.state, NetworkCheckState.warning);
-    expect(https.detail, contains('HTTP 403'));
-    expect(https.detail, contains('无法单凭失败结果断定节点协议握手'));
-  });
+  test(
+    'HTTPS server rejection is not mislabeled as transport failure',
+    () async {
+      final checks =
+          await DesktopNetworkDiagnostics(
+            nodeHttps: (_) async => {
+              'state': 'http-response',
+              'http-status': 403,
+            },
+            systemDns: (_) async => [InternetAddress('93.184.215.14')],
+            windowsRoutes: () async => '',
+          ).run(
+            engine: 'Mihomo',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: false,
+            proxyPort: null,
+            tunConfigured: false,
+            selectedNodeName: 'selected-leaf',
+          );
+      final https = checks.singleWhere(
+        (check) => check.title == '所选策略组节点 HTTPS 通路（Mihomo）',
+      );
+      expect(https.state, NetworkCheckState.warning);
+      expect(https.detail, contains('HTTP 403'));
+      expect(https.detail, contains('无法单凭失败结果断定节点协议握手'));
+    },
+  );
 
   test('HTTPS probe is skipped when native engine owns network', () async {
     var called = false;
-    final checks = await DesktopNetworkDiagnostics(
-      nodeHttps: (_) async {
-        called = true;
-        return {'state': 'reachable'};
-      },
-      systemDns: (_) async => [InternetAddress('93.184.215.14')],
-      windowsRoutes: () async => '',
-    ).run(
-      engine: 'sing-box',
-      running: true,
-      switching: false,
-      systemProxyEnabled: false,
-      nativeSystemProxy: false,
-      nativeEngine: true,
-      proxyPort: null,
-      tunConfigured: false,
-      selectedNodeName: 'selected-leaf',
-    );
+    final checks =
+        await DesktopNetworkDiagnostics(
+          nodeHttps: (_) async {
+            called = true;
+            return {'state': 'reachable'};
+          },
+          systemDns: (_) async => [InternetAddress('93.184.215.14')],
+          windowsRoutes: () async => '',
+        ).run(
+          engine: 'sing-box',
+          running: true,
+          switching: false,
+          systemProxyEnabled: false,
+          nativeSystemProxy: false,
+          nativeEngine: true,
+          proxyPort: null,
+          tunConfigured: false,
+          selectedNodeName: 'selected-leaf',
+        );
     expect(called, isFalse);
     expect(
-      checks.singleWhere(
-        (check) => check.title == '所选策略组节点 HTTPS 通路（Mihomo）',
-      ).state,
+      checks
+          .singleWhere((check) => check.title == '所选策略组节点 HTTPS 通路（Mihomo）')
+          .state,
       NetworkCheckState.skipped,
     );
   });
