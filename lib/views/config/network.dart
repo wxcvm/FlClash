@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/common/windows_adguard_dns.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/features/form/form.dart';
 import 'package:fl_clash/models/models.dart';
@@ -563,17 +564,22 @@ class _WindowsAdGuardDnsItemState extends ConsumerState<WindowsAdGuardDnsItem> {
     });
     try {
       final setup = ref.read(setupActionProvider.notifier);
-      if (!await preferences.setFollowWindowsSystemDns(!enabled)) {
-        throw StateError('无法保存 Windows DNS 设置');
-      }
-      if (mounted) setState(() => _enabled = !enabled);
-      if (ref.read(isStartProvider) && !await setup.applyProfile(force: true)) {
-        throw StateError('配置暂未应用；下次重新加载配置时生效');
-      }
+      await updateWindowsDnsPreference(
+        previous: enabled,
+        coreRunning: ref.read(isStartProvider),
+        save: preferences.setFollowWindowsSystemDns,
+        apply: () => setup.applyProfile(force: true),
+      );
     } catch (error) {
       if (mounted) setState(() => _error = compactError(error));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      final saved = await preferences.getFollowWindowsSystemDns();
+      if (mounted) {
+        setState(() {
+          _enabled = saved;
+          _busy = false;
+        });
+      }
     }
   }
 

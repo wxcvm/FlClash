@@ -126,11 +126,18 @@ void main() {
   });
 
   test(
-    'AdGuard follow diagnostics distinguish Fake-IP and unverified ownership',
+    'AdGuard challenge queries a fresh name and never invents ownership',
     () async {
+      final names = <String>[];
       Future<List<NetworkCheck>> check(String answer) =>
           DesktopNetworkDiagnostics(
-            systemDns: (_) async => [InternetAddress(answer)],
+            systemDns: (host) async {
+              names.add(host);
+              if (host != 'example.com') {
+                throw const SocketException('NXDOMAIN');
+              }
+              return [InternetAddress(answer)];
+            },
             windowsRoutes: () async => '',
           ).run(
             engine: 'Mihomo',
@@ -147,15 +154,46 @@ void main() {
       final synthetic = await check('198.18.0.8');
       expect(synthetic[3].title, 'Windows 系统 DNS');
       expect(synthetic[3].state, NetworkCheckState.warning);
-      expect(synthetic[4].title, 'AdGuard DNS 接管');
+      expect(synthetic[4].title, 'AdGuard DNS 查询日志');
       expect(synthetic[4].state, NetworkCheckState.warning);
       expect(synthetic[4].summary, contains('查询日志'));
+      expect(synthetic[4].summary, contains(names[1]));
 
       final real = await check('93.184.215.14');
       expect(real[3].state, NetworkCheckState.ok);
       expect(real[4].state, NetworkCheckState.warning);
+      expect(names, hasLength(4));
+      expect(names[0], 'example.com');
+      expect(names[2], 'example.com');
+      expect(names[1], startsWith('flclash-check-'));
+      expect(names[1], endsWith('.example.com'));
+      expect(names[3], isNot(names[1]));
     },
   );
+
+  test('stopped Mihomo does not generate an AdGuard DNS challenge', () async {
+    final names = <String>[];
+    final checks =
+        await DesktopNetworkDiagnostics(
+          systemDns: (host) async {
+            names.add(host);
+            return [InternetAddress('93.184.215.14')];
+          },
+          windowsRoutes: () async => '',
+        ).run(
+          engine: 'Mihomo',
+          running: false,
+          switching: false,
+          systemProxyEnabled: false,
+          nativeSystemProxy: false,
+          nativeEngine: false,
+          proxyPort: null,
+          tunConfigured: false,
+          followingWindowsDns: true,
+        );
+    expect(names, ['example.com']);
+    expect(checks[4].state, NetworkCheckState.skipped);
+  });
 
   test('handoff in progress never reports stale proxy results', () async {
     final diagnostics = DesktopNetworkDiagnostics(

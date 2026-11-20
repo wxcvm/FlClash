@@ -54,3 +54,39 @@ Map<String, dynamic> applyWindowsSystemDns(Map<String, dynamic> dns) {
   }
   return result;
 }
+
+/// Restore the previous DNS mode if the running core rejects a switch.
+/// Only the separate preference is persisted; subscriptions stay untouched.
+Future<void> updateWindowsDnsPreference({
+  required bool previous,
+  required bool coreRunning,
+  required Future<bool> Function(bool enabled) save,
+  required Future<bool> Function() apply,
+}) async {
+  if (!await save(!previous)) {
+    throw StateError('无法保存 Windows DNS 设置');
+  }
+  if (!coreRunning) return;
+
+  try {
+    if (await apply()) return;
+  } catch (_) {
+    // Restoring the previous DNS mode is more useful than leaving an
+    // unapplied preference selected after a failed profile update.
+  }
+
+  if (!await save(previous)) {
+    throw StateError('DNS 配置未能生效，且无法恢复原开关');
+  }
+
+  var recovered = false;
+  try {
+    recovered = await apply();
+  } catch (_) {
+    // A failed recovery must not be reported as successful.
+  }
+  if (recovered) {
+    throw StateError('DNS 配置未能生效，已恢复原 DNS 配置');
+  }
+  throw StateError('已恢复原 DNS 开关，但运行中的配置未能重新加载');
+}
