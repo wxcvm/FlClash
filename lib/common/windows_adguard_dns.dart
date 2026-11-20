@@ -79,14 +79,14 @@ Future<void> updateWindowsDnsPreference({
     throw StateError('DNS 配置未能生效，且无法恢复原开关');
   }
 
+  var recovered = false;
   try {
-    if (await apply()) {
-      throw StateError('DNS 配置未能生效，已恢复原 DNS 配置');
-    }
-  } on StateError {
-    rethrow;
+    recovered = await apply();
   } catch (_) {
-    // Report the recovery failure without claiming it succeeded.
+    // A failed recovery must not be reported as successful.
+  }
+  if (recovered) {
+    throw StateError('DNS 配置未能生效，已恢复原 DNS 配置');
   }
   throw StateError('已恢复原 DNS 开关，但运行中的配置未能重新加载');
 }
