@@ -260,8 +260,9 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     final kind = nativeCoreRuntime.activeKind;
     final mihomoRunning = ref.read(isStartProvider);
     final config = ref.read(patchClashConfigProvider);
-    final selectedGroupName =
-        kind == null ? ref.read(currentProfileProvider)?.currentGroupName : null;
+    final selectedGroupName = kind == null
+        ? ref.read(currentProfileProvider)?.currentGroupName
+        : null;
     final selectedNodeName =
         selectedGroupName == null || selectedGroupName.isEmpty
         ? null
@@ -299,9 +300,9 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
         (kind == null &&
             selectedGroupName != null &&
             selectedGroupName.isNotEmpty &&
-            ref.read(
-                  realSelectedProxyStateProvider(selectedGroupName),
-                ).proxyName !=
+            ref
+                    .read(realSelectedProxyStateProvider(selectedGroupName))
+                    .proxyName !=
                 selectedNodeName)) {
       return '诊断过程中内核状态已变化，请重新运行';
     }
@@ -456,7 +457,9 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
               if (system.isWindows)
                 ListItem(
                   title: const Text('一键诊断 Windows 网络'),
-                  subtitle: const Text('只读检查代理、系统 DNS、当前节点入口 DNS、内核历史证据和 TUN 路由'),
+                  subtitle: const Text(
+                    '只读检查代理、系统 DNS、当前节点入口 DNS、内核历史证据和 TUN 路由',
+                  ),
                   onTap: _busy || nativeCoreHandoff.busy
                       ? null
                       : () => _perform(_diagnose),
