@@ -25,7 +25,7 @@ final class WindowsIpv4Route {
     return count;
   }
 
-  bool contains(int address) => address & mask == network & mask;
+  bool contains(int address) => (address & mask) == (network & mask);
 }
 
 int? _ipv4(String value) {
