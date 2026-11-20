@@ -171,14 +171,37 @@ final class DesktopNetworkDiagnostics {
     }
 
     if (followingWindowsDns) {
-      checks.add(
-        const NetworkCheck(
-          'AdGuard DNS 接管',
-          NetworkCheckState.warning,
-          '已选择 Windows 系统 DNS，无法仅凭解析结果证明由 AdGuard 的私人 DNS 处理；'
-              '请在 AdGuard DNS 查询日志中核对 example.com',
-        ),
-      );
+      if (!running) {
+        checks.add(
+          const NetworkCheck(
+            'AdGuard DNS 查询日志',
+            NetworkCheckState.skipped,
+            'Mihomo 尚未运行；启动后再检查 AdGuard 实际是否接管 DNS',
+          ),
+        );
+      } else {
+        // A fresh hostname avoids a cached example.com result. A missing
+        // address is expected: the AdGuard query log is the evidence.
+        final host =
+            'flclash-check-${DateTime.now().microsecondsSinceEpoch}.example.com';
+        String outcome;
+        try {
+          await systemDns(host).timeout(const Duration(seconds: 5));
+          outcome = '系统解析已返回';
+        } on SocketException {
+          outcome = '域名未解析出地址（测试域名通常没有记录）';
+        } on Exception catch (error) {
+          outcome = '系统查询未正常完成：$error';
+        }
+        checks.add(
+          NetworkCheck(
+            'AdGuard DNS 查询日志',
+            NetworkCheckState.warning,
+            '测试域名：$host；$outcome。请在 AdGuard DNS 查询日志搜索该完整域名；'
+                '只有日志出现该请求才能确认由 AdGuard 接管',
+          ),
+        );
+      }
     }
 
     try {
