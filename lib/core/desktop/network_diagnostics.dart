@@ -238,9 +238,9 @@ final class DesktopNetworkDiagnostics {
             _ => '没有可用的核心独立 DNS 查询证据',
           };
           final time = valid && checkedAt is int
-              ? DateTime.fromMillisecondsSinceEpoch(checkedAt)
-                  .toLocal()
-                  .toIso8601String()
+              ? DateTime.fromMillisecondsSinceEpoch(
+                  checkedAt,
+                ).toLocal().toIso8601String()
               : null;
           checks.add(
             NetworkCheck(
