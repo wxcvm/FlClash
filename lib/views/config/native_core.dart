@@ -262,25 +262,26 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     final config = ref.read(patchClashConfigProvider);
     final followingWindowsDns =
         kind == null && await preferences.getFollowWindowsSystemDns();
-    final checks = await DesktopNetworkDiagnostics(
-      coreHealth: () => ref.read(coreHandlerProvider).getNetworkHealth(),
-    ).run(
-      engine: kind?.label ?? 'Mihomo',
-      running: kind != null || mihomoRunning,
-      switching: nativeCoreHandoff.busy,
-      systemProxyEnabled: ref.read(networkSettingProvider).systemProxy,
-      nativeSystemProxy: nativeCoreHandoff.ownsNativeSystemProxy,
-      nativeEngine: kind != null,
-      proxyPort: kind != null
-          ? systemProxyQueue?.nativeHttpPort
-          : mihomoRunning
-          ? config.mixedPort
-          : null,
-      tunConfigured: kind != null
-          ? nativeCoreHandoff.nativeTunConfigured
-          : config.tun.enable,
-      followingWindowsDns: followingWindowsDns,
-    );
+    final checks =
+        await DesktopNetworkDiagnostics(
+          coreHealth: () => ref.read(coreHandlerProvider).getNetworkHealth(),
+        ).run(
+          engine: kind?.label ?? 'Mihomo',
+          running: kind != null || mihomoRunning,
+          switching: nativeCoreHandoff.busy,
+          systemProxyEnabled: ref.read(networkSettingProvider).systemProxy,
+          nativeSystemProxy: nativeCoreHandoff.ownsNativeSystemProxy,
+          nativeEngine: kind != null,
+          proxyPort: kind != null
+              ? systemProxyQueue?.nativeHttpPort
+              : mihomoRunning
+              ? config.mixedPort
+              : null,
+          tunConfigured: kind != null
+              ? nativeCoreHandoff.nativeTunConfigured
+              : config.tun.enable,
+          followingWindowsDns: followingWindowsDns,
+        );
     if (nativeCoreHandoff.busy ||
         nativeCoreRuntime.activeKind != kind ||
         (kind == null && ref.read(isStartProvider) != mihomoRunning)) {
