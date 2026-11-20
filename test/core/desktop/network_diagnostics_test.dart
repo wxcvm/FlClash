@@ -126,6 +126,26 @@ void main() {
     },
   );
 
+  test('stopped Mihomo cannot claim TUN route loss', () async {
+    const routes =
+        '0.0.0.0 0.0.0.0 192.0.2.1 192.0.2.20 20\n'
+        '198.18.0.0 255.255.255.252 On-link 198.18.0.1 256\n';
+    final checks = await DesktopNetworkDiagnostics(
+      systemDns: (_) async => [InternetAddress('93.184.215.14')],
+      windowsRoutes: () async => routes,
+    ).run(
+      engine: 'Mihomo',
+      running: false,
+      switching: false,
+      systemProxyEnabled: false,
+      nativeSystemProxy: false,
+      nativeEngine: false,
+      proxyPort: null,
+      tunConfigured: true,
+    );
+    expect(checks.last.summary, isNot(contains('疑似 TUN 路由覆盖丢失')));
+  });
+
   test('DNS failure does not suppress route inspection', () async {
     var routeRead = false;
     final diagnostics = DesktopNetworkDiagnostics(
