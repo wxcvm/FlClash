@@ -220,7 +220,7 @@ final class DesktopNetworkDiagnostics {
         r'^\s*128\.0\.0\.0\s+128\.0\.0\.0\s+',
         multiLine: true,
       ).hasMatch(routes);
-      final coverage = tunConfigured && !nativeEngine
+      final coverage = running && tunConfigured && !nativeEngine
           ? inspectWindowsTunFakeIpRoute(routes)
           : null;
       checks.add(
