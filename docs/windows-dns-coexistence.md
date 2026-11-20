@@ -21,7 +21,10 @@ by default. It stores a separate preference; the original FlClash DNS fields,
 subscriptions and AdGuard private DoH URLs are **not overwritten or read**.
 Turning it off rebuilds the original effective DNS configuration. When Mihomo
 is running, switching the option reapplies its profile; this can briefly
-interrupt active connections.
+interrupt active connections. If the reload fails, FlClash restores the
+previous preference and retries the previous effective profile. If even the
+recovery fails, the interface reports that the running configuration could
+not be restored rather than claiming the toggle took effect.
 
 With the switch on, the effective Mihomo DNS uses `system://` for general,
 proxy-node and direct-traffic resolution. Any existing
@@ -41,6 +44,15 @@ read AdGuard's private encrypted DNS URL. AdGuard for Windows DNS protection
 must be enabled and must actually intercept that process's DNS traffic for
 its selected resolver to be used. This cannot be inferred from the Windows
 adapter nameserver alone, nor verified by a successful `nslookup` alone.
+FlClash's Windows **one-click network diagnostics** additionally queries a
+fresh `flclash-check-<timestamp>.example.com` hostname when this mode is
+enabled and Mihomo is running. The domain usually has no DNS records:
+an NXDOMAIN response is expected, not a failure. Find the **exact hostname**
+printed in the diagnostic report in AdGuard's DNS query log; repeating the
+diagnostic uses a new name to avoid a cached result. A successful ordinary
+`example.com` lookup by itself still cannot prove AdGuard ownership.
+No AdGuard credentials or private DNS URLs are read.
+
 Confirm the query appears in AdGuard's DNS query log, especially with
 FlClash TUN/Fake-IP enabled. Disabling TUN DNS hijacking means that applications
 using Windows DNS may receive real addresses rather than Mihomo synthetic
