@@ -95,11 +95,7 @@ void main() {
                 'nameserver': ['https://private.example/secret-path'],
                 'fallback': ['tls://1.1.1.1'],
                 'respect-rules': true,
-                'default-nameserver': [
-                  '8.8.8.8',
-                  '1.1.1.1',
-                  '119.29.29.29',
-                ],
+                'default-nameserver': ['8.8.8.8', '1.1.1.1', '119.29.29.29'],
                 'nameserver-policy': {
                   '+.example.com': ['https://dns.example/dns-query'],
                 },
