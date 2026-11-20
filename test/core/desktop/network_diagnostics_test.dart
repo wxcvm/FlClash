@@ -241,6 +241,119 @@ void main() {
     expect(checks[4].state, NetworkCheckState.skipped);
   });
 
+  test(
+    'Mihomo DNS success is a historical core lookup, not live node DNS',
+    () async {
+      final checks =
+          await DesktopNetworkDiagnostics(
+            coreHealth: () async => {
+              'state': 'route-unreachable',
+              'dns': 'resolved',
+              'checked-at': DateTime.utc(2026, 11, 20).millisecondsSinceEpoch,
+            },
+            systemDns: (_) async => [InternetAddress('93.184.215.14')],
+            windowsRoutes: () async => '',
+          ).run(
+            engine: 'Mihomo',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: false,
+            proxyPort: null,
+            tunConfigured: false,
+          );
+      final evidence = checks.singleWhere(
+        (check) => check.title == 'Mihomo 内核 DNS 历史证据',
+      );
+      expect(evidence.state, NetworkCheckState.warning);
+      expect(evidence.detail, contains('核心独立 DNS 查询解析成功'));
+      expect(evidence.detail, contains('此前一次测试地址'));
+      expect(evidence.detail, contains('不证明当前节点入口域名可解析'));
+    },
+  );
+
+  test(
+    'Mihomo DNS failure is not confused with Windows resolver status',
+    () async {
+      final checks =
+          await DesktopNetworkDiagnostics(
+            coreHealth: () async => {
+              'state': 'dns-failure',
+              'dns': 'failed',
+              'checked-at': DateTime.utc(2026, 11, 20).millisecondsSinceEpoch,
+            },
+            systemDns: (_) async => [InternetAddress('93.184.215.14')],
+            windowsRoutes: () async => '',
+          ).run(
+            engine: 'Mihomo',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: false,
+            proxyPort: null,
+            tunConfigured: false,
+          );
+      final system = checks.singleWhere((c) => c.title == 'Windows 系统 DNS');
+      final core = checks.singleWhere((c) => c.title == 'Mihomo 内核 DNS 历史证据');
+      expect(system.state, NetworkCheckState.ok);
+      expect(core.state, NetworkCheckState.warning);
+      expect(core.detail, contains('核心独立 DNS 查询解析失败'));
+    },
+  );
+
+  test('untested core DNS snapshot cannot claim successful lookup', () async {
+    final checks =
+        await DesktopNetworkDiagnostics(
+          coreHealth: () async => {'state': 'reachable', 'dns': 'untested'},
+          systemDns: (_) async => [InternetAddress('93.184.215.14')],
+          windowsRoutes: () async => '',
+        ).run(
+          engine: 'Mihomo',
+          running: true,
+          switching: false,
+          systemProxyEnabled: false,
+          nativeSystemProxy: false,
+          nativeEngine: false,
+          proxyPort: null,
+          tunConfigured: false,
+        );
+    final core = checks.singleWhere((c) => c.title == 'Mihomo 内核 DNS 历史证据');
+    expect(core.state, NetworkCheckState.skipped);
+    expect(core.detail, contains('没有可用'));
+  });
+
+  test(
+    'native engine does not inspect the inactive Mihomo DNS snapshot',
+    () async {
+      var called = false;
+      final checks =
+          await DesktopNetworkDiagnostics(
+            coreHealth: () async {
+              called = true;
+              return {};
+            },
+            systemDns: (_) async => [InternetAddress('93.184.215.14')],
+            windowsRoutes: () async => '',
+          ).run(
+            engine: 'sing-box',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: true,
+            proxyPort: null,
+            tunConfigured: true,
+          );
+      expect(called, isFalse);
+      expect(
+        checks.singleWhere((c) => c.title == 'Mihomo 内核 DNS 历史证据').state,
+        NetworkCheckState.skipped,
+      );
+    },
+  );
+
   test('handoff in progress never reports stale proxy results', () async {
     final diagnostics = DesktopNetworkDiagnostics(
       localPort: (_) async => fail('No probe during handoff'),
