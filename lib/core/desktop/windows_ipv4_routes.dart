@@ -39,7 +39,7 @@ int? _ipv4(String value) {
   );
 }
 
-List<_WindowsIpv4Route> parse_WindowsIpv4Routes(String output) {
+List<_WindowsIpv4Route> _parseWindowsIpv4Routes(String output) {
   final pattern = RegExp(
     r'^\s*(\S+)\s+(\S+)\s+\S+\s+(\S+)\s+(\d+)\s*$',
     multiLine: true,
@@ -91,7 +91,7 @@ _WindowsIpv4Route? _bestWindowsRoute(
 /// the interface subnet itself. This is a diagnostic sample, not proof that
 /// every aggregated Windows route or the TUN listener remains healthy.
 ({bool? escaped, String detail}) inspectWindowsTunFakeIpRoute(String output) {
-  final routes = parse_WindowsIpv4Routes(output);
+  final routes = _parseWindowsIpv4Routes(output);
   final local = _bestWindowsRoute(routes, '198.18.0.1');
   final sample = _bestWindowsRoute(routes, '198.18.0.8');
   if (local == null || sample == null) {
