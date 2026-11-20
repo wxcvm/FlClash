@@ -23,6 +23,23 @@ for old, new in (
     ncsi_source = ncsi_source.replace(old, new, 1)
 ncsi_config.write_text(ncsi_source, encoding="utf-8", newline="\n")
 
+# MMDB discovery must not overwrite the protobuf GeoIP.dat filename.
+# With both packaged resources present, doing so makes a subsequent GEOIP
+# rule try to decode GEOIP.metadb as a protobuf, failing configuration load.
+geo_path = root / "constant/path.go"
+geo_source = geo_path.read_text(encoding="utf-8")
+old = '''strings.EqualFold(fi.Name(), "GEOIP.metadb") {
+				GeoipName = fi.Name()
+				return P.Join(p.homeDir, fi.Name())
+'''
+new = '''strings.EqualFold(fi.Name(), "GEOIP.metadb") {
+				return P.Join(p.homeDir, fi.Name())
+'''
+if geo_source.count(old) != 1:
+    raise SystemExit("Mihomo MMDB discovery source changed")
+geo_path.write_text(geo_source.replace(old, new, 1), encoding="utf-8", newline="\n")
+shutil.copyfile(here / "flclash_geo_path_test.go", root / "constant/flclash_geo_path_test.go")
+
 group = root / "adapter/outboundgroup"
 changes = json.loads((here / "changes.json").read_text())
 updated = {}
@@ -126,4 +143,4 @@ if text.count(old) != 1 or text.count(field) != 1:
 text = text.replace(field, field + "\tsendMu sync.Mutex\n", 1)
 udp.write_text(text.replace(old, new, 1))
 shutil.copyfile(here / "flclash_udp_sender_test.go", root / "tunnel/flclash_udp_sender_test.go")
-print("Applied Mihomo failure recovery, DNS and UDP extensions")
+print("Applied Mihomo failure recovery, DNS, GeoIP and UDP extensions")
