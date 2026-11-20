@@ -96,10 +96,7 @@ _WindowsIpv4Route? _bestWindowsRoute(
   final near = _bestWindowsRoute(routes, '198.18.0.8');
   final far = _bestWindowsRoute(routes, '198.18.255.8');
   if (local == null) {
-    return (
-      escaped: null,
-      detail: '未获得默认 TUN /30 基准路由，无法判断 Fake-IP 覆盖情况',
-    );
+    return (escaped: null, detail: '未获得默认 TUN /30 基准路由，无法判断 Fake-IP 覆盖情况');
   }
 
   final referenceIsTun =
@@ -107,7 +104,8 @@ _WindowsIpv4Route? _bestWindowsRoute(
   if (!referenceIsTun) {
     return (
       escaped: null,
-      detail: '未检测到标准 TUN /30 链路基准；'
+      detail:
+          '未检测到标准 TUN /30 链路基准；'
           '自定义 Fake-IP 网段需另行检查',
     );
   }
@@ -136,7 +134,8 @@ _WindowsIpv4Route? _bestWindowsRoute(
       .join('；');
   return (
     escaped: escaped,
-    detail: '默认 Fake-IP 双样本：$paths；TUN 基准 198.18.0.1；'
+    detail:
+        '默认 Fake-IP 双样本：$paths；TUN 基准 198.18.0.1；'
         '${escaped == true
             ? '存在路由出口不同，疑似 TUN 路由覆盖丢失'
             : escaped == null
