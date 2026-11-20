@@ -37,6 +37,10 @@ bool _isSystemOnly(List<String> servers) =>
 Map<String, dynamic> applyWindowsSystemDns(Map<String, dynamic> dns) {
   final result = Map<String, dynamic>.from(dns);
   result['enable'] = true;
+  // Do not bootstrap DNS through the old public resolvers or route DNS
+  // traffic through an unresolved proxy node (the bootstrap deadlock).
+  result['respect-rules'] = false;
+  result['default-nameserver'] = [windowsSystemResolver];
   result['nameserver'] = [windowsSystemResolver];
   result['proxy-server-nameserver'] = [windowsSystemResolver];
   result['direct-nameserver'] = [windowsSystemResolver];
