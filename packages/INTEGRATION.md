@@ -53,6 +53,7 @@ Do not reuse Karing's `ServerManager` or `SettingManager` for node selection, pr
 | Capability | FlClash owner |
 | --- | --- |
 | DNS configuration and query history | Existing FlClash DNS config/provider and DNS page |
+| Diversion/routing rules | Existing FlClash Config → Rules and custom-profile Rules views |
 | Proxy selection, groups and URL tests | Existing FlClash CoreController, route tracker, proxy providers and Proxies page |
 | Connections and traffic | Existing CoreManager events, Requests provider and Requests page |
 | Profiles and subscriptions | Existing FlClash profile/config providers |
