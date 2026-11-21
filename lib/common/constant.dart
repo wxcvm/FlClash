@@ -137,6 +137,7 @@ const defaultTestUrl = 'https://www.gstatic.com/generate_204';
 
 const shareLinkSchemes = {
   'hysteria',
+  'hy', // Hysteria v1 shorthand; normalized by the host core decoder.
   'hysteria2',
   'hy2',
   'hysteria2+realm',
