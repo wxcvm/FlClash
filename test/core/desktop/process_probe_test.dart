@@ -31,6 +31,21 @@ void main() {
     expect(linuxProcStatIndicatesAlive('123 (worker) x 1 2'), isFalse);
   });
 
+  test('Linux proc stat mismatched PID is inconclusive', () {
+    expect(
+      linuxProcStatIndicatesAlive('456 (worker) Z 1 2', expectedPid: 123),
+      isTrue,
+    );
+    expect(
+      linuxProcStatIndicatesAlive('123 (worker) Z 1 2', expectedPid: 123),
+      isFalse,
+    );
+    expect(
+      linuxProcStatIndicatesAlive('123 (worker) S 1 2', expectedPid: 123),
+      isTrue,
+    );
+  });
+
   test('inconclusive Linux proc stat is never mistaken for exit', () {
     expect(linuxProcStatIndicatesAlive(''), isTrue);
     expect(linuxProcStatIndicatesAlive('malformed'), isTrue);
