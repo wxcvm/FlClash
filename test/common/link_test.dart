@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fl_clash/common/link.dart';
+import 'package:fl_clash/common/string.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -114,6 +115,20 @@ void main() {
 
     expect(linkManager.subscription, isNull);
     expect(received, isEmpty);
+  });
+
+  group('Hysteria v1 alias import', () {
+    test('hy shorthand is a share link, but unrelated schemes are not', () {
+      expect('hy://h.example:443?auth=token#node'.isShareLink, isTrue);
+      expect('HY://h.example:443?auth=token#node'.isShareLink, isTrue);
+      expect('hy2://password@h.example:443#node'.isShareLink, isTrue);
+      expect('xhy://h.example:443#node'.isShareLink, isFalse);
+    });
+
+    test('QR code import forwards hy links to the core decoder', () {
+      const link = 'hy://h.example:443?auth=token#node';
+      expect(profileUrlFromQrCodes(['not a link', link]), link);
+    });
   });
 
   group('profileUrlFromQrCodes', () {
