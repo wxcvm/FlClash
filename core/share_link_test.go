@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -322,5 +323,49 @@ func TestDecodeShareLinksAnswersEveryLine(t *testing.T) {
 	}
 	if results[0][0]["name"] != "one" || results[2][0]["name"] != "two" {
 		t.Errorf("names = %v, %v", results[0][0]["name"], results[2][0]["name"])
+	}
+}
+
+func TestDecodeHysteriaShorthandKeepsMihomoAsTheDecoder(t *testing.T) {
+	hy := "hy://h.example:443?auth=token&peer=peer.example&upmbps=15&downmbps=50#short"
+	hy2 := "hy2://pass@h2.example:443?sni=peer.example#second"
+	cases := []struct {
+		name, input string
+		wantNames   []string
+		wantTypes   []string
+	}{
+		{"single", hy, []string{"short"}, []string{"hysteria"}},
+		{"case-insensitive", "HY://h.example:443?auth=token&peer=peer.example#upper", []string{"upper"}, []string{"hysteria"}},
+		{"base64", base64.StdEncoding.EncodeToString([]byte(hy)), []string{"short"}, []string{"hysteria"}},
+		{"plain multi-line", hy + "\n" + hy2, []string{"short", "second"}, []string{"hysteria", "hysteria2"}},
+		{"base64 multi-line", base64.StdEncoding.EncodeToString([]byte(hy + "\n" + hy2)), []string{"short", "second"}, []string{"hysteria", "hysteria2"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			decoded := handleDecodeShareLinks(LinesParams{Lines: []string{tc.input}})
+			if len(decoded) != 1 || len(decoded[0]) != len(tc.wantNames) {
+				t.Fatalf("decoded = %v, want %d proxies", decoded, len(tc.wantNames))
+			}
+			for i, proxy := range decoded[0] {
+				if proxy["name"] != tc.wantNames[i] || proxy["type"] != tc.wantTypes[i] {
+					t.Errorf("proxy %d = %v, want %s (%s)", i, proxy, tc.wantNames[i], tc.wantTypes[i])
+				}
+			}
+			if decoded[0][0]["server"] != "h.example" || decoded[0][0]["auth_str"] != "token" {
+				t.Errorf("Hysteria credentials or server lost: %v", decoded[0][0])
+			}
+		})
+	}
+}
+
+func TestHysteriaShorthandNormalizationOnlyChangesLinePrefixes(t *testing.T) {
+	for _, input := range []string{
+		"hy2://secret@h.example:443#hy2",
+		"trojan://secret@h.example:443?note=hy://not-a-link#original",
+		"xhy://secret@h.example:443#unknown",
+	} {
+		if got := normalizeHysteriaShareLink(input); got != input {
+			t.Errorf("unexpected normalization of %q -> %q", input, got)
+		}
 	}
 }
