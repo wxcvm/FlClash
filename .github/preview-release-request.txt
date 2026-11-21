@@ -1,7 +1,10 @@
 ﻿FlClash Windows x64 + Android ARM64 preview release request
 Date: 2026-11-21
-Validated source before request: 621c69b3b162cea650dd30f40c232133f6fe8696
-Includes Karing module and screen integration on top of FlClash UI.
+Source for new preview gate: 573fd9a16e852ffce21362c1ebefb61bca778369
+PR #137 CI: https://github.com/wxcvm/FlClash/actions/runs/44867884259
+Main CI: https://github.com/wxcvm/FlClash/actions/runs/44869252070
+Includes Karing module and screen integration, with CI compatibility fixes
+from PR #137 (Android namespace/desugaring and Linux WebView stub).
 
 Publish only after the existing exact-main-CI, Android signing identity,
 Windows installer and portable ZIP, Android APK, and SHA256 verification.
