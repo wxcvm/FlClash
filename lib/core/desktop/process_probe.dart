@@ -41,10 +41,17 @@ bool linuxProcStatIsMissing(FileSystemException error) =>
 /// Parse the state after the final ')' because a process name may contain ')'.
 /// Malformed or unknown states must not authorize a competing core to start.
 bool linuxProcStatIndicatesAlive(String stat) {
+  // A truncated or malformed stat line is inconclusive, not proof of exit.
+  // The kernel format is: pid (comm) state ...; comm can contain ')'.
+  if (!RegExp(r'^\\d+ \\(').hasMatch(stat)) return true;
   final closeParen = stat.lastIndexOf(')');
-  if (closeParen < 0) return true;
-  final remainder = stat.substring(closeParen + 1).trimLeft();
-  if (remainder.isEmpty) return true;
+  if (closeParen < 0 || closeParen + 1 >= stat.length) return true;
+  final suffix = stat.substring(closeParen + 1);
+  if (!suffix.startsWith(' ')) return true;
+  final remainder = suffix.trimLeft();
+  if (remainder.isEmpty || !RegExp(r'^[A-Za-z](?:\\s|$)').hasMatch(remainder)) {
+    return true;
+  }
   final state = remainder[0];
   if (state == 'Z' || state == 'X' || state == 'x') return false;
   return true;
