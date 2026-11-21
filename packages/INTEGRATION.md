@@ -1,39 +1,89 @@
-# Karing 接入 FlClash
+# Karing backend source boundary for FlClash
 
-## 包结构
+## Runtime contract
 
-- [karing](<karing/pubspec.yaml>) 保留包名 karing 和原有 package:karing/... 导入。lib/app 存放业务模块、工具类及本地服务，lib/screens 存放可嵌入的页面和组件，lib/i18n 存放 Slang 源语言文件和已生成的 Dart 文件。
-- [vpn_service](<vpn_service/pubspec.yaml>) 是纯 Dart shim。依赖关系为 fl_clash → karing → vpn_service。Karing 使用 ../vpn_service 路径依赖。宿主直接导入 VPN 类型时也需声明路径依赖。
-- [build.yaml](<karing/build.yaml>) 及其 builder 按上游复制，用于生成构建时间。Slang 已生成文件记录的更新命令为 dart run slang。
+FlClash uses its own UI and runtime. The root application **does not depend on** `package:karing` or `package:vpn_service`; the Karing vendor tree is retained only as an upstream source reference for selective capability extraction. It is not initialized, registered as a Flutter plugin, or included in FlClash's runtime dependency graph.
 
-## 页面调用
+FlClash remains the single source of truth:
 
-在 FlClash 路由或视图包装器中导入所需页面。例如导入 package:karing/screens/diversion_rules_screen.dart，在宿主 Navigator 中以 MaterialPageRoute 打开 const DiversionRulesScreen()。备份同步与二维码页面的参数以各页面构造函数为准。
+- **Core lifecycle and proxy state:** FlClash `CoreManager`, `CoreController`, and existing Riverpod providers.
+- **Profiles and persisted configuration:** FlClash config/profile providers and its existing storage layer.
+- **DNS, connections, requests and traffic:** FlClash core events and existing providers/pages.
+- **VPN/TUN lifecycle:** FlClash `AndroidManager` and its native Android service; desktop lifecycle remains in FlClash's existing core/service implementation.
+- **UI and localization:** FlClash navigation, views, settings and localization.
 
-在页面祖先中挂载 Karing 生成的 TranslationProvider，使 Translations.of(context) 可用，并让 FlClash 的语言设置同步到 LocaleSettings。由宿主注入页面依赖的设置、服务器数据和路径，避免启动 Karing 的完整应用引导流程及其独立后台服务。
+Do not reintroduce Karing screens, `KaringScope`, `KaringModule`, `SettingManager`, `ServerManager`, or the Karing `VPNService` shim into the host runtime. Those pieces own a second application lifecycle, storage model and state graph.
 
-## VPN 接口与下一步
+## Existing FlClash capabilities checked
 
-[VPN 门面](<vpn_service/lib/vpn_service.dart>) 提供服务状态、配置、生命周期、系统代理、授权、平台查询及开机启动签名。未接入时状态为断开，启动返回结构化错误。ProxyConfig 已由 [Karing 的出站模型](<karing/lib/app/utils/proxy_conf_utils.dart>) 定义，调用点使用 shim 的 ProxyOption 和 ProxyManager。未发现 ProxyConfigItem 调用。
+Several Karing managers duplicate capabilities already owned by FlClash and should not be imported:
 
-1. 原生桥接。将事件和请求接到桌面 Core 与 Android 服务中的既有生命周期入口，保留单一状态来源。现有 proxy 插件接受端口及绕过列表，缺少代理地址、状态查询及网卡排除能力。系统代理启停应接入宿主现有状态机。
-2. 国际化。把宿主 Locale 映射到 Slang 的 AppLocale，补充缺失语言并从源 JSON 重新生成。运行相关页面前核对资源路径、字体和资源打包。
-3. Riverpod。让宿主适配器把 Karing SettingManager / ServerManager 的读写和事件映射到 FlClash providers，明确状态和持久化的归属。
+- Share-link imports already go through `ProfilesAction.addProfileFromLink` and `CoreController.decodeShareLinks`; custom Clash YAML imports go through `readCustomProfileImport`. This is already the correct host integration point for proxy URI decoding and profile import.
+- Proxy group state, delay tests, automatic selection and recovery are owned by `ProxiesAction`, FlClash's route tracker and the core controller.
+- DNS queries, connection requests and traffic are consumed by `CoreManager` core events and written into FlClash providers.
+- Profile/subscription persistence belongs to FlClash `Profile` / `ProfilesAction` and its database; Karing's `ServerManager` is not an alternate store.
 
-## 当前构建前置项
+Therefore, do not port Karing's full `V2RayTxtUtils` or `ServerManager` just because they exist upstream. First compare a concrete unsupported URI/protocol against FlClash's `decodeShareLinks` test vectors and the shipped Mihomo version. Only a demonstrated gap should become a small parser adapter with fixture tests.
 
-- 本地上游包含 101 个 screens 文件、66 个 utils 文件、28 个语言 JSON 和 29 个生成 Dart 文件。sentry_utils_private.dart 在工作区与 3c00ed64^ 历史中均缺失，本包增加了无遥测占位实现。
-- 当前上游混用历史工具与较新页面，仍有 13 个内部导入缺少对应文件。本地 Git 历史亦未找到相应路径。缺口包括 app/private/app_url_utils_private.dart，app/utils/ 下的 accessibility_utils.dart、device_utils.dart、icon_utils.dart、move_to_background_utils.dart、notice_utils.dart、package_manager_android.dart、process_utils_macos.dart、singbox_outbound.dart、system_utils.dart、vpn_action_handler.dart 和 webdav_client_utils.dart，以及 screens/statistics_records_screen.dart。需补入与页面同版本的源码。
-## 已知依赖冲突
+## Selective backend parity: Hysteria shorthand (2026-11-21)
 
-| 依赖 | Karing 声明 | FlClash 声明 |
-| --- | --- | --- |
-| `win32` | `5.11.0` | `^6.4.0` |
-| `win32_registry` | `1.1.5` | `^3.0.3` |
-| `file_picker` | `11.0.3` | `^12.3.0` |
-| `device_info_plus` | `11.3.0` | `^13.3.0` |
-| `package_info_plus` | `9.0.0` | `^10.2.2` |
-| `connectivity_plus` | `7.3.1` | `7.2.0` |
-| `launch_at_startup` | `hosted 0.2.2` | `Git fork 0.5.1` |
+The vendored Karing `v2ray_txt_utils.dart` recognizes `hy://` as an alias
+for Hysteria v1. In contrast, FlClash's pinned Mihomo
+`common/convert/converter.go` accepts `hysteria://` and the Hysteria v2
+`hy2://` alias but does **not** accept `hy://`. FlClash's
+`shareLinkSchemes` set also excluded it. This is a concrete, narrow gap.
 
-Pub 解析时只应用根包的 overrides。接入时需统一上列依赖并复核 Karing Git forks 及 WebView Linux 的平台依赖。当前未运行 Flutter 依赖解算及编译。
+The host app now accepts `hy://` in link fields and QR codes; its Go share-link
+boundary expands only the **line-leading** `hy://` prefix to
+`hysteria://` before passing the content to the *unchanged* pinned Mihomo
+converter. It also handles that alias inside a base64-encoded subscription.
+Mihomo still owns proxy parsing, validation, config generation and connection
+lifecycles. No Karing runtime dependency, screens, state or VPN bridge is
+introduced.
+
+Regression coverage: `test/common/link_test.dart` (URL and QR validation),
+`core/share_link_test.go` (plain, uppercase, base64 and mixed-line input,
+plus preservation of unrelated schemes and embedded URL text).
+
+**Non-goals:** WireGuard INI imports and special Karing `/karing/*` endpoints
+remain unimplemented; do not imply those features work without targeted
+host-core integration tests. The upstream's `hy2://` support was already
+present; it is not duplicated here.
+
+## What may be extracted
+
+Karing can be used as a reference when a concrete FlClash feature gap is identified. Prefer small, deterministic, independently testable functions over importing whole application modules. Potential audit areas include:
+
+- subscription and proxy URI parsing/conversion (for example `proxy_conf_utils.dart`, `v2ray_txt_utils.dart`, and `wireguard_conf_utils.dart`);
+- Clash/Sing-box configuration conversion and validation (for example `clash_to_singbox.dart`, `singbox_config_builder.dart`, and `conf_parser.dart`);
+- ruleset/diversion normalization (for example `ruleset_codes_utils.dart` and `diversion_custom_utils.dart`);
+- chain ordering and version comparison helpers.
+
+These are **candidates for review, not integrations already present**. Before porting any function:
+1. Identify a concrete FlClash feature gap and its existing owner/provider.
+2. Check the upstream license and preserve required attribution.
+3. Extract only the pure logic needed; remove hidden global state, Karing storage, app lifecycle, telemetry, and platform service dependencies.
+4. Adapt inputs/outputs to FlClash models and existing providers. Do not create a second profile/server/settings database.
+5. Add golden/fixture tests for valid inputs, malformed inputs, backwards compatibility and output equivalence.
+6. Verify the generated configuration is accepted by the exact Mihomo/Sing-box core version shipped by FlClash.
+
+## Core API and VPN boundaries
+
+Karing's `ClashApi` contains Karing-specific `/karing/*` endpoints. Do not assume the FlClash Mihomo build implements them. Use FlClash's existing `CoreController` API first; an optional endpoint must be capability-detected and covered by a core integration test before use.
+
+Do not reuse Karing's `ServerManager` or `SettingManager` for node selection, profile persistence or DNS. Do not reuse its `vpn_service` shim for VPN authorization, service state or lifecycle. FlClash's `AndroidManager` and native service remain authoritative.
+
+## Feature mapping
+
+| Capability | FlClash owner |
+| --- | --- |
+| DNS configuration and query history | Existing FlClash DNS config/provider and DNS page |
+| Diversion/routing rules | Existing FlClash Config → Rules and custom-profile Rules views |
+| Proxy selection, groups and URL tests | Existing FlClash CoreController, route tracker, proxy providers and Proxies page |
+| Connections and traffic | Existing CoreManager events, Requests provider and Requests page |
+| Profiles and subscriptions | Existing FlClash profile/config providers |
+| Backup/export/import | Existing FlClash Tools and profile/config storage |
+| Per-app proxy | Existing Android access-control and VPN service |
+| VPN/TUN and system proxy | Existing AndroidManager/native service and desktop proxy manager |
+
+No Karing page should be added to the navigation or More menu. Legacy `PageLabel.karing` is retained only as a persisted-value compatibility sentinel so an older saved tab falls back to the FlClash dashboard; it is not a live destination.

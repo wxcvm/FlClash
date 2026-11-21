@@ -2,7 +2,6 @@ import 'package:fl_clash/common/app_ports.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/ui/icons/app_glyphs.dart';
-import 'package:fl_clash/views/karing/karing_entry_view.dart';
 import 'package:fl_clash/views/views.dart';
 
 class Navigation implements NavigationPort {
@@ -63,12 +62,6 @@ class Navigation implements NavigationPort {
         label: PageLabel.tools,
         builder: (_) => const ToolsView(),
         modes: [NavigationItemMode.desktop, NavigationItemMode.mobile],
-      ),
-      NavigationItem(
-        glyph: AppGlyphs.puzzle,
-        label: PageLabel.karing,
-        builder: (_) => const KaringEntryView(),
-        modes: [NavigationItemMode.desktop, NavigationItemMode.moreFull],
       ),
     ];
   }

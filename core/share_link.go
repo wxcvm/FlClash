@@ -26,13 +26,39 @@ func handleEncodeShareLinks(params ProxiesParams) []string {
 func handleDecodeShareLinks(params LinesParams) [][]map[string]any {
 	results := make([][]map[string]any, len(params.Lines))
 	for i, line := range params.Lines {
-		proxies, err := convert.ConvertsV2Ray([]byte(line))
+		proxies, err := convert.ConvertsV2Ray([]byte(normalizeHysteriaShareLink(line)))
 		if err != nil {
 			proxies = []map[string]any{}
 		}
 		results[i] = proxies
 	}
 	return results
+}
+
+/*
+normalizeHysteriaShareLink accepts the "hy://" shorthand used by Karing,
+without replacing FlClash's existing Mihomo converter. Mihomo already handles
+"hysteria://" and "hy2://", but not the Hysteria v1 "hy://" alias.
+
+DecodeBase64 is intentionally used before scanning so a base64-encoded V2Ray
+subscription can contain this alias too. Only prefixes at the start of a line
+are rewritten: never rewrite a scheme embedded in a password, query or name.
+Other inputs are handed to the converter unchanged.
+*/
+func normalizeHysteriaShareLink(input string) string {
+	payload := string(convert.DecodeBase64([]byte(input)))
+	lines := strings.Split(payload, "\n")
+	changed := false
+	for i, line := range lines {
+		if len(line) >= len("hy://") && strings.EqualFold(line[:len("hy://")], "hy://") {
+			lines[i] = "hysteria://" + line[len("hy://"):]
+			changed = true
+		}
+	}
+	if changed {
+		return strings.Join(lines, "\n")
+	}
+	return input
 }
 
 type proxyFields map[string]any
