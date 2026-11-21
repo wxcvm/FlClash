@@ -100,11 +100,7 @@ void main() {
   testWidgets('desktop core status survives enlarged system text', (
     tester,
   ) async {
-    await pumpDashboard(
-      tester,
-      const Size(1440, 900),
-      textScale: 1.2,
-    );
+    await pumpDashboard(tester, const Size(1440, 900), textScale: 1.2);
     expect(find.byType(DesktopCoreStatusButton), findsOneWidget);
     expect(tester.takeException(), isNull);
 
