@@ -16,6 +16,19 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
+// Karing's pinned android_package_manager 0.7.1 plugin predates AGP namespace
+// requirements. Set its original manifest/package namespace before AGP creates
+// library variants; do not change the host app namespace or other plugins.
+subprojects {
+    if (name == "android_package_manager") {
+        pluginManager.withPlugin("com.android.library") {
+            extensions.configure<com.android.build.gradle.LibraryExtension> {
+                namespace = "lab.neruno.android_package_manager"
+            }
+        }
+    }
+}
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
