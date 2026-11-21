@@ -50,4 +50,5 @@ export 'system_fonts.dart';
 export 'task.dart';
 export 'task_pool.dart';
 export 'webdav.dart';
+export 'wireguard_quick.dart';
 export 'yaml.dart';
