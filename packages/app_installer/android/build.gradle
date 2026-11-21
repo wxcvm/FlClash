@@ -1,0 +1,19 @@
+// Vendored from BytesZero/app_installer v1.3.1 (Apache-2.0).
+// Use host AGP, not obsolete jcenter() repositories and AGP buildscript.
+group 'com.zero.app_installer'
+version '1.0-SNAPSHOT'
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.zero.app_installer'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 16
+    }
+}
+
+dependencies {
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+}
