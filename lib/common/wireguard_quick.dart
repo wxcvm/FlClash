@@ -287,8 +287,8 @@ InternetAddressType _addressFamily(String address) {
 }
 
 (String, int) _parseEndpoint(String value) {
-  final host;
-  final portString;
+  final String host;
+  final String portString;
   if (value.startsWith('[')) {
     final close = value.indexOf(']');
     if (close <= 1 || close + 1 >= value.length || value[close + 1] != ':') {

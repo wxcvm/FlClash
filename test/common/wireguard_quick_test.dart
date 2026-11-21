@@ -128,7 +128,7 @@ Endpoint = other.example.com:51820
 
   test('rejects invalid secrets without putting them into error messages', () {
     const secret = 'INVALID-PRIVATE-KEY-VALUE';
-    const conf = _basic.replaceFirst(_privateKey, secret);
+    final conf = _basic.replaceFirst(_privateKey, secret);
     try {
       parseWireGuardQuick(conf, fileName: 'wg.conf');
       fail('Malformed private key was accepted');
