@@ -14,6 +14,17 @@ FlClash remains the single source of truth:
 
 Do not reintroduce Karing screens, `KaringScope`, `KaringModule`, `SettingManager`, `ServerManager`, or the Karing `VPNService` shim into the host runtime. Those pieces own a second application lifecycle, storage model and state graph.
 
+## Existing FlClash capabilities checked
+
+Several Karing managers duplicate capabilities already owned by FlClash and should not be imported:
+
+- Share-link imports already go through `ProfilesAction.addProfileFromLink` and `CoreController.decodeShareLinks`; custom Clash YAML imports go through `readCustomProfileImport`. This is already the correct host integration point for proxy URI decoding and profile import.
+- Proxy group state, delay tests, automatic selection and recovery are owned by `ProxiesAction`, FlClash's route tracker and the core controller.
+- DNS queries, connection requests and traffic are consumed by `CoreManager` core events and written into FlClash providers.
+- Profile/subscription persistence belongs to FlClash `Profile` / `ProfilesAction` and its database; Karing's `ServerManager` is not an alternate store.
+
+Therefore, do not port Karing's full `V2RayTxtUtils` or `ServerManager` just because they exist upstream. First compare a concrete unsupported URI/protocol against FlClash's `decodeShareLinks` test vectors and the shipped Mihomo version. Only a demonstrated gap should become a small parser adapter with fixture tests.
+
 ## What may be extracted
 
 Karing can be used as a reference when a concrete FlClash feature gap is identified. Prefer small, deterministic, independently testable functions over importing whole application modules. Potential audit areas include:
