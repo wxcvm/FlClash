@@ -18,6 +18,51 @@ void main() {
     expect(await isProcessAlive(process.pid), isFalse);
   });
 
+  test('Linux proc stat handles embedded closing parentheses', () {
+    expect(
+      linuxProcStatIndicatesAlive('123 (worker) with ) chars) S 1 2'),
+      isTrue,
+    );
+    expect(
+      linuxProcStatIndicatesAlive('123 (worker) with ) chars) Z 1 2'),
+      isFalse,
+    );
+    expect(linuxProcStatIndicatesAlive('123 (worker) X 1 2'), isFalse);
+  });
+
+  test('inconclusive Linux proc stat is never mistaken for exit', () {
+    expect(linuxProcStatIndicatesAlive(''), isTrue);
+    expect(linuxProcStatIndicatesAlive('malformed'), isTrue);
+    expect(linuxProcStatIndicatesAlive('123 (worker) '), isTrue);
+  });
+
+  test('only Linux ENOENT proves a missing proc stat entry', () {
+    expect(
+      linuxProcStatIsMissing(
+        const FileSystemException(
+          'missing',
+          '/proc/123/stat',
+          OSError('ENOENT', 2),
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      linuxProcStatIsMissing(
+        const FileSystemException(
+          'denied',
+          '/proc/123/stat',
+          OSError('EACCES', 13),
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      linuxProcStatIsMissing(const FileSystemException('unknown')),
+      isFalse,
+    );
+  });
+
   test('non-positive pids are never alive', () async {
     expect(await isProcessAlive(0), isFalse);
     expect(await isProcessAlive(-1), isFalse);
