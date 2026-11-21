@@ -35,6 +35,11 @@ void main() {
     expect(linuxProcStatIndicatesAlive(''), isTrue);
     expect(linuxProcStatIndicatesAlive('malformed'), isTrue);
     expect(linuxProcStatIndicatesAlive('123 (worker) '), isTrue);
+    // A damaged header or state field must not release core ownership.
+    expect(linuxProcStatIndicatesAlive('garbled (worker) Z 1 2'), isTrue);
+    expect(linuxProcStatIndicatesAlive('123 worker) Z 1 2'), isTrue);
+    expect(linuxProcStatIndicatesAlive('123 (worker)Z 1 2'), isTrue);
+    expect(linuxProcStatIndicatesAlive('123 (worker) Zgarbled'), isTrue);
   });
 
   test('only Linux ENOENT proves a missing proc stat entry', () {
