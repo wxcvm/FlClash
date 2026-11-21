@@ -19,8 +19,14 @@ void main() {
   });
 
   test('Linux proc stat handles embedded closing parentheses', () {
-    expect(linuxProcStatIndicatesAlive('123 (worker) with ) chars) S 1 2'), isTrue);
-    expect(linuxProcStatIndicatesAlive('123 (worker) with ) chars) Z 1 2'), isFalse);
+    expect(
+      linuxProcStatIndicatesAlive('123 (worker) with ) chars) S 1 2'),
+      isTrue,
+    );
+    expect(
+      linuxProcStatIndicatesAlive('123 (worker) with ) chars) Z 1 2'),
+      isFalse,
+    );
     expect(linuxProcStatIndicatesAlive('123 (worker) X 1 2'), isFalse);
   });
 
@@ -33,13 +39,21 @@ void main() {
   test('only Linux ENOENT proves a missing proc stat entry', () {
     expect(
       linuxProcStatIsMissing(
-        const FileSystemException('missing', '/proc/123/stat', OSError('ENOENT', 2)),
+        const FileSystemException(
+          'missing',
+          '/proc/123/stat',
+          OSError('ENOENT', 2),
+        ),
       ),
       isTrue,
     );
     expect(
       linuxProcStatIsMissing(
-        const FileSystemException('denied', '/proc/123/stat', OSError('EACCES', 13)),
+        const FileSystemException(
+          'denied',
+          '/proc/123/stat',
+          OSError('EACCES', 13),
+        ),
       ),
       isFalse,
     );
