@@ -35,7 +35,6 @@ func handleDecodeShareLinks(params LinesParams) [][]map[string]any {
 	return results
 }
 
-
 /*
 normalizeHysteriaShareLink accepts the "hy://" shorthand used by Karing,
 without replacing FlClash's existing Mihomo converter. Mihomo already handles
