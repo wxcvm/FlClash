@@ -51,7 +51,8 @@ endfunction()
 # Retain -Werror for actual C++ warnings while allowing just unrecognised
 # warning-option diagnostics on older Clang versions.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 18)
-  add_compile_options(-Wno-error=unknown-warning-option)
+  # C compilation may still use GCC, which does not know this Clang flag.
+  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=unknown-warning-option>")
 endif()
 
 # Flutter library and tool build rules.
