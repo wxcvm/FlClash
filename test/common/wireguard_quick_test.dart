@@ -5,8 +5,8 @@ import 'package:fl_clash/common/wireguard_quick.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yaml/yaml.dart';
 
-const _privateKey = '$key32';
-const _publicKey = '$pub32';
+const _privateKey = 'AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=';
+const _publicKey = 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=';
 
 const _basic =
     '''
@@ -42,7 +42,7 @@ void main() {
   });
 
   test('preserves IPv6 endpoint and both address families', () {
-    final conf =
+    const conf =
         '''
 # comment
 [Interface]
@@ -81,7 +81,7 @@ Endpoint = [2001:db8::1]:51820
   });
 
   test('supports repeated Address and AllowedIPs directives', () {
-    final conf =
+    const conf =
         '''
 [Interface]
 PrivateKey = $_privateKey
@@ -99,7 +99,7 @@ Endpoint = wg.example.com:51820
   });
 
   test('rejects multiple peers rather than silently dropping one', () {
-    final conf =
+    const conf =
         '''
 $_basic
 [Peer]
@@ -128,7 +128,7 @@ Endpoint = other.example.com:51820
 
   test('rejects invalid secrets without putting them into error messages', () {
     const secret = 'INVALID-PRIVATE-KEY-VALUE';
-    final conf = _basic.replaceFirst(_privateKey, secret);
+    const conf = _basic.replaceFirst(_privateKey, secret);
     try {
       parseWireGuardQuick(conf, fileName: 'wg.conf');
       fail('Malformed private key was accepted');
