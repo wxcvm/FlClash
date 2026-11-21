@@ -25,6 +25,11 @@ Uint8List convertWireGuardQuickFile(
   Uint8List bytes, {
   required String fileName,
 }) {
+  // Never reinterpret YAML or other file formats as wg-quick when they
+  // happen to contain an [Interface] or [Peer] example block.
+  if (!fileName.toLowerCase().endsWith('.conf')) {
+    return bytes;
+  }
   final text = utf8.decode(bytes, allowMalformed: true);
   final proxy = parseWireGuardQuick(text, fileName: fileName);
   if (proxy == null) {
@@ -259,12 +264,18 @@ void _validateKey(String? value, String label) {
   throw WireGuardQuickImportException('Invalid WireGuard $label.');
 }
 
-List<String> _commaValues(String? value) => value == null
-    ? const []
-    : [
-        for (final item in value.split(','))
-          if (item.trim().isNotEmpty) item.trim(),
-      ];
+List<String> _commaValues(String? value) {
+  if (value == null) {
+    return const [];
+  }
+  final items = [for (final item in value.split(',')) item.trim()];
+  if (items.any((item) => item.isEmpty)) {
+    throw const WireGuardQuickImportException(
+      'Empty value in a WireGuard address, DNS, or route list.',
+    );
+  }
+  return items;
+}
 
 InternetAddressType _addressFamily(String address) {
   final pieces = address.split('/');

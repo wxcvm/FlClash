@@ -80,6 +80,34 @@ Endpoint = [2001:db8::1]:51820
     }
   });
 
+  test('never reinterprets non-conf files, even with WireGuard text', () {
+    final bytes = Uint8List.fromList(utf8.encode(_basic));
+    for (final fileName in ['notes.yaml', 'examples.txt', 'profile.json']) {
+      expect(
+        identical(convertWireGuardQuickFile(bytes, fileName: fileName), bytes),
+        isTrue,
+      );
+    }
+    // Case-insensitive .conf suffix remains supported.
+    expect(
+      identical(convertWireGuardQuickFile(bytes, fileName: 'HOME.CONF'), bytes),
+      isFalse,
+    );
+  });
+
+  test('rejects empty list items instead of silently dropping them', () {
+    for (final conf in [
+      _basic.replaceFirst('Address = 10.0.0.2/32', 'Address = ,10.0.0.2/32'),
+      _basic.replaceFirst('AllowedIPs = 0.0.0.0/0', 'AllowedIPs = 0.0.0.0/0,'),
+      _basic.replaceFirst('[Peer]', 'DNS = 1.1.1.1, \n[Peer]'),
+    ]) {
+      expect(
+        () => parseWireGuardQuick(conf, fileName: 'wg.conf'),
+        throwsA(isA<WireGuardQuickImportException>()),
+      );
+    }
+  });
+
   test('supports repeated Address and AllowedIPs directives', () {
     const conf =
         '''

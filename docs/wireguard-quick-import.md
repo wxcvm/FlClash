@@ -31,7 +31,9 @@ Mihomo outbound DNS settings (`remote-dns-resolve`), not OS DNS changes.
   keys/addresses/endpoints.
 
 Rejection happens before writing a profile; secrets are not echoed in errors.
-Unrelated YAML/files are passed through unchanged. Real VPN or OS routing
+Only files with a case-insensitive `.conf` extension are examined for
+wg-quick syntax; unrelated YAML/files are passed through unchanged. Empty
+comma-separated list entries are rejected instead of silently skipped. Real VPN or OS routing
 semantics cannot be represented by a single proxy and must not be silently
 flattened into one.
 
