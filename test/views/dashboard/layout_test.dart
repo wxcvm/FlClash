@@ -7,6 +7,7 @@ import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/views/dashboard/dashboard.dart';
 import 'package:fl_clash/views/dashboard/layout.dart';
 import 'package:fl_clash/views/dashboard/widgets/card.dart';
+import 'package:fl_clash/views/dashboard/widgets/desktop_core_status.dart';
 import 'package:fl_clash/views/dashboard/widgets/network_health.dart';
 import 'package:fl_clash/views/dashboard/widgets/widgets.dart';
 import 'package:flutter/rendering.dart';
@@ -95,6 +96,16 @@ void main() {
       .state<ScrollableState>(find.byType(Scrollable).first)
       .position
       .maxScrollExtent;
+
+  testWidgets('desktop core status survives enlarged system text', (
+    tester,
+  ) async {
+    await pumpDashboard(tester, const Size(1440, 900), textScale: 1.2);
+    expect(find.byType(DesktopCoreStatusButton), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await teardown(tester);
+  });
 
   testWidgets('the desktop fills the window with four rows, the controls '
       'under the exit', (tester) async {
