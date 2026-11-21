@@ -143,7 +143,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Match upstream Karing's unsupported-Linux-webview stub: no WPE runtime required.
+          # FlClash does not ship an embedded Linux WebView; no WPE runtime is needed.
           - platform: linux
             os: ubuntu-24.04
           - platform: windows

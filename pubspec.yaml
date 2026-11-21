@@ -74,18 +74,10 @@ dependencies:
     path: plugins/prism_ui
   setup:
     path: plugins/setup
-  karing:
-    path: packages/karing
-  vpn_service:
-    path: packages/vpn_service
-  provider: ^6.1.5+1
 # Use the upstream app_installer API with a patched local AGP-compatible copy.
 dependency_overrides:
   app_installer:
     path: packages/app_installer
-  # Karing does not support embedded Linux WebViews; use its no-op native plugin.
-  flutter_inappwebview_linux:
-    path: packages/flutter_inappwebview_linux_stub
 
 dev_dependencies:
   flutter_test:
@@ -105,8 +97,6 @@ dev_dependencies:
   mocktail: ^1.0.5
 
 flutter:
-  # Required by Karing's flutter_typeahead Material icon usage.
-  uses-material-design: true
   assets:
     - assets/data/
     - assets/fonts/

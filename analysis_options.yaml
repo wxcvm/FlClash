@@ -6,6 +6,9 @@ analyzer:
     - lib/l10n/intl/**
     - lib/**/generated/**
     - plugins/**
+    # Vendored Karing sources are reference-only, not part of the host app.
+    - packages/karing/**
+    - packages/vpn_service/**
     - android/**
     - ios/**
     - web/**
