@@ -35,6 +35,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Required by Karing's flutter_local_notifications Android plugin.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -108,6 +110,7 @@ dependencies {
     implementation(project(":service"))
     implementation(project(":common"))
     implementation(project(":core"))
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.core.splashscreen)
     implementation(libs.gson)
     implementation(libs.smali.dexlib2) {
