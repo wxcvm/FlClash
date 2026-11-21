@@ -8,7 +8,8 @@ import 'package:yaml/yaml.dart';
 const _privateKey = '$key32';
 const _publicKey = '$pub32';
 
-const _basic = '''
+const _basic =
+    '''
 [Interface]
 PrivateKey = $_privateKey
 Address = 10.0.0.2/32
@@ -24,10 +25,7 @@ PersistentKeepalive = 25
 void main() {
   test('converts one full-tunnel WireGuard peer to Mihomo YAML', () {
     final bytes = Uint8List.fromList(utf8.encode(_basic));
-    final converted = convertWireGuardQuickFile(
-      bytes,
-      fileName: 'Home.conf',
-    );
+    final converted = convertWireGuardQuickFile(bytes, fileName: 'Home.conf');
     final data = loadYaml(utf8.decode(converted)) as Map;
     final proxy = (data['proxies'] as List).single as Map;
 
@@ -44,7 +42,8 @@ void main() {
   });
 
   test('preserves IPv6 endpoint and both address families', () {
-    final conf = '''
+    final conf =
+        '''
 # comment
 [Interface]
 PrivateKey = $_privateKey
@@ -82,7 +81,8 @@ Endpoint = [2001:db8::1]:51820
   });
 
   test('supports repeated Address and AllowedIPs directives', () {
-    final conf = '''
+    final conf =
+        '''
 [Interface]
 PrivateKey = $_privateKey
 Address = 10.0.0.2/32
@@ -99,7 +99,8 @@ Endpoint = wg.example.com:51820
   });
 
   test('rejects multiple peers rather than silently dropping one', () {
-    final conf = '''
+    final conf =
+        '''
 $_basic
 [Peer]
 PublicKey = $_publicKey

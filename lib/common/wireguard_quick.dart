@@ -31,7 +31,11 @@ Uint8List convertWireGuardQuickFile(
     return bytes;
   }
   return Uint8List.fromList(
-    utf8.encode(yaml.encode({'proxies': [proxy]})),
+    utf8.encode(
+      yaml.encode({
+        'proxies': [proxy],
+      }),
+    ),
   );
 }
 
@@ -331,7 +335,7 @@ bool _validHost(String host) {
     return false;
   }
   final labelPattern = RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$');
-  return host.split('.').every(
-    (label) => label.length <= 63 && labelPattern.hasMatch(label),
-  );
+  return host
+      .split('.')
+      .every((label) => label.length <= 63 && labelPattern.hasMatch(label));
 }
