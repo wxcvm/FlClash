@@ -25,6 +25,31 @@ Several Karing managers duplicate capabilities already owned by FlClash and shou
 
 Therefore, do not port Karing's full `V2RayTxtUtils` or `ServerManager` just because they exist upstream. First compare a concrete unsupported URI/protocol against FlClash's `decodeShareLinks` test vectors and the shipped Mihomo version. Only a demonstrated gap should become a small parser adapter with fixture tests.
 
+## Selective backend parity: Hysteria shorthand (2026-11-21)
+
+The vendored Karing `v2ray_txt_utils.dart` recognizes `hy://` as an alias
+for Hysteria v1. In contrast, FlClash's pinned Mihomo
+`common/convert/converter.go` accepts `hysteria://` and the Hysteria v2
+`hy2://` alias but does **not** accept `hy://`. FlClash's
+`shareLinkSchemes` set also excluded it. This is a concrete, narrow gap.
+
+The host app now accepts `hy://` in link fields and QR codes; its Go share-link
+boundary expands only the **line-leading** `hy://` prefix to
+`hysteria://` before passing the content to the *unchanged* pinned Mihomo
+converter. It also handles that alias inside a base64-encoded subscription.
+Mihomo still owns proxy parsing, validation, config generation and connection
+lifecycles. No Karing runtime dependency, screens, state or VPN bridge is
+introduced.
+
+Regression coverage: `test/common/link_test.dart` (URL and QR validation),
+`core/share_link_test.go` (plain, uppercase, base64 and mixed-line input,
+plus preservation of unrelated schemes and embedded URL text).
+
+**Non-goals:** WireGuard INI imports and special Karing `/karing/*` endpoints
+remain unimplemented; do not imply those features work without targeted
+host-core integration tests. The upstream's `hy2://` support was already
+present; it is not duplicated here.
+
 ## What may be extracted
 
 Karing can be used as a reference when a concrete FlClash feature gap is identified. Prefer small, deterministic, independently testable functions over importing whole application modules. Potential audit areas include:
