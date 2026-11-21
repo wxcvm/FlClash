@@ -83,7 +83,7 @@ class _DesktopCoreStatusButtonState
     );
     final compact =
         MediaQuery.sizeOf(context).width < 1100 ||
-        MediaQuery.textScalerOf(context).scale(1) > 1.25;
+        MediaQuery.textScalerOf(context).scale(1) > 1.1;
     void openManagement() {
       unawaited(
         showSheet<void>(
