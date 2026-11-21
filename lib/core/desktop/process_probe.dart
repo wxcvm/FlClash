@@ -30,7 +30,7 @@ Future<bool> _isLinuxProcessAlive(int pid) async {
     // and other failures are inconclusive: do not release network ownership.
     return !linuxProcStatIsMissing(error);
   }
-  return linuxProcStatIndicatesAlive(stat);
+  return linuxProcStatIndicatesAlive(stat, expectedPid: pid);
 }
 
 /// Missing /proc entry is different from an unreadable process entry.
@@ -40,10 +40,15 @@ bool linuxProcStatIsMissing(FileSystemException error) =>
 
 /// Parse the state after the final ')' because a process name may contain ')'.
 /// Malformed or unknown states must not authorize a competing core to start.
-bool linuxProcStatIndicatesAlive(String stat) {
+bool linuxProcStatIndicatesAlive(String stat, {int? expectedPid}) {
   // A truncated or malformed stat line is inconclusive, not proof of exit.
   // The kernel format is: pid (comm) state ...; comm can contain ')'.
   if (!RegExp(r'^\d+ \(').hasMatch(stat)) return true;
+  // A mismatched record cannot prove that the requested PID exited.
+  if (expectedPid != null &&
+      int.tryParse(stat.substring(0, stat.indexOf(' '))) != expectedPid) {
+    return true;
+  }
   final closeParen = stat.lastIndexOf(')');
   if (closeParen < 0 || closeParen + 1 >= stat.length) return true;
   final suffix = stat.substring(closeParen + 1);
