@@ -7,27 +7,56 @@
 #include "generated_plugin_registrant.h"
 
 #include <app_links_linux/app_links_plugin_linux.h>
+#include <build_info_linux/build_info_linux_plugin.h>
 #include <dynamic_color/dynamic_color_plugin.h>
 #include <file_selector_linux/file_selector_plugin.h>
+#include <flutter_inappwebview_linux/flutter_inappwebview_linux_plugin.h>
+#include <flutter_secure_storage_linux/flutter_secure_storage_linux_plugin.h>
+#include <hotkey_manager_linux/hotkey_manager_linux_plugin.h>
+#include <open_dir_linux/open_dir_linux_plugin.h>
+#include <open_file_linux/open_file_linux_plugin.h>
 #include <screen_retriever_linux/screen_retriever_linux_plugin.h>
+#include <sentry_flutter/sentry_flutter_plugin.h>
 #include <tray/tray_plugin.h>
 #include <url_launcher_linux/url_launcher_plugin.h>
 #include <wifi_ssid/wifi_ssid_plugin.h>
 #include <window/window_plugin.h>
+#include <window_manager/window_manager_plugin.h>
 
 void fl_register_plugins(FlPluginRegistry* registry) {
   g_autoptr(FlPluginRegistrar) app_links_linux_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "AppLinksPluginLinux");
   app_links_plugin_linux_register_with_registrar(app_links_linux_registrar);
+  g_autoptr(FlPluginRegistrar) build_info_linux_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "BuildInfoLinuxPlugin");
+  build_info_linux_plugin_register_with_registrar(build_info_linux_registrar);
   g_autoptr(FlPluginRegistrar) dynamic_color_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "DynamicColorPlugin");
   dynamic_color_plugin_register_with_registrar(dynamic_color_registrar);
   g_autoptr(FlPluginRegistrar) file_selector_linux_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "FileSelectorPlugin");
   file_selector_plugin_register_with_registrar(file_selector_linux_registrar);
+  g_autoptr(FlPluginRegistrar) flutter_inappwebview_linux_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "FlutterInappwebviewLinuxPlugin");
+  flutter_inappwebview_linux_plugin_register_with_registrar(flutter_inappwebview_linux_registrar);
+  g_autoptr(FlPluginRegistrar) flutter_secure_storage_linux_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "FlutterSecureStorageLinuxPlugin");
+  flutter_secure_storage_linux_plugin_register_with_registrar(flutter_secure_storage_linux_registrar);
+  g_autoptr(FlPluginRegistrar) hotkey_manager_linux_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "HotkeyManagerLinuxPlugin");
+  hotkey_manager_linux_plugin_register_with_registrar(hotkey_manager_linux_registrar);
+  g_autoptr(FlPluginRegistrar) open_dir_linux_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "OpenDirLinuxPlugin");
+  open_dir_linux_plugin_register_with_registrar(open_dir_linux_registrar);
+  g_autoptr(FlPluginRegistrar) open_file_linux_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "OpenFileLinuxPlugin");
+  open_file_linux_plugin_register_with_registrar(open_file_linux_registrar);
   g_autoptr(FlPluginRegistrar) screen_retriever_linux_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "ScreenRetrieverLinuxPlugin");
   screen_retriever_linux_plugin_register_with_registrar(screen_retriever_linux_registrar);
+  g_autoptr(FlPluginRegistrar) sentry_flutter_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "SentryFlutterPlugin");
+  sentry_flutter_plugin_register_with_registrar(sentry_flutter_registrar);
   g_autoptr(FlPluginRegistrar) tray_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "TrayPlugin");
   tray_plugin_register_with_registrar(tray_registrar);
@@ -40,4 +69,7 @@ void fl_register_plugins(FlPluginRegistry* registry) {
   g_autoptr(FlPluginRegistrar) window_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "WindowPlugin");
   window_plugin_register_with_registrar(window_registrar);
+  g_autoptr(FlPluginRegistrar) window_manager_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "WindowManagerPlugin");
+  window_manager_plugin_register_with_registrar(window_manager_registrar);
 }

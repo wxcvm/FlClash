@@ -1,8 +1,13 @@
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/l10n/l10n.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/color.dart';
 
 import 'app_localizations.dart';
+
+extension KaringBrandL10n on AppLocalizations {
+  String get karing => 'Karing';
+}
 
 extension PageLabelL10n on PageLabel {
   String get label {
@@ -16,6 +21,7 @@ extension PageLabelL10n on PageLabel {
       PageLabel.requests => appLocalizations.requests,
       PageLabel.resources => appLocalizations.resources,
       PageLabel.dns => appLocalizations.dnsQueries,
+      PageLabel.karing => appLocalizations.karing,
     };
   }
 }

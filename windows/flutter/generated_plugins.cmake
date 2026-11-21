@@ -4,18 +4,28 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
+  build_info_windows
   connectivity_plus
   dynamic_color
   file_selector_windows
+  flutter_inappwebview_windows
+  flutter_secure_storage_windows
+  hotkey_manager_windows
+  open_dir_windows
+  permission_handler_windows
   proxy
   screen_retriever_windows
+  sentry_flutter
+  share_plus
   tray
   url_launcher_windows
   wifi_ssid
   window
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  flutter_local_notifications_windows
   jni
 )
 

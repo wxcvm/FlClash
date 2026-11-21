@@ -3,7 +3,7 @@ description: A multi-platform proxy client based on ClashMeta, simple and easy t
 publish_to: 'none'
 version: 0.9.3+2026110401
 environment:
-  sdk: '>=3.10.0 <4.0.0'
+  sdk: '>=3.12.0 <4.0.0'
 
 hooks:
   user_defines:
@@ -74,6 +74,11 @@ dependencies:
     path: plugins/prism_ui
   setup:
     path: plugins/setup
+  karing:
+    path: packages/karing
+  vpn_service:
+    path: packages/vpn_service
+  provider: ^6.1.5+1
 dev_dependencies:
   flutter_test:
     sdk: flutter
