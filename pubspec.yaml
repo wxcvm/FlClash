@@ -79,6 +79,11 @@ dependencies:
   vpn_service:
     path: packages/vpn_service
   provider: ^6.1.5+1
+# Use the upstream app_installer API with a patched local AGP-compatible copy.
+dependency_overrides:
+  app_installer:
+    path: packages/app_installer
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
