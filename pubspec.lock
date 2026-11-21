@@ -755,13 +755,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.2.0-beta.3"
-  flutter_inappwebview_linux:
-    dependency: transitive
-    description:
-      path: "packages/flutter_inappwebview_linux_stub"
-      relative: true
-    source: path
-    version: "0.1.0-beta.1"
   flutter_inappwebview_macos:
     dependency: transitive
     description:
@@ -1241,13 +1234,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.14.1"
-  karing:
-    dependency: "direct main"
-    description:
-      path: "packages/karing"
-      relative: true
-    source: path
-    version: "1.2.26+2934"
   launch_at_startup:
     dependency: "direct main"
     description:
@@ -1728,14 +1714,6 @@ packages:
       relative: true
     source: path
     version: "0.1.2"
-  provider:
-    dependency: "direct main"
-    description:
-      name: provider
-      sha256: "4e82183fa20e5ca25703ead7e05de9e4cceed1fbd1eadc1ac3cb6f565a09f272"
-      url: "https://pub.dev"
-    source: hosted
-    version: "6.1.5+1"
   proxy:
     dependency: "direct main"
     description:
@@ -2480,13 +2458,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "15.3.0"
-  vpn_service:
-    dependency: "direct main"
-    description:
-      path: "packages/vpn_service"
-      relative: true
-    source: path
-    version: "1.0.0"
   watcher:
     dependency: transitive
     description:
