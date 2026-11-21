@@ -1,4 +1,4 @@
-# Karing 接入 FlClash
+# Karing 底层代码暂存与 FlClash 原生界面集成原则
 
 ## 包结构
 
@@ -6,11 +6,13 @@
 - [vpn_service](<vpn_service/pubspec.yaml>) 是纯 Dart shim。依赖关系为 fl_clash → karing → vpn_service。Karing 使用 ../vpn_service 路径依赖。宿主直接导入 VPN 类型时也需声明路径依赖。
 - [build.yaml](<karing/build.yaml>) 及其 builder 按上游复制，用于生成构建时间。Slang 已生成文件记录的更新命令为 dart run slang。
 
-## 页面调用
+## 界面与宿主边界
 
-在 FlClash 路由或视图包装器中导入所需页面。例如导入 package:karing/screens/diversion_rules_screen.dart，在宿主 Navigator 中以 MaterialPageRoute 打开 const DiversionRulesScreen()。备份同步与二维码页面的参数以各页面构造函数为准。
+FlClash 始终使用自己的 Dashboard、Proxies、Profiles、Requests、DNS、Tools、设置和 Android 原生 VPN 界面；**不再暴露独立的 Karing 导航、页面列表或 KaringScope**。不要将 `package:karing/screens/...` 中的页面直接加入 FlClash 路由，也不要把 Karing 的 TranslationProvider 放回应用根节点。
 
-在页面祖先中挂载 Karing 生成的 TranslationProvider，使 Translations.of(context) 可用，并让 FlClash 的语言设置同步到 LocaleSettings。由宿主注入页面依赖的设置、服务器数据和路径，避免启动 Karing 的完整应用引导流程及其独立后台服务。
+`packages/karing` 和 `lib/features/karing` 目前仅留作代码评估与后续底层能力迁移的暂存区，不代表这些模块已对接 FlClash 的运行核心。任何有价值的能力都须通过 FlClash 的 Riverpod providers、CoreManager 和 AndroidManager 实现单一状态来源，再使用既有 FlClash UI 展示。未经接线验证，不要直接让 `SettingManager`、`ServerManager` 或 Karing 的假 VPN 桥接代替宿主的配置、节点切换、DNS 或连接状态。
+
+优先把功能映射到已有页面：DNS → FlClash DNS/高级配置；节点选择与测速组 → Proxies；连接列表 → Requests；备份与同步 → Tools/备份；分应用代理 → Android 访问控制。
 
 ## VPN 接口与下一步
 
