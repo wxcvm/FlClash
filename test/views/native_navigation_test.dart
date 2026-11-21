@@ -12,15 +12,9 @@ void main() {
           hasProxies: hasProxies,
         );
 
-        expect(
-          items.any((item) => item.label == PageLabel.karing),
-          isFalse,
-        );
+        expect(items.any((item) => item.label == PageLabel.karing), isFalse);
         // A restored tab from a previous preview must fall back safely.
-        expect(
-          shownPageLabelOf(PageLabel.karing, items),
-          PageLabel.dashboard,
-        );
+        expect(shownPageLabelOf(PageLabel.karing, items), PageLabel.dashboard);
       }
     }
   });
