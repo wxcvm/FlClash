@@ -28,6 +28,7 @@ void main() {
       isFalse,
     );
     expect(linuxProcStatIndicatesAlive('123 (worker) X 1 2'), isFalse);
+    expect(linuxProcStatIndicatesAlive('123 (worker) x 1 2'), isFalse);
   });
 
   test('inconclusive Linux proc stat is never mistaken for exit', () {
