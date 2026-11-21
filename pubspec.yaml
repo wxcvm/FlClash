@@ -83,6 +83,9 @@ dependencies:
 dependency_overrides:
   app_installer:
     path: packages/app_installer
+  # Karing does not support embedded Linux WebViews; use its no-op native plugin.
+  flutter_inappwebview_linux:
+    path: packages/flutter_inappwebview_linux_stub
 
 dev_dependencies:
   flutter_test:

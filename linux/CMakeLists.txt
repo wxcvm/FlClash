@@ -46,15 +46,6 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_definitions(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
 endfunction()
 
-# flutter_inappwebview_linux unconditionally adds -Wno-deprecated-literal-operator,
-# a diagnostic supported by newer Clang but not Ubuntu 22.04's default Clang.
-# Retain -Werror for actual C++ warnings while allowing just unrecognised
-# warning-option diagnostics on older Clang versions.
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 18)
-  # C compilation may still use GCC, which does not know this Clang flag.
-  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=unknown-warning-option>")
-endif()
-
 # Flutter library and tool build rules.
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
