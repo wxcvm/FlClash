@@ -102,6 +102,8 @@ dev_dependencies:
   mocktail: ^1.0.5
 
 flutter:
+  # Required by Karing's flutter_typeahead Material icon usage.
+  uses-material-design: true
   assets:
     - assets/data/
     - assets/fonts/
