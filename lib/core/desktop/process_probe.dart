@@ -46,7 +46,7 @@ bool linuxProcStatIndicatesAlive(String stat) {
   final remainder = stat.substring(closeParen + 1).trimLeft();
   if (remainder.isEmpty) return true;
   final state = remainder[0];
-  if (state == 'Z' || state == 'X') return false;
+  if (state == 'Z' || state == 'X' || state == 'x') return false;
   return true;
 }
 
