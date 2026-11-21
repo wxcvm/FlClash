@@ -66,7 +66,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           : appLocalizations.dashboard,
       actions: [
         if (!editable) const UpdateStatusButton(),
-        if (!editing && !editable && system.isDesktop && scale <= 1.1)
+        if (!editing && !editable && system.isDesktop)
           const DesktopCoreStatusButton(),
         if (!editing && coreLib == null) const CoreStatusButton(),
       ],
