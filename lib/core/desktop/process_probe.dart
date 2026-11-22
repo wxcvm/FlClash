@@ -63,7 +63,11 @@ bool _isWindowsProcessAlive(int pid) {
       >('CloseHandle');
 
   // WaitForSingleObject requires SYNCHRONIZE access, not just query rights.
-  final handle = openProcess(_processQueryLimitedInformation | _synchronize, 0, pid);
+  final handle = openProcess(
+    _processQueryLimitedInformation | _synchronize,
+    0,
+    pid,
+  );
   if (handle == nullptr) {
     return getLastError() != _errorInvalidParameter;
   }
