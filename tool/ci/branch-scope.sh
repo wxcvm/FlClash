@@ -12,6 +12,8 @@ found=false
 while IFS= read -r -d '' path; do
   found=true
   case "$path" in
+    # Desktop core ownership/liveness changes require native desktop builds.
+    lib/core/desktop/process_probe.dart|test/core/desktop/process_probe_test.dart) echo false; exit 0 ;;
     lib/*.dart|test/*.dart) ;;
     *) echo false; exit 0 ;;
   esac
