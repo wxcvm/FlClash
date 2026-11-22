@@ -21,6 +21,16 @@ touch lib/common/request.dart test/common/request_test.dart
 commit
 check true
 git reset -q --hard "$base"
+mkdir -p lib/core/desktop
+touch lib/core/desktop/process_probe.dart
+commit
+check false
+git reset -q --hard "$base"
+mkdir -p test/core/desktop
+touch test/core/desktop/process_probe_test.dart
+commit
+check false
+git reset -q --hard "$base"
 mkdir -p lib/core/desktop test/core/desktop
 touch lib/core/desktop/process_probe.dart test/core/desktop/process_probe_test.dart
 commit
