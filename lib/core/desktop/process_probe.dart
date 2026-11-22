@@ -31,6 +31,7 @@ Future<bool> _isLinuxProcessAlive(int pid) async {
 }
 
 const _processQueryLimitedInformation = 0x1000;
+const _synchronize = 0x00100000;
 const _errorInvalidParameter = 87;
 const _waitObject0 = 0;
 
@@ -61,7 +62,8 @@ bool _isWindowsProcessAlive(int pid) {
         int Function(Pointer<Void>)
       >('CloseHandle');
 
-  final handle = openProcess(_processQueryLimitedInformation, 0, pid);
+  // WaitForSingleObject requires SYNCHRONIZE access, not just query rights.
+  final handle = openProcess(_processQueryLimitedInformation | _synchronize, 0, pid);
   if (handle == nullptr) {
     return getLastError() != _errorInvalidParameter;
   }
