@@ -211,6 +211,7 @@ extension ProfileExtension on Profile {
     Uint8List bytes, {
     required ValidateConfig validate,
     bool decompress = false,
+    bool Function()? canCommit,
   }) async {
     final path = await appPath.tempFilePath;
     final tempFile = File(path);
@@ -220,7 +221,7 @@ extension ProfileExtension on Profile {
       } else {
         await tempFile.safeWriteAsBytes(bytes);
       }
-      return await _saveValidatedFile(tempFile, validate);
+      return await _saveValidatedFile(tempFile, validate, canCommit: canCommit);
     } finally {
       await tempFile.safeDelete();
     }
