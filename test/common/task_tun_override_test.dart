@@ -123,24 +123,21 @@ void main() {
     },
   );
 
-  test(
-    'selected route exclusion replaces the subscription value',
-    () async {
-      final tun = await _tunOf(
-        rawConfig: {
-          'tun': {
-            'route-exclude-address': ['203.0.113.0/24'],
-          },
+  test('selected route exclusion replaces the subscription value', () async {
+    final tun = await _tunOf(
+      rawConfig: {
+        'tun': {
+          'route-exclude-address': ['203.0.113.0/24'],
         },
-        overrides: const ProfileOverrides(
-          tun: ProfileTun(routeExcludeAddress: ['198.51.100.0/24']),
-          tunOverrideKeys: {TunOverrideKey.routeExcludeAddress},
-        ),
-      );
+      },
+      overrides: const ProfileOverrides(
+        tun: ProfileTun(routeExcludeAddress: ['198.51.100.0/24']),
+        tunOverrideKeys: {TunOverrideKey.routeExcludeAddress},
+      ),
+    );
 
-      expect(tun['route-exclude-address'], ['198.51.100.0/24']);
-    },
-  );
+    expect(tun['route-exclude-address'], ['198.51.100.0/24']);
+  });
 
   test(
     'private-route bypass does not duplicate an existing exclusion',
