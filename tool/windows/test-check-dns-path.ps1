@@ -21,6 +21,20 @@ function curl.exe {
     return '204 0.2|198.18.0.1'
 }
 $script = Join-Path $PSScriptRoot 'check-dns-path.ps1'
+# Reject credential-bearing URLs before running curl or network probes.
+foreach ($unsafeUrl in @(
+    'https://user:secret@example.com/probe',
+    'https://example.com/probe?token=secret',
+    'https://example.com/probe#secret'
+)) {
+    $rejected = $false
+    try {
+        & $script -ResolverHost 'resolver.example' -TestUrl $unsafeUrl | Out-Null
+    } catch {
+        $rejected = $true
+    }
+    if (-not $rejected) { throw "Accepted unsafe probe URL: $unsafeUrl" }
+}
 $legacy = & $script -ResolverHost 'resolver.example' | ConvertFrom-Json
 if ($legacy.noApplicationProxy.httpAndSeconds -ne '204 0.2' -or
     $legacy.noApplicationProxy.PSObject.Properties['route']) {
