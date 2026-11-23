@@ -46,6 +46,27 @@ void main() {
       expect(await savedFile.length(), 0);
     });
 
+    test('stale validated update cannot overwrite existing bytes', () async {
+      final profile = Profile.normal(label: 'stale');
+      final savedFile = await profile.file;
+      await savedFile.writeAsString('proxies: []');
+      var current = true;
+
+      await expectLater(
+        profile.saveFile(
+          Uint8List.fromList(utf8.encode('proxies: [stale]')),
+          validate: (_, _) async {
+            current = false; // Simulate an edit during asynchronous validation.
+            return null;
+          },
+          canCommit: () => current,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(await savedFile.readAsString(), 'proxies: []');
+    });
+
     test('copies validated bytes and stamps the update time', () async {
       final profile = Profile.normal(label: 'p');
       final bytes = Uint8List.fromList(utf8.encode('proxies: []'));
