@@ -183,7 +183,10 @@ extension ProfileExtension on Profile {
     return _getFile();
   }
 
-  Future<Profile> update({required ValidateConfig validate}) async {
+  Future<Profile> update({
+    required ValidateConfig validate,
+    bool Function()? canCommit,
+  }) async {
     final download = File(await appPath.tempFilePath);
     final inflated = File('${download.path}.inflated');
     try {
@@ -197,7 +200,7 @@ extension ProfileExtension on Profile {
           defaultLabel,
         ]),
         subscriptionInfo: SubscriptionInfo.formHString(userinfo),
-      )._saveValidatedFile(config, validate);
+      )._saveValidatedFile(config, validate, canCommit: canCommit);
     } finally {
       await inflated.safeDelete();
       await download.safeDelete();
@@ -225,12 +228,16 @@ extension ProfileExtension on Profile {
 
   Future<Profile> _saveValidatedFile(
     File tempFile,
-    ValidateConfig validate,
-  ) async {
+    ValidateConfig validate, {
+    bool Function()? canCommit,
+  }) async {
     if (await validate(tempFile.path, ageSecretKey) case final issue?) {
       throw MessageException(issue);
     }
     final mFile = await file;
+    if (canCommit != null && !canCommit()) {
+      throw StateError('Profile changed during update');
+    }
     await tempFile.copy(mFile.path);
     return copyWith(lastUpdateDate: DateTime.now());
   }
