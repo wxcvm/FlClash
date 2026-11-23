@@ -107,6 +107,54 @@ void main() {
     },
   );
 
+  test('preserves subscription route exclusions without a selected override', () async {
+    final tun = await _tunOf(
+      rawConfig: {
+        'tun': {
+          'route-exclude-address': ['203.0.113.0/24'],
+        },
+      },
+      overrides: const ProfileOverrides(),
+    );
+
+    expect(tun['route-exclude-address'], ['203.0.113.0/24']);
+  });
+
+  test('selected route exclusion replaces the subscription value', () async {
+    final tun = await _tunOf(
+      rawConfig: {
+        'tun': {
+          'route-exclude-address': ['203.0.113.0/24'],
+        },
+      },
+      overrides: const ProfileOverrides(
+        tun: ProfileTun(routeExcludeAddress: ['198.51.100.0/24']),
+        tunOverrideKeys: {TunOverrideKey.routeExcludeAddress},
+      ),
+    );
+
+    expect(tun['route-exclude-address'], ['198.51.100.0/24']);
+  });
+
+  test('private-route bypass does not duplicate an existing exclusion', () async {
+    final existing = privateRouteAddress.first;
+    final tun = await _tunOf(
+      rawConfig: {
+        'tun': {
+          'route-exclude-address': [existing, '203.0.113.0/24'],
+        },
+      },
+      overrides: const ProfileOverrides(),
+      bypassPrivateRoute: true,
+    );
+
+    expect(tun['route-exclude-address'], [
+      existing,
+      '203.0.113.0/24',
+      ...privateRouteAddress.where((route) => route != existing),
+    ]);
+  });
+
   test('leaves the profile alone without picked keys', () async {
     final tun = await _tunOf(
       rawConfig: {
