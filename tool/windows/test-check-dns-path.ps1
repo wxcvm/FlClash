@@ -33,7 +33,7 @@ foreach ($unsafeUrl in @(
     } catch {
         $rejected = $true
     }
-    if (-not $rejected) { throw "Accepted unsafe probe URL: $unsafeUrl" }
+    if (-not $rejected) { throw 'Accepted unsafe probe URL' }
 }
 $legacy = & $script -ResolverHost 'resolver.example' | ConvertFrom-Json
 if ($legacy.noApplicationProxy.httpAndSeconds -ne '204 0.2' -or
