@@ -65,6 +65,15 @@ void main() {
     expect(finding.detail, contains('（/16）'));
   });
 
+  test('ignores non-contiguous masks rather than treating them as CIDR', () {
+    final finding = inspectWindowsTunFakeIpRoute(
+      '$_physical$_tunLocal'
+      '196.0.0.0 252.0.0.1 On-link 198.18.0.1 1\n',
+    );
+    expect(finding.escaped, isTrue);
+    expect(finding.detail, contains('192.0.2.20'));
+  });
+
   test('a lower metric wins between equal-length routes', () {
     final finding = inspectWindowsTunFakeIpRoute(
       '$_physical$_tunLocal'

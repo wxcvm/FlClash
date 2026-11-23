@@ -52,6 +52,8 @@ List<_WindowsIpv4Route> _parseWindowsIpv4Routes(String output) {
     final metric = int.tryParse(match[4]!);
     if (network == null ||
         mask == null ||
+        // Reject non-contiguous masks: bit counts alone are not CIDR lengths.
+        ((~mask & 0xffffffff) & ((~mask & 0xffffffff) + 1)) != 0 ||
         _ipv4(interfaceAddress) == null ||
         metric == null) {
       continue;
