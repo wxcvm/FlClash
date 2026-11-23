@@ -217,52 +217,59 @@ void main() {
     },
   );
 
-  test('mixed DNS answers still flag a later Fake-IP in AdGuard mode', () async {
-    final checks = await DesktopNetworkDiagnostics(
-      systemDns: (host) async {
-        if (host != 'example.com') {
-          throw const SocketException('NXDOMAIN');
-        }
-        return [
-          InternetAddress('93.184.215.14'),
-          InternetAddress('198.19.0.8'),
-        ];
-      },
-      windowsRoutes: () async => '',
-    ).run(
-      engine: 'Mihomo',
-      running: true,
-      switching: false,
-      systemProxyEnabled: false,
-      nativeSystemProxy: false,
-      nativeEngine: false,
-      proxyPort: null,
-      tunConfigured: false,
-      followingWindowsDns: true,
-    );
-    final dns = checks.singleWhere((check) => check.title == 'Windows 系统 DNS');
-    expect(dns.state, NetworkCheckState.warning);
-    expect(dns.detail, contains('疑似 Fake-IP'));
-    expect(dns.detail, contains('93.184.215.14'));
-  });
+  test(
+    'mixed DNS answers still flag a later Fake-IP in AdGuard mode',
+    () async {
+      final checks =
+          await DesktopNetworkDiagnostics(
+            systemDns: (host) async {
+              if (host != 'example.com') {
+                throw const SocketException('NXDOMAIN');
+              }
+              return [
+                InternetAddress('93.184.215.14'),
+                InternetAddress('198.19.0.8'),
+              ];
+            },
+            windowsRoutes: () async => '',
+          ).run(
+            engine: 'Mihomo',
+            running: true,
+            switching: false,
+            systemProxyEnabled: false,
+            nativeSystemProxy: false,
+            nativeEngine: false,
+            proxyPort: null,
+            tunConfigured: false,
+            followingWindowsDns: true,
+          );
+      final dns = checks.singleWhere(
+        (check) => check.title == 'Windows 系统 DNS',
+      );
+      expect(dns.state, NetworkCheckState.warning);
+      expect(dns.detail, contains('疑似 Fake-IP'));
+      expect(dns.detail, contains('93.184.215.14'));
+    },
+  );
 
   test('mixed DNS answers do not claim Fake-IP outside AdGuard mode', () async {
-    final checks = await DesktopNetworkDiagnostics(
-      systemDns: (_) async => [
-        InternetAddress('93.184.215.14'),
-        InternetAddress('198.18.0.8'),
-      ],
-      windowsRoutes: () async => '',
-    ).run(
-      engine: 'Mihomo',
-      running: true,
-      switching: false,
-      systemProxyEnabled: false,
-      nativeSystemProxy: false,
-      nativeEngine: false,
-      proxyPort: null,
-      tunConfigured: false,
-    );
+    final checks =
+        await DesktopNetworkDiagnostics(
+          systemDns: (_) async => [
+            InternetAddress('93.184.215.14'),
+            InternetAddress('198.18.0.8'),
+          ],
+          windowsRoutes: () async => '',
+        ).run(
+          engine: 'Mihomo',
+          running: true,
+          switching: false,
+          systemProxyEnabled: false,
+          nativeSystemProxy: false,
+          nativeEngine: false,
+          proxyPort: null,
+          tunConfigured: false,
+        );
     final dns = checks.singleWhere((check) => check.title == 'Windows 系统 DNS');
     expect(dns.state, NetworkCheckState.ok);
     expect(dns.detail, contains('疑似 Fake-IP'));
