@@ -161,7 +161,11 @@ final class DesktopNetworkDiagnostics {
       ).timeout(const Duration(seconds: 4));
       if (addresses.isEmpty) throw const SocketException('Empty DNS answer');
       final answer = addresses.first.address;
-      final fakeIp = RegExp(r'^198\.(18|19)\.').hasMatch(answer);
+      // A mixed resolver response can contain a real address first and a
+      // Fake-IP later. Inspect every answer before reporting DNS as healthy.
+      final fakeIp = addresses.any(
+        (address) => RegExp(r'^198\.(18|19)\.').hasMatch(address.address),
+      );
       checks.add(
         NetworkCheck(
           'Windows 系统 DNS',
