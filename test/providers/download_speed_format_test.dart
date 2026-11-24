@@ -1,3 +1,4 @@
+import 'package:fl_clash/providers/action.dart';
 import 'package:fl_clash/providers/download_speed.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +109,49 @@ void main() {
     health.reset();
     expect(health.samples, isEmpty);
     expect(health.record('A', -1, now), NodeHealthDecision.wait);
+  });
+
+  test('candidate observations leave incumbent failure streak unchanged', () {
+    final history = NodeHealthHistory();
+    final now = DateTime(2026);
+    expect(history.record('A', -1, now), NodeHealthDecision.wait);
+    history.observe('B', 40);
+    history.observe('B', null);
+    history.observe('B', 50);
+    expect(history.samples['B'], (successes: 2, failures: 0));
+    expect(history.record('A', -2, now), NodeHealthDecision.failover);
+    history.reset();
+    expect(history.samples, isEmpty);
+  });
+
+  test('recovery prefers reliable nodes and still explores unknown nodes', () {
+    final candidates = automaticSpeedCandidates(
+      ['fast', 'stable', 'unknown', 'next'],
+      '',
+      {'fast': 100000000},
+      2,
+      limit: 3,
+      knownLimit: 1,
+      health: {
+        'fast': (successes: 0, failures: 2),
+        'stable': (successes: 2, failures: 0),
+      },
+    );
+    expect(candidates, ['stable', 'unknown', 'next']);
+  });
+
+  test('candidate limit also applies to preferred known nodes', () {
+    expect(
+      automaticSpeedCandidates(
+        ['A', 'B', 'C'],
+        'A',
+        {'B': 10, 'C': 20},
+        0,
+        limit: 1,
+      ),
+      ['A'],
+    );
+    expect(automaticSpeedCandidates(['A'], '', {}, 0, limit: 0), isEmpty);
   });
 
   test('network changes reset health but keep download budget', () {
