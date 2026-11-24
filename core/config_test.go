@@ -1031,7 +1031,7 @@ func TestTestDelayKeepsToTheTimeoutTheGroupNames(t *testing.T) {
 	}
 
 	start := time.Now()
-	delay := handleTestDelay(&TestDelayParams{ProxyName: "node", TestUrl: testURL, Timeout: 5000})
+	delay := handleTestDelay(&TestDelayParams{ProxyName: "node", TestUrl: testURL})
 	elapsed := time.Since(start)
 
 	if delay == nil || delay.Value != delayTimedOut {
