@@ -577,7 +577,9 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                   for (final entry in _nativeSelections.entries)
                     ListItem(
                       title: Text(entry.key),
-                      subtitle: Text(entry.value.isEmpty ? '暂无选择' : entry.value),
+                      subtitle: Text(
+                        entry.value.isEmpty ? '暂无选择' : entry.value,
+                      ),
                     ),
                   TopologyGraphView(
                     key: ValueKey(_nativeSnapshotRevision),
