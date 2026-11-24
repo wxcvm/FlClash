@@ -217,11 +217,25 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
         : '启动未成功：${outcome.error}';
   }
 
-  Future<String> _switchToMihomo() async =>
-      await _service.startMihomoCore() ? '已切回 Mihomo' : '切换未完成，请检查当前 VPN 状态与配置';
+  Future<String> _switchToMihomo() async {
+    final latest = await _service.getNativeStatus();
+    if (!mounted) return '已取消切换';
+    if (!AndroidCoreActions(latest, refreshFailed: false).nativeRunning) {
+      return '内核状态已变化，请重新选择操作';
+    }
+    return await _service.startMihomoCore()
+        ? '已切回 Mihomo'
+        : '切换未完成，请检查当前 VPN 状态与配置';
+  }
 
-  Future<String> _stop() async =>
-      await _service.stopNativeCore() ? 'VPN 已停止' : '停止未完成，请重试';
+  Future<String> _stop() async {
+    final latest = await _service.getNativeStatus();
+    if (!mounted) return '已取消停止';
+    if (!AndroidCoreActions(latest, refreshFailed: false).canStopNative) {
+      return '内核状态已变化，请重新选择操作';
+    }
+    return await _service.stopNativeCore() ? 'VPN 已停止' : '停止未完成，请重试';
+  }
 
   @override
   Widget build(BuildContext context) {
