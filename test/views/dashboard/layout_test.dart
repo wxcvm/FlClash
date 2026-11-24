@@ -480,6 +480,38 @@ void main() {
     await teardown(tester);
   });
 
+  testWidgets('Android topology opt-in survives wide dashboard layouts', (
+    tester,
+  ) async {
+    for (final size in const [Size(400, 900), Size(800, 600), Size(915, 412)]) {
+      container
+          .read(appSettingProvider.notifier)
+          .update(
+            (state) => state.copyWith(
+              dashboardWidgets: const [
+                DashboardWidget.currentOutbound,
+                DashboardWidget.networkTopology,
+              ],
+            ),
+          );
+      await pumpDashboard(tester, size, platform: SupportPlatform.Android);
+      expect(find.byType(NetworkTopologyCard), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      container
+          .read(appSettingProvider.notifier)
+          .update(
+            (state) => state.copyWith(
+              dashboardWidgets: const [DashboardWidget.currentOutbound],
+            ),
+          );
+      await tester.pump();
+      expect(find.byType(NetworkTopologyCard), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
+    await teardown(tester);
+  });
+
   testWidgets('a tablet or a landscape phone gets the same grid, the VPN '
       'switch in place of the takeover', (tester) async {
     for (final size in const [Size(1280, 800), Size(915, 412)]) {
