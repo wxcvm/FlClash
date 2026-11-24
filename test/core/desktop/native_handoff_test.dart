@@ -376,6 +376,31 @@ void main() {
     }
   });
 
+  test('missing native TUN route evidence rolls back to Mihomo', () async {
+    final tunHandoff = NativeCoreHandoff(
+      runtime: runtime,
+      isMihomoRunning: () => mihomoRunning,
+      setMihomoRunning: (running) async {
+        calls.add('mihomo:$running');
+        mihomoRunning = running;
+        return true;
+      },
+      releaseMihomoProxy: () async => calls.add('release proxy'),
+      useMihomoTun: () => true,
+      detectTun: (_) async => const NativeTunConfiguration(),
+      verifyTun: (_) async => false,
+    );
+    try {
+      await expectLater(tunHandoff.activate(spec), throwsStateError);
+      expect(runtime.isRunning, isFalse);
+      expect(tunHandoff.nativeTunConfigured, isFalse);
+      expect(mihomoRunning, isTrue);
+      expect(calls, ['mihomo:false', 'release proxy', 'mihomo:true']);
+    } finally {
+      await tunHandoff.close();
+    }
+  });
+
   test('native TUN crash restores previously running Mihomo', () async {
     final tunHandoff = NativeCoreHandoff(
       runtime: runtime,
