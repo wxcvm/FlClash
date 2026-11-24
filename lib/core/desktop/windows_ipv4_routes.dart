@@ -152,8 +152,8 @@ _WindowsIpv4Route? _bestWindowsRoute(
 bool windowsHasNativeTunAddress(String output, List<String> addresses) {
   final expected = addresses.toSet();
   if (expected.isEmpty) return false;
-  final observed = _parseWindowsIpv4Routes(output)
-      .map((route) => route.interfaceAddress)
-      .toSet();
+  final observed = _parseWindowsIpv4Routes(
+    output,
+  ).map((route) => route.interfaceAddress).toSet();
   return observed.containsAll(expected);
 }
