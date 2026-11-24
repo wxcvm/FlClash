@@ -52,4 +52,36 @@ void main() {
   test('empty snapshot contains no invented routes', () {
     expect(connectionRoutes([]), isEmpty);
   });
+
+  test('shared nodes aggregate observed edges without losing nested groups', () {
+    final graph = ConnectionGraph(connectionRoutes([
+      connection('1', ['US', 'Inner', 'Outer']),
+      connection('2', ['US', 'Inner', 'Outer'], traffic: 20),
+      connection('3', ['JP', 'Inner', 'Outer']),
+    ]));
+    const outer = (2, TopologyRole.group, 'Outer');
+    const inner = (3, TopologyRole.group, 'Inner');
+    const us = (4, TopologyRole.exit, 'US');
+    const jp = (4, TopologyRole.exit, 'JP');
+    expect(graph.nodes[inner]!.connections, 3);
+    expect(graph.edges[(outer, inner)]!.traffic, 40);
+    expect(graph.edges[(inner, us)]!.connections, 2);
+    expect(graph.edges[(inner, jp)]!.connections, 1);
+    expect(graph.edges.containsKey((outer, us)), isFalse);
+  });
+
+  test('graph cap is explicit and unknown exit is not DIRECT', () {
+    final routes = connectionRoutes([
+      connection('1', []),
+      connection('2', ['DIRECT']),
+      connection('3', ['DIRECT']),
+    ]);
+    final graph = ConnectionGraph(routes, routeLimit: 1);
+    expect(graph.totalPaths, 2);
+    expect(graph.shownPaths, 1);
+    expect(graph.shownConnections, 2);
+    final full = ConnectionGraph(routes);
+    expect(full.nodes[(2, TopologyRole.exit, '')]!.connections, 1);
+    expect(full.nodes[(2, TopologyRole.exit, 'DIRECT')]!.connections, 2);
+  });
 }
