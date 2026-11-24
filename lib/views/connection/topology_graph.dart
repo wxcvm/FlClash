@@ -21,6 +21,13 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
   static const _columnStep = 208.0;
   static const _rowStep = 76.0;
   TopologyNodeKey? _selected;
+  final _transform = TransformationController();
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +62,7 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
       for (var i = 0; i < keys.length; i++) {
         positions[keys[i]] = Rect.fromLTWH(
           16 + entry.key * _columnStep,
-          (height - keys.length * _rowStep) / 2 + i * _rowStep,
+          8 + i * _rowStep,
           _nodeWidth,
           _nodeHeight,
         );
@@ -90,6 +97,7 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
             child: SizedBox(
               height: 360,
               child: InteractiveViewer(
+                transformationController: _transform,
                 constrained: false,
                 minScale: 0.25,
                 maxScale: 2,
@@ -168,6 +176,18 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
             ),
           ),
         ),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: PressSurface(
+            fill: colors.surfaceContainer,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            onPressed: () => _transform.value = Matrix4.identity(),
+            child: Text(chinese ? '重置视图' : 'Reset view'),
+          ),
+        ),
         if (selected != null)
           Text(
             '${name(selected)} · '
@@ -200,8 +220,8 @@ class _TopologyLinks extends CustomPainter {
       final from = positions[entry.key.$1]!.centerRight;
       final to = positions[entry.key.$2]!.centerLeft;
       final mid = (from.dx + to.dx) / 2;
-      final highlighted = selected == entry.key.$1 ||
-          selected == entry.key.$2;
+      final highlighted =
+          selected == entry.key.$1 || selected == entry.key.$2;
       final path = Path()
         ..moveTo(from.dx, from.dy)
         ..cubicTo(mid, from.dy, mid, to.dy, to.dx, to.dy);
