@@ -80,32 +80,45 @@ void main() {
   test(
     'local API sends bearer credentials and reads actual selections',
     () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-    final paths = <String>[];
-    server.listen((request) async {
-      paths.add(request.uri.path);
-      if (request.headers.value(HttpHeaders.authorizationHeader) !=
-          'Bearer test-secret') {
-        request.response.statusCode = HttpStatus.unauthorized;
-      } else if (request.uri.path == '/connections') {
-        request.response.write(jsonEncode({'connections': [connection()]}));
-      } else {
-        request.response.write(jsonEncode({
-          'proxies': {
-            'GLOBAL': {'all': ['selector'], 'now': 'selector'},
-            'selector': {'all': ['exit'], 'now': 'exit'},
-            'exit': {'type': 'VLESS'},
-          },
-        }));
-      }
-      await request.response.close();
-    });
-    final api = NativeClashController.fromConfig(
-      controllerConfig('127.0.0.1:${server.port}', 'test-secret'),
-    )!;
-    expect((await api.connections()).single.id, 'c1');
-    expect(await api.selections(), {'selector': 'exit'});
-    expect(paths, ['/connections', '/proxies']);
-  });
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final paths = <String>[];
+      server.listen((request) async {
+        paths.add(request.uri.path);
+        if (request.headers.value(HttpHeaders.authorizationHeader) !=
+            'Bearer test-secret') {
+          request.response.statusCode = HttpStatus.unauthorized;
+        } else if (request.uri.path == '/connections') {
+          request.response.write(
+            jsonEncode({
+              'connections': [connection()],
+            }),
+          );
+        } else {
+          request.response.write(
+            jsonEncode({
+              'proxies': {
+                'GLOBAL': {
+                  'all': ['selector'],
+                  'now': 'selector',
+                },
+                'selector': {
+                  'all': ['exit'],
+                  'now': 'exit',
+                },
+                'exit': {'type': 'VLESS'},
+              },
+            }),
+          );
+        }
+        await request.response.close();
+      });
+      final api = NativeClashController.fromConfig(
+        controllerConfig('127.0.0.1:${server.port}', 'test-secret'),
+      )!;
+      expect((await api.connections()).single.id, 'c1');
+      expect(await api.selections(), {'selector': 'exit'});
+      expect(paths, ['/connections', '/proxies']);
+    },
+  );
 }
