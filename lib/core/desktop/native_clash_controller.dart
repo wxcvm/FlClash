@@ -13,21 +13,24 @@ final class NativeProxyGroup {
     required this.type,
     required this.selected,
     required this.members,
+    this.selectedDelayMs,
   });
 
   final String tag;
   final String type;
   final String selected;
   final List<String> members;
+  final int? selectedDelayMs;
 
   bool get selectable => type.toLowerCase() == 'selector';
 }
 
 final class NativeClashController {
-  NativeClashController._(this._port, this._secret);
+  NativeClashController._(this._port, this._secret, this._testUrl);
 
   final int _port;
   final String _secret;
+  final String _testUrl;
 
   static NativeClashController? fromConfig(Object? config) {
     final experimental = config is Map ? config['experimental'] : null;
@@ -41,7 +44,21 @@ final class NativeClashController {
     final match = RegExp(r'^127\.0\.0\.1:([0-9]{1,5})$').firstMatch(address);
     final port = int.tryParse(match?.group(1) ?? '');
     if (port == null || port < 1 || port > 65535) return null;
-    return NativeClashController._(port, secret);
+    final outbounds = config is Map ? config['outbounds'] : null;
+    var testUrl = 'https://www.cloudflare.com/cdn-cgi/trace';
+    if (outbounds is List) {
+      for (final outbound in outbounds.whereType<Map>()) {
+        final url = outbound['url'];
+        if (outbound['type'] == 'urltest' && url is String) {
+          final uri = Uri.tryParse(url);
+          if (uri?.scheme == 'https' && uri!.host.isNotEmpty) {
+            testUrl = url;
+            break;
+          }
+        }
+      }
+    }
+    return NativeClashController._(port, secret, testUrl);
   }
 
   static Future<NativeClashController?> fromSpec(NativeCoreSpec spec) async {
@@ -93,24 +110,83 @@ final class NativeClashController {
     if (proxies is! Map) {
       throw const FormatException('Invalid native proxy snapshot');
     }
-    return [
-      for (final entry in proxies.entries)
-        if (entry.key is String &&
-            entry.key != 'GLOBAL' &&
-            entry.value is Map &&
-            entry.value['type'] is String &&
-            entry.value['all'] is List &&
-            entry.value['all'].every((tag) => tag is String) &&
-            entry.value['now'] is String)
-          NativeProxyGroup(
-            tag: entry.key as String,
-            type: entry.value['type'] as String,
-            selected: entry.value['now'] as String,
-            members: List<String>.unmodifiable(
-              (entry.value['all'] as List).cast<String>(),
-            ),
+    final groups = <NativeProxyGroup>[];
+    for (final entry in proxies.entries) {
+      if (entry.key is! String ||
+          entry.key == 'GLOBAL' ||
+          entry.value is! Map ||
+          entry.value['type'] is! String ||
+          entry.value['all'] is! List ||
+          !entry.value['all'].every((tag) => tag is String) ||
+          entry.value['now'] is! String) {
+        continue;
+      }
+      final selected = entry.value['now'] as String;
+      final selectedProxy = proxies[selected];
+      final history = selectedProxy is Map ? selectedProxy['history'] : null;
+      final latest = history is List && history.isNotEmpty
+          ? history.first
+          : null;
+      final delay = latest is Map && latest['delay'] is num
+          ? (latest['delay'] as num).toInt()
+          : null;
+      groups.add(
+        NativeProxyGroup(
+          tag: entry.key as String,
+          type: entry.value['type'] as String,
+          selected: selected,
+          members: List<String>.unmodifiable(
+            (entry.value['all'] as List).cast<String>(),
           ),
-    ];
+          selectedDelayMs: delay,
+        ),
+      );
+    }
+    return groups;
+  }
+
+  String get testUrl => _testUrl;
+
+  Future<int> testDelay(String outbound) async {
+    final client = HttpClient();
+    client.findProxy = (_) => 'DIRECT';
+    client.connectionTimeout = const Duration(seconds: 3);
+    try {
+      final request = await client
+          .getUrl(
+            Uri(
+              scheme: 'http',
+              host: '127.0.0.1',
+              port: _port,
+              pathSegments: ['proxies', outbound, 'delay'],
+              queryParameters: {'url': _testUrl, 'timeout': '10000'},
+            ),
+          )
+          .timeout(const Duration(seconds: 5));
+      request.followRedirects = false;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_secret');
+      final response = await request.close().timeout(
+        const Duration(seconds: 12),
+      );
+      final buffer = BytesBuilder(copy: false);
+      await for (final chunk in response) {
+        if (buffer.length + chunk.length > 64 * 1024) {
+          throw const FormatException('Native delay response too large');
+        }
+        buffer.add(chunk);
+      }
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('Native delay HTTP ${response.statusCode}');
+      }
+      final data = jsonDecode(utf8.decode(buffer.takeBytes()));
+      final delay = data is Map ? data['delay'] : null;
+      if (delay is! num || delay <= 0) {
+        throw const FormatException('Invalid native delay result');
+      }
+      return delay.toInt();
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<void> select(String group, String outbound) async {
@@ -154,22 +230,6 @@ final class NativeClashController {
     }
   }
 
-  Future<Map<String, String>> selections() async {
-    final data = await _read('/proxies');
-    final proxies = data['proxies'];
-    if (proxies is! Map) {
-      throw const FormatException('Invalid native proxy snapshot');
-    }
-    return {
-      for (final entry in proxies.entries)
-        if (entry.key is String &&
-            entry.key != 'GLOBAL' &&
-            entry.value is Map &&
-            entry.value['all'] is List &&
-            entry.value['now'] is String)
-          entry.key as String: entry.value['now'] as String,
-    };
-  }
 }
 
 /// sing-box supplies chains in exit-first order, just like Mihomo.
