@@ -92,7 +92,8 @@ class _MihomoTopologyCard extends ConsumerStatefulWidget {
   const _MihomoTopologyCard({super.key});
 
   @override
-  ConsumerState<_MihomoTopologyCard> createState() => _MihomoTopologyCardState();
+  ConsumerState<_MihomoTopologyCard> createState() =>
+      _MihomoTopologyCardState();
 }
 
 class _MihomoTopologyCardState extends ConsumerState<_MihomoTopologyCard>
