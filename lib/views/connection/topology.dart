@@ -5,6 +5,8 @@ import 'package:fl_clash/ui/ui.dart';
 import 'package:fl_clash/views/dashboard/style.dart';
 import 'package:flutter/widgets.dart';
 
+import 'topology_graph.dart';
+
 String topologyTitle(BuildContext context) =>
     Localizations.localeOf(context).languageCode == 'zh'
         ? '网络拓扑'
@@ -27,6 +29,7 @@ class ConnectionTopology extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final routes = connectionRoutes(connections);
+    final graph = ConnectionGraph(routes);
     final labels = context.appLocalizations;
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
     final unknown = chinese ? '未知' : 'Unknown';
@@ -38,10 +41,18 @@ class ConnectionTopology extends StatelessWidget {
         if (index == 0) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              chinese
-                  ? '${connections.length} 个连接 · ${routes.length} 条路径'
-                  : '${connections.length} connections · ${routes.length} paths',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 12,
+              children: [
+                Text(
+                  chinese
+                      ? '${connections.length} 个连接 · ${routes.length} 条路径'
+                      : '${connections.length} connections · ${routes.length} paths',
+                ),
+                TopologyGraphView(graph: graph),
+                Text(chinese ? '完整连接路径' : 'Complete connection paths'),
+              ],
             ),
           );
         }
