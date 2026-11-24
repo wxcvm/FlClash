@@ -37,7 +37,6 @@ class _ConnectionTopologyState extends State<ConnectionTopology> {
   Widget build(BuildContext context) {
     final connections = _frozen ?? widget.connections;
     final routes = connectionRoutes(connections);
-    final graph = ConnectionGraph(routes);
     final labels = context.appLocalizations;
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
     final unknown = chinese ? '未知' : 'Unknown';
@@ -81,7 +80,7 @@ class _ConnectionTopologyState extends State<ConnectionTopology> {
                     ),
                   ),
                 ),
-                TopologyGraphView(graph: graph),
+                TopologyGraphView(routes: routes),
                 Text(chinese ? '完整连接路径' : 'Complete connection paths'),
               ],
             ),
