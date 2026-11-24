@@ -229,7 +229,6 @@ final class NativeClashController {
       client.close(force: true);
     }
   }
-
 }
 
 /// sing-box supplies chains in exit-first order, just like Mihomo.
