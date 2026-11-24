@@ -39,15 +39,37 @@ List<String> automaticSpeedCandidates(
   int cursor, {
   int limit = 4,
   int knownLimit = 2,
+  Map<String, ({int successes, int failures})> health = const {},
 }) {
-  if (names.isEmpty) {
+  if (names.isEmpty || limit <= 0) {
     return [];
   }
   final candidates = <String>{if (names.contains(incumbent)) incumbent};
-  final known = names.where((name) => (rates[name] ?? 0) > 0).toList()
-    ..sort((a, b) => rates[b]!.compareTo(rates[a]!));
+  double confidence(String name) {
+    final sample = health[name];
+    if (sample == null) return 0.5;
+    return (sample.successes + 1) /
+        (sample.successes + sample.failures + 2);
+  }
+
+  final known = names.where((name) {
+    final sample = health[name];
+    if (sample != null &&
+        sample.failures >= 2 &&
+        sample.failures >= sample.successes) {
+      return false;
+    }
+    return (rates[name] ?? 0) > 0 || (sample?.successes ?? 0) >= 2;
+  }).toList()
+    ..sort((a, b) {
+      final reliability = confidence(b).compareTo(confidence(a));
+      if (reliability != 0) return reliability;
+      return (rates[b] ?? 0).compareTo(rates[a] ?? 0);
+    });
   candidates.addAll(
-    known.where((name) => !candidates.contains(name)).take(knownLimit),
+    known.where((name) => !candidates.contains(name)).take(
+      min(knownLimit, limit - candidates.length),
+    ),
   );
   for (var i = 0; i < names.length && candidates.length < limit; i++) {
     candidates.add(names[(cursor + i) % names.length]);
@@ -359,6 +381,7 @@ class ProxiesAction extends _$ProxiesAction {
       _autoRecoveryCursor,
       limit: 3,
       knownLimit: 1,
+      health: _nodeHealth.samples,
     );
     if (candidates.isNotEmpty) {
       _autoRecoveryCursor = alternatives.indexOf(candidates.last) + 1;
@@ -367,9 +390,11 @@ class ProxiesAction extends _$ProxiesAction {
       if (!isCurrent()) return;
       final first = await _probeAutoNode(group, name);
       if (!isCurrent()) return;
+      _nodeHealth.observe(name, first);
       if (first == null || first <= 0) continue;
       final second = await _probeAutoNode(group, name);
       if (!isCurrent()) return;
+      _nodeHealth.observe(name, second);
       if (second == null || second <= 0) continue;
       final recovered = await _probeAutoNode(group, incumbent);
       if (!isCurrent() || recovered == null || recovered == 0) return;
