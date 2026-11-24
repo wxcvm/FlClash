@@ -276,7 +276,6 @@ PopupMenuItem _optionsMenuItem<T>({
   );
 }
 
-
 /// On-demand snapshot of existing smart-selection samples; never starts probes.
 class _NodeQualitySnapshot extends StatelessWidget {
   const _NodeQualitySnapshot({
@@ -339,6 +338,36 @@ class _NodeQualitySnapshot extends StatelessWidget {
                   '${zh ? '探测成功率' : 'Probe success'}: $success '
                   '(${sample.successes}/${sample.values.length})',
                 ),
+                if (sample.values.isNotEmpty)
+                  Semantics(
+                    label: zh
+                        ? '探测历史，从旧到新'
+                        : 'Probe history, oldest first',
+                    value: sample.values
+                        .map(
+                          (value) => value > 0
+                              ? '${value} ms'
+                              : (zh ? '失败' : 'Failed'),
+                        )
+                        .join(', '),
+                    child: Row(
+                      spacing: 3,
+                      children: [
+                        for (final value in sample.values)
+                          Expanded(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: value > 0
+                                    ? context.colorScheme.success
+                                    : context.colorScheme.error,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: const SizedBox(height: 8),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 Text(
                   '${zh ? '平均延迟' : 'Mean delay'}: '
                   '${milliseconds(sample.meanDelay)}',
