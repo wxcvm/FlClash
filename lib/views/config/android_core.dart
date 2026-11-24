@@ -142,7 +142,8 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
         await directory.delete(recursive: true);
         return '未选择配置';
       }
-      if (startAfterImport && ref.read(currentProfileProvider) != originalProfile) {
+      if (startAfterImport &&
+          ref.read(currentProfileProvider) != originalProfile) {
         await directory.delete(recursive: true);
         return '订阅已变化，请重新切换';
       }
@@ -152,7 +153,10 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
       rethrow;
     }
     if (startAfterImport) {
-      return _start(requireCurrentProfile: true, originalProfile: originalProfile);
+      return _start(
+        requireCurrentProfile: true,
+        originalProfile: originalProfile,
+      );
     }
     return 'Clash 配置已转换并通过预检；原配置未修改';
   }
@@ -201,7 +205,8 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
     if (!AndroidCoreActions(latest, refreshFailed: false).canPrepareNative) {
       return '内核状态已变化，请重新选择操作';
     }
-    if (requireCurrentProfile && ref.read(currentProfileProvider) != originalProfile) {
+    if (requireCurrentProfile &&
+        ref.read(currentProfileProvider) != originalProfile) {
       return '订阅已变化，请重新切换';
     }
     setState(() => _progress = '正在切换内核…');
@@ -232,8 +237,11 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
           );
           final native = actions.nativeRunning;
           final owned = status?.ownsRuntime == true;
-          final busy = _busy || _refreshing ||
-              status?.state == 'STARTING' || status?.state == 'STOPPING';
+          final busy =
+              _busy ||
+              _refreshing ||
+              status?.state == 'STARTING' ||
+              status?.state == 'STOPPING';
           final canConfigure = actions.canPrepareNative && !busy;
           final hasProfile = ref.watch(currentProfileProvider) != null;
           final insight = AndroidCoreInsight.fromStatus(
@@ -257,7 +265,9 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
                   if (_refreshFailed)
                     ListItem(
                       title: const Text('重试读取状态'),
-                      onTap: busy ? null : () => unawaited(_refresh()),
+                      onTap: _busy || _refreshing
+                          ? null
+                          : () => unawaited(_refresh()),
                     ),
                 ],
               ),
