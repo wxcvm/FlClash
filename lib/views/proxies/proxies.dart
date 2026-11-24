@@ -92,6 +92,28 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
               ),
           ],
         ),
+      if (autoGroup != null)
+        PopupMenuItem(
+          glyph: AppGlyphs.speed,
+          label: Localizations.localeOf(context).languageCode == 'zh'
+              ? '节点质量统计'
+              : 'Node quality statistics',
+          onPressed: () {
+            final quality = action.nodeProbeQuality;
+            final speeds = ref.read(downloadSpeedSortSnapshotProvider);
+            showSnapSheet(
+              context,
+              initialScrollOffset: 0,
+              builder: (_, controller) => NestedPagedSheet(
+                builder: (_) => _NodeQualitySnapshot(
+                  controller: controller,
+                  quality: quality,
+                  speeds: speeds,
+                ),
+              ),
+            );
+          },
+        ),
       _optionsMenuItem(
         glyph: AppGlyphs.dashboard,
         label: appLocalizations.layout,
@@ -252,4 +274,88 @@ PopupMenuItem _optionsMenuItem<T>({
         ),
     ],
   );
+}
+
+
+/// On-demand snapshot of existing smart-selection samples; never starts probes.
+class _NodeQualitySnapshot extends StatelessWidget {
+  const _NodeQualitySnapshot({
+    required this.controller,
+    required this.quality,
+    required this.speeds,
+  });
+
+  final ScrollController controller;
+  final Map<String, NodeProbeQuality> quality;
+  final Map<String, int> speeds;
+
+  @override
+  Widget build(BuildContext context) {
+    final zh = Localizations.localeOf(context).languageCode == 'zh';
+    final entries = quality.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    String milliseconds(double? value) =>
+        value == null ? '—' : '${value.toStringAsFixed(1)} ms';
+    return Scaffold(
+      title: zh ? '节点质量统计' : 'Node quality statistics',
+      body: ListView.builder(
+        controller: controller,
+        padding: EdgeInsets.fromLTRB(
+          16,
+          context.contentTopPadding,
+          16,
+          16 + context.bottomInset,
+        ),
+        itemCount: entries.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                entries.isEmpty
+                    ? (zh ? '暂无智能优选探测记录' : 'No smart-selection samples yet')
+                    : (zh
+                          ? '本次运行快照 · 每个节点最近 12 次有效 HTTP 探测'
+                          : 'Session snapshot · last 12 completed HTTP probes per node'),
+              ),
+            );
+          }
+          final entry = entries[index - 1];
+          final sample = entry.value;
+          final rate = sample.successRate;
+          final success = rate == null ? '—' : '${(rate * 100).round()}%';
+          final speed = speeds[entry.key];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 4,
+              children: [
+                Text(
+                  entry.key,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  '${zh ? '探测成功率' : 'Probe success'}: $success '
+                  '(${sample.successes}/${sample.values.length})',
+                ),
+                Text(
+                  '${zh ? '平均延迟' : 'Mean delay'}: '
+                  '${milliseconds(sample.meanDelay)}',
+                ),
+                Text(
+                  '${zh ? '延迟波动' : 'Delay variation'}: '
+                  '${milliseconds(sample.delayVariation)}',
+                ),
+                Text(
+                  '${zh ? '最近下载测速' : 'Last download test'}: '
+                  '${speed == null ? '—' : speed <= 0 ? (zh ? '失败' : 'Failed') : formatDownloadSpeed(speed)}',
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
