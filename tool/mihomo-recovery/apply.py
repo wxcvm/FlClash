@@ -53,7 +53,7 @@ if provider_source.count(provider_marker) != 1:
 provider_path.write_text(
     provider_source.replace(provider_marker, provider_method, 1),
     encoding="utf-8",
-    newline="\\n",
+    newline="\n",
 )
 
 # MMDB discovery must not overwrite the protobuf GeoIP.dat filename.
