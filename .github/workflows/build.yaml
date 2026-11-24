@@ -40,12 +40,11 @@ jobs:
         shell: bash
         env:
           FULL: ${{ github.event_name != 'pull_request' || github.base_ref != 'main' }}
-          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [[ "$FULL" == true ]]; then
             echo 'dart_only=false' >> "$GITHUB_OUTPUT"
           else
-            echo "dart_only=$(bash tool/ci/branch-scope.sh "$BASE" HEAD)" >> "$GITHUB_OUTPUT"
+            echo "dart_only=$(bash tool/ci/branch-scope.sh origin/main HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
   dart:
