@@ -655,9 +655,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                         subtitle: Text('测试地址：$_nativeTestUrl'),
                         onTap: _busy
                             ? null
-                            : () => _perform(
-                                () => _testNativeGroup(group.tag),
-                              ),
+                            : () => _perform(() => _testNativeGroup(group.tag)),
                       ),
                     ] else
                       ListItem(
