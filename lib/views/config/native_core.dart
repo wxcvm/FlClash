@@ -377,9 +377,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
             items: [
               ListItem(
                 title: Text(
-                  nativeCoreHandoff.busy
-                      ? '正在切换'
-                      : active?.label ?? 'Mihomo',
+                  nativeCoreHandoff.busy ? '正在切换' : active?.label ?? 'Mihomo',
                 ),
                 subtitle: Text(
                   active != null
