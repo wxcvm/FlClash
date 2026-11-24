@@ -20,8 +20,9 @@ void main() {
   testWidgets('a core handoff clears the frozen Mihomo topology', (
     tester,
   ) async {
-    final entered = Completer<void>();
-    final validation = Completer<ProcessResult>();
+    // The CLI future is resolved in runAsync, not the widget's fake clock.
+    late Completer<void> entered;
+    late Completer<ProcessResult> validation;
     final runtime = NativeCoreRuntime(
       run: (_, _, {workingDirectory}) {
         entered.complete();
@@ -69,6 +70,8 @@ void main() {
     late Future<void> attempt;
     late Directory directory;
     await tester.runAsync(() async {
+      entered = Completer<void>();
+      validation = Completer<ProcessResult>();
       directory = await Directory.systemTemp.createTemp('topology-test-');
       final config = File('${directory.path}/config.json');
       await config.writeAsString('{}');
@@ -86,7 +89,7 @@ void main() {
               expect(error, isA<StateError>());
             },
           );
-      await entered.future;
+      await entered.future.timeout(const Duration(seconds: 5));
     });
 
     await tester.pump();
@@ -96,7 +99,7 @@ void main() {
 
     await tester.runAsync(() async {
       validation.complete(ProcessResult(1, 1, '', 'invalid config'));
-      await attempt;
+      await attempt.timeout(const Duration(seconds: 5));
       await directory.delete(recursive: true);
     });
     await tester.pump();
