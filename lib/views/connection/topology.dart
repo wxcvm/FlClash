@@ -14,7 +14,7 @@ String topologyTitle(BuildContext context) =>
 
 /// Uses the existing live feed's filtered snapshot and scroll controller.
 /// Rows are built lazily; no separate core subscription or graph dependency.
-class ConnectionTopology extends StatelessWidget {
+class ConnectionTopology extends StatefulWidget {
   const ConnectionTopology({
     super.key,
     required this.connections,
@@ -27,15 +27,23 @@ class ConnectionTopology extends StatelessWidget {
   final EdgeInsets padding;
 
   @override
+  State<ConnectionTopology> createState() => _ConnectionTopologyState();
+}
+
+class _ConnectionTopologyState extends State<ConnectionTopology> {
+  List<TrackerInfo>? _frozen;
+
+  @override
   Widget build(BuildContext context) {
+    final connections = _frozen ?? widget.connections;
     final routes = connectionRoutes(connections);
     final graph = ConnectionGraph(routes);
     final labels = context.appLocalizations;
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
     final unknown = chinese ? '未知' : 'Unknown';
     return ListView.builder(
-      controller: controller,
-      padding: padding.add(const EdgeInsets.symmetric(horizontal: 16)),
+      controller: widget.controller,
+      padding: widget.padding.add(const EdgeInsets.symmetric(horizontal: 16)),
       itemCount: routes.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
@@ -49,6 +57,29 @@ class ConnectionTopology extends StatelessWidget {
                   chinese
                       ? '${connections.length} 个连接 · ${routes.length} 条路径'
                       : '${connections.length} connections · ${routes.length} paths',
+                ),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: PressSurface(
+                    fill: context.colorScheme.surfaceContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    onPressed: () => setState(() {
+                      _frozen = _frozen == null
+                          ? List.unmodifiable(widget.connections)
+                          : null;
+                    }),
+                    child: Text(
+                      _frozen == null
+                          ? (chinese ? '暂停画面' : 'Freeze view')
+                          : (chinese ? '恢复实时画面' : 'Resume live view'),
+                    ),
+                  ),
                 ),
                 TopologyGraphView(graph: graph),
                 Text(chinese ? '完整连接路径' : 'Complete connection paths'),
