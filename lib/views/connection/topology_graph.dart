@@ -38,7 +38,7 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
   Widget _action(BuildContext context, String label, VoidCallback onPressed) =>
       PressSurface(
         fill: context.colorScheme.surfaceContainer,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: AppShape.sm,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         onPressed: onPressed,
         child: Text(label),
@@ -127,8 +127,8 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
                 ? '图中显示 ${graph.shownPaths}/${graph.totalPaths} 条路径'
                 : 'Showing ${graph.shownPaths}/${graph.totalPaths} paths',
           ),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+        ClipPath(
+          clipper: ShapeBorderClipper(shape: AppShape.md),
           child: ColoredBox(
             color: colors.surfaceContainer,
             child: SizedBox(
@@ -169,13 +169,14 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
                                     : entry.key;
                               }),
                               child: DecoratedBox(
-                                decoration: BoxDecoration(
+                                decoration: ShapeDecoration(
                                   color: colors.surface,
-                                  border: Border.all(
-                                    color: nodeColor(entry.key),
-                                    width: selected == entry.key ? 2 : 1,
+                                  shape: AppShape.all(10).copyWith(
+                                    side: BorderSide(
+                                      color: nodeColor(entry.key),
+                                      width: selected == entry.key ? 2 : 1,
+                                    ),
                                   ),
-                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Padding(
                                   padding: const EdgeInsets.all(6),
