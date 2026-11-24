@@ -235,11 +235,24 @@ extension ProfileExtension on Profile {
     if (await validate(tempFile.path, ageSecretKey) case final issue?) {
       throw MessageException(issue);
     }
-    final mFile = await file;
-    if (canCommit != null && !canCommit()) {
-      throw StateError('Profile changed during update');
+    // Do not create the destination before the guard: a deleted profile
+    // must not be recreated by a stale download.
+    final mFile = await _getFile(false);
+    await mFile.parent.create(recursive: true);
+    final staging = await mFile.parent.createTemp('.profile-');
+    try {
+      final staged = await tempFile.copy(
+        '${staging.path}${Platform.pathSeparator}profile.yaml',
+      );
+      if (canCommit != null && !canCommit()) {
+        throw StateError('Profile changed during update');
+      }
+      // The copy may yield; the final guard and same-volume rename must not.
+      // Never truncate or delete the previous file to make a retry succeed.
+      staged.renameSync(mFile.path);
+      return copyWith(lastUpdateDate: DateTime.now());
+    } finally {
+      await staging.safeDelete(recursive: true);
     }
-    await tempFile.copy(mFile.path);
-    return copyWith(lastUpdateDate: DateTime.now());
   }
 }

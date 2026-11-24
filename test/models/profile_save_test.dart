@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -65,6 +66,55 @@ void main() {
       );
 
       expect(await savedFile.readAsString(), 'proxies: []');
+    });
+
+    test('stale update does not recreate a deleted profile file', () async {
+      final profile = Profile.normal(label: 'deleted');
+      final savedFile = await profile.file;
+      await savedFile.writeAsString('proxies: []');
+
+      await expectLater(
+        profile.saveFile(
+          Uint8List.fromList(utf8.encode('proxies: [stale]')),
+          validate: (_, _) async {
+            await savedFile.delete();
+            return null;
+          },
+          canCommit: () => false,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(await savedFile.exists(), isFalse);
+    });
+
+    test('a newer save wins over an older guarded validation', () async {
+      final profile = Profile.normal(label: 'concurrent');
+      final validating = Completer<void>();
+      final resume = Completer<void>();
+      var current = true;
+      final older = profile.saveFile(
+        Uint8List.fromList(utf8.encode('proxies: [old]')),
+        validate: (_, _) async {
+          validating.complete();
+          await resume.future;
+          return null;
+        },
+        canCommit: () => current,
+      );
+      final rejected = expectLater(older, throwsA(isA<StateError>()));
+      await validating.future;
+      current = false;
+      try {
+        await profile.saveFile(
+          Uint8List.fromList(utf8.encode('proxies: [new]')),
+          validate: (_, _) async => null,
+        );
+      } finally {
+        resume.complete();
+      }
+      await rejected;
+      expect(await (await profile.file).readAsString(), 'proxies: [new]');
     });
 
     test('copies validated bytes and stamps the update time', () async {

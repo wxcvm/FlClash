@@ -3,6 +3,7 @@ part of '../action.dart';
 @Riverpod(keepAlive: true)
 class ProfilesAction extends _$ProfilesAction {
   CoreController get _core => ref.read(coreHandlerProvider);
+  final _profileUpdates = <int, Object>{};
 
   @override
   void build() {}
@@ -142,11 +143,14 @@ class ProfilesAction extends _$ProfilesAction {
     final operation = showLoading
         ? ref.read(updatingKeysProvider.notifier).start(profile.updatingKey)
         : null;
+    final update = Object();
+    _profileUpdates[profile.id] = update;
     try {
       ref.read(profilesProvider.notifier).put(profile);
       final updated = await profile.update(
         validate: (path, key) => _core.validateProfile(path, key),
         canCommit: () =>
+            _profileUpdates[profile.id] == update &&
             ref.read(profilesProvider).getProfile(profile.id) == profile,
       );
       // The download can take minutes; edits and deletes made meanwhile win.
@@ -155,6 +159,7 @@ class ProfilesAction extends _$ProfilesAction {
         await clearEffect(profile.id);
         return;
       }
+      if (_profileUpdates[profile.id] != update) return;
       final newProfile = latest.copyWith(
         label: latest.label.takeFirstValid([updated.label]),
         subscriptionInfo: updated.subscriptionInfo,
@@ -179,6 +184,9 @@ class ProfilesAction extends _$ProfilesAction {
         );
       }
     } finally {
+      if (_profileUpdates[profile.id] == update) {
+        _profileUpdates.remove(profile.id);
+      }
       if (operation != null) {
         ref
             .read(updatingKeysProvider.notifier)
