@@ -83,8 +83,11 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => server.close(force: true));
       final paths = <String>[];
+      final methods = <String>[];
+      final bodies = <String>[];
       server.listen((request) async {
         paths.add(request.uri.path);
+        methods.add(request.method);
         if (request.headers.value(HttpHeaders.authorizationHeader) !=
             'Bearer test-secret') {
           request.response.statusCode = HttpStatus.unauthorized;
@@ -94,7 +97,8 @@ void main() {
               'connections': [connection()],
             }),
           );
-        } else {
+        } else if (request.uri.path == '/proxies' &&
+            request.method == 'GET') {
           request.response.write(
             jsonEncode({
               'proxies': {
@@ -103,13 +107,20 @@ void main() {
                   'now': 'selector',
                 },
                 'selector': {
-                  'all': ['exit'],
+                  'type': 'Selector',
+                  'all': ['exit', 'backup'],
                   'now': 'exit',
                 },
                 'exit': {'type': 'VLESS'},
               },
             }),
           );
+        } else if (request.uri.path == '/proxies/selector' &&
+            request.method == 'PUT') {
+          bodies.add(await utf8.decoder.bind(request).join());
+          request.response.statusCode = HttpStatus.noContent;
+        } else {
+          request.response.statusCode = HttpStatus.notFound;
         }
         await request.response.close();
       });
@@ -117,8 +128,21 @@ void main() {
         controllerConfig('127.0.0.1:${server.port}', 'test-secret'),
       )!;
       expect((await api.connections()).single.id, 'c1');
-      expect(await api.selections(), {'selector': 'exit'});
-      expect(paths, ['/connections', '/proxies']);
+      expect(
+        (await api.groups()).single.members,
+        ['exit', 'backup'],
+      );
+      await api.select('selector', 'backup');
+      expect(
+        paths,
+        ['/connections', '/proxies', '/proxies', '/proxies/selector'],
+      );
+      expect(methods, ['GET', 'GET', 'GET', 'PUT']);
+      expect(bodies, ['{"name":"backup"}']);
+      await expectLater(
+        api.select('selector', 'missing'),
+        throwsA(isA<StateError>()),
+      );
     },
   );
 }
