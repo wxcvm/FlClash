@@ -40,6 +40,7 @@ List<String> automaticSpeedCandidates(
   int limit = 4,
   int knownLimit = 2,
   Map<String, ({int successes, int failures})> health = const {},
+  Map<String, NodeProbeQuality> quality = const {},
 }) {
   if (names.isEmpty || limit <= 0) {
     return [];
@@ -64,6 +65,9 @@ List<String> automaticSpeedCandidates(
     ..sort((a, b) {
       final reliability = confidence(b).compareTo(confidence(a));
       if (reliability != 0) return reliability;
+      final av = quality[a]?.delayVariation;
+      final bv = quality[b]?.delayVariation;
+      if (av != null && bv != null && av != bv) return av.compareTo(bv);
       return (rates[b] ?? 0).compareTo(rates[a] ?? 0);
     });
   for (final name in known
@@ -181,6 +185,8 @@ class ProxiesAction extends _$ProxiesAction {
       !ref.read(suspendProvider) &&
       ref.read(isStartProvider) &&
       ref.read(coreStatusProvider) == CoreStatus.connected;
+
+  Map<String, NodeProbeQuality> get nodeProbeQuality => _nodeHealth.quality;
 
   void setDownloadSpeedAutoGroup(String? name) {
     ref.read(downloadSpeedAutoGroupProvider.notifier).select(name);
@@ -383,6 +389,7 @@ class ProxiesAction extends _$ProxiesAction {
       limit: 3,
       knownLimit: 1,
       health: _nodeHealth.samples,
+      quality: _nodeHealth.quality,
     );
     if (candidates.isNotEmpty) {
       _autoRecoveryCursor = alternatives.indexOf(candidates.last) + 1;
@@ -398,8 +405,9 @@ class ProxiesAction extends _$ProxiesAction {
       _nodeHealth.observe(name, second);
       if (second == null || second <= 0) continue;
       final recovered = await _probeAutoNode(group, incumbent);
-      if (!isCurrent() || recovered == null || recovered == 0) return;
-      if (recovered > 0) return;
+      if (!isCurrent()) return;
+      _nodeHealth.observe(incumbent, recovered);
+      if (recovered == null || recovered == 0 || recovered > 0) return;
       final current = ref.read(groupsProvider).getGroup(group.name);
       if (current == null || !current.all.any((proxy) => proxy.name == name)) {
         return;
