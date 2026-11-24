@@ -352,6 +352,9 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
       return '内核会话已变化，测速结果未应用';
     }
     await _readNativeSnapshot();
+    if (_nativeGroups[groupTag]?.selected != group.selected) {
+      return '测速完成，但策略组已变化；请重新读取当前状态';
+    }
     return '已测试 ${group.selected}：$delay ms（${controller.testUrl}）';
   }
 
@@ -639,7 +642,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                         title: Text(group.tag),
                         subtitle: Text(
                           'sing-box Selector · '
-                          '${group.selectedDelayMs == null ? '暂无延迟' : '${group.selectedDelayMs} ms'}',
+                          '${group.selectedDelayMs == null ? '未测速' : '上次延迟 ${group.selectedDelayMs} ms'}',
                         ),
                         options: group.members,
                         value: group.selected,
