@@ -9,6 +9,9 @@ Map<String, dynamic> controllerConfig(String address, String secret) => {
   'experimental': {
     'clash_api': {'external_controller': address, 'secret': secret},
   },
+  'outbounds': [
+    {'type': 'urltest', 'url': 'https://probe.example/generate_204'},
+  ],
 };
 
 Map<String, dynamic> connection() => {
@@ -85,6 +88,7 @@ void main() {
       final paths = <String>[];
       final methods = <String>[];
       final bodies = <String>[];
+      final delayUrls = <String>[];
       server.listen((request) async {
         paths.add(request.uri.path);
         methods.add(request.method);
@@ -114,6 +118,10 @@ void main() {
               },
             }),
           );
+        } else if (request.uri.path == '/proxies/exit/delay' &&
+            request.method == 'GET') {
+          delayUrls.add(request.uri.queryParameters['url'] ?? '');
+          request.response.write(jsonEncode({'delay': 42}));
         } else if (request.uri.path == '/proxies/selector' &&
             request.method == 'PUT') {
           bodies.add(await utf8.decoder.bind(request).join());
@@ -129,13 +137,16 @@ void main() {
       expect((await api.connections()).single.id, 'c1');
       expect((await api.groups()).single.members, ['exit', 'backup']);
       await api.select('selector', 'backup');
+      expect(await api.testDelay('exit'), 42);
+      expect(delayUrls, ['https://probe.example/generate_204']);
       expect(paths, [
         '/connections',
         '/proxies',
         '/proxies',
         '/proxies/selector',
+        '/proxies/exit/delay',
       ]);
-      expect(methods, ['GET', 'GET', 'GET', 'PUT']);
+      expect(methods, ['GET', 'GET', 'GET', 'PUT', 'GET']);
       expect(bodies, ['{"name":"backup"}']);
       await expectLater(
         api.select('selector', 'missing'),
