@@ -67,4 +67,61 @@ void main() {
     );
     expect(failed.status, '读取失败');
   });
+
+  test('only confirmed stable runtime allows native preparation', () {
+    for (final value in <AndroidNativeStatus?>[
+      null,
+      status(engine: 'idle', state: 'STARTING'),
+      status(engine: 'mihomo', state: 'STOPPING'),
+      status(engine: 'mihomo', state: 'STARTED', available: false),
+      status(engine: 'idle', state: 'STOPPED', nativeOwner: true),
+      const AndroidNativeStatus(
+        available: true,
+        engine: 'mihomo',
+        state: 'STARTED',
+        nativeOwner: false,
+        mihomoSuspended: true,
+      ),
+      status(engine: 'sing-box', state: 'STARTED', nativeOwner: true),
+      status(engine: 'unknown', state: 'STARTED'),
+    ]) {
+      expect(
+        AndroidCoreActions(value, refreshFailed: false).canPrepareNative,
+        isFalse,
+      );
+    }
+    for (final value in [
+      status(engine: 'mihomo', state: 'STARTED'),
+      status(engine: 'idle', state: 'STOPPED'),
+    ]) {
+      expect(
+        AndroidCoreActions(value, refreshFailed: false).canPrepareNative,
+        isTrue,
+      );
+      expect(
+        AndroidCoreActions(value, refreshFailed: true).canPrepareNative,
+        isFalse,
+      );
+    }
+  });
+
+  test('native controls follow ownership and reject stale status', () {
+    final running = status(
+      engine: 'sing-box',
+      state: 'STARTED',
+      nativeOwner: true,
+    );
+    final active = AndroidCoreActions(running, refreshFailed: false);
+    expect(active.nativeRunning, isTrue);
+    expect(active.canStopNative, isTrue);
+    final stale = AndroidCoreActions(running, refreshFailed: true);
+    expect(stale.nativeRunning, isFalse);
+    expect(stale.canStopNative, isFalse);
+    final residual = AndroidCoreActions(
+      status(engine: 'idle', state: 'STOPPED', nativeOwner: true),
+      refreshFailed: false,
+    );
+    expect(residual.nativeRunning, isFalse);
+    expect(residual.canStopNative, isTrue);
+  });
 }
