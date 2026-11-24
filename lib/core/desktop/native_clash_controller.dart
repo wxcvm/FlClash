@@ -7,6 +7,22 @@ import 'package:fl_clash/models/models.dart';
 import 'native_core.dart';
 
 /// An explicitly configured, authenticated local sing-box Clash API.
+final class NativeProxyGroup {
+  const NativeProxyGroup({
+    required this.tag,
+    required this.type,
+    required this.selected,
+    required this.members,
+  });
+
+  final String tag;
+  final String type;
+  final String selected;
+  final List<String> members;
+
+  bool get selectable => type.toLowerCase() == 'selector';
+}
+
 final class NativeClashController {
   NativeClashController._(this._port, this._secret);
 
@@ -70,6 +86,73 @@ final class NativeClashController {
 
   Future<List<TrackerInfo>> connections() async =>
       nativeClashConnections(await _read('/connections'));
+
+  Future<List<NativeProxyGroup>> groups() async {
+    final data = await _read('/proxies');
+    final proxies = data['proxies'];
+    if (proxies is! Map) {
+      throw const FormatException('Invalid native proxy snapshot');
+    }
+    return [
+      for (final entry in proxies.entries)
+        if (entry.key is String &&
+            entry.key != 'GLOBAL' &&
+            entry.value is Map &&
+            entry.value['type'] is String &&
+            entry.value['all'] is List &&
+            entry.value['all'].every((tag) => tag is String) &&
+            entry.value['now'] is String)
+          NativeProxyGroup(
+            tag: entry.key as String,
+            type: entry.value['type'] as String,
+            selected: entry.value['now'] as String,
+            members: List<String>.unmodifiable(
+              (entry.value['all'] as List).cast<String>(),
+            ),
+          ),
+    ];
+  }
+
+  Future<void> select(String group, String outbound) async {
+    final data = await _read('/proxies');
+    final proxies = data['proxies'];
+    final target = proxies is Map ? proxies[group] : null;
+    if (target is! Map ||
+        target['type']?.toString().toLowerCase() != 'selector' ||
+        target['all'] is! List ||
+        !(target['all'] as List).contains(outbound)) {
+      throw StateError('The native selector or requested outbound changed');
+    }
+
+    final client = HttpClient();
+    client.findProxy = (_) => 'DIRECT';
+    client.connectionTimeout = const Duration(seconds: 3);
+    try {
+      final request = await client
+          .putUrl(
+            Uri(
+              scheme: 'http',
+              host: '127.0.0.1',
+              port: _port,
+              pathSegments: ['proxies', group],
+            ),
+          )
+          .timeout(const Duration(seconds: 5));
+      request.followRedirects = false;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_secret');
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'name': outbound}));
+      final response = await request.close().timeout(
+        const Duration(seconds: 5),
+      );
+      await response.drain<void>();
+      if (response.statusCode != HttpStatus.noContent) {
+        throw HttpException('Native selector HTTP ${response.statusCode}');
+      }
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   Future<Map<String, String>> selections() async {
     final data = await _read('/proxies');
