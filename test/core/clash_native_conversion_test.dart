@@ -92,6 +92,55 @@ void main() {
     expect(result['network'], 'tcp');
   });
 
+  test('preserves explicit VLESS WebSocket early data settings', () {
+    final result = convertClashOutbound({
+      ...endpoint,
+      'type': 'vless',
+      'uuid': '00000000-0000-4000-8000-000000000001',
+      'tls': true,
+      'servername': 'tls.example.org',
+      'network': 'ws',
+      'ws-opts': {
+        'path': '/service',
+        'headers': {'Host': 'ws.example.org'},
+        'max-early-data': 2048,
+        'early-data-header-name': 'Sec-WebSocket-Protocol',
+      },
+    });
+    expect(result['transport'], {
+      'type': 'ws',
+      'path': '/service',
+      'headers': {'Host': 'ws.example.org'},
+      'max_early_data': 2048,
+      'early_data_header_name': 'Sec-WebSocket-Protocol',
+    });
+    expect(result['tls']['server_name'], 'tls.example.org');
+  });
+
+  test('rejects invalid or ambiguous WebSocket early data settings', () {
+    for (final ws in [
+      {'max-early-data': -1},
+      {'max-early-data': '2048'},
+      {'max-early-data': 65536},
+      {'max-early-data': 2048},
+      {'max-early-data': 2048, 'early-data-header-name': 42},
+      {'max-early-data': 2048, 'early-data-header-name': 'Bad Header'},
+    ]) {
+      expect(
+        () => convertClashOutbound({
+          ...endpoint,
+          'type': 'vless',
+          'uuid': '00000000-0000-4000-8000-000000000001',
+          'tls': true,
+          'servername': 'tls.example.org',
+          'network': 'ws',
+          'ws-opts': ws,
+        }),
+        throwsFormatException,
+      );
+    }
+  });
+
   test('rejects unsupported WebSocket options rather than discarding them', () {
     expect(
       () => convertClashOutbound({
