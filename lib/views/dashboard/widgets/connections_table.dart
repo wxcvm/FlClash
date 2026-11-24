@@ -374,9 +374,7 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
                   children: [
                     PressSurface(
                       fill: DashboardColors.of(context).tone,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      shape: AppShape.sm,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
                         vertical: 4,
