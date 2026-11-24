@@ -13,6 +13,8 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'topology.dart';
+
 class RequestsView extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
   final RequestFeed? initialFeed;
@@ -34,6 +36,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
   final _recent = TrackerInfoListController();
   final _live = TrackerInfoListController();
   final _liveFeed = GlobalKey<_LiveFeedState>();
+  bool _showTopology = false;
   late final _filters = trackerInfoFilterController(ref, 'requests');
   late var _feed =
       widget.initialFeed ?? ref.read(appSettingProvider).requestFeed;
@@ -87,14 +90,17 @@ class _RequestsViewState extends ConsumerState<RequestsView>
   }
 
   void _selectFeed(RequestFeed feed) {
-    if (feed == _feed) {
+    if (feed == _feed && !_showTopology) {
       return;
     }
     // Offered before the feed mounts: a build below this page can't notify it.
     if (feed == RequestFeed.recent) {
       _showLatestRequests();
     }
-    setState(() => _feed = feed);
+    setState(() {
+      _feed = feed;
+      _showTopology = false;
+    });
     if (widget.initialFeed == null) {
       ref
           .read(appSettingProvider.notifier)
@@ -103,7 +109,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
   }
 
   List<IconButtonData> _buildActions() {
-    if (_feed != RequestFeed.live) {
+    if (_feed != RequestFeed.live || _showTopology) {
       return const [];
     }
     return [
@@ -130,7 +136,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
       builder: (context, body) {
         final pinned = !ViewScope.isMobileOf(context);
         return Scaffold(
-          title: _labelOf(_feed),
+          title: _showTopology ? topologyTitle(context) : _labelOf(_feed),
           titleMenuItems: _buildFeedMenu(),
           searchState: AppBarSearchState(onSearch: _search),
           keywords: _filters.keywordsOf(pinned: pinned),
@@ -152,9 +158,17 @@ class _RequestsViewState extends ConsumerState<RequestsView>
       for (final feed in RequestFeed.values)
         PopupMenuItem(
           label: _labelOf(feed),
-          checked: feed == _feed,
+          checked: feed == _feed && !_showTopology,
           onPressed: () => _selectFeed(feed),
         ),
+      PopupMenuItem(
+        label: topologyTitle(context),
+        checked: _showTopology,
+        onPressed: () {
+          _selectFeed(RequestFeed.live);
+          setState(() => _showTopology = true);
+        },
+      ),
     ];
   }
 
@@ -172,6 +186,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
         filters: _filters,
         scrollController: widget.scrollController,
         connectionsReader: widget.connectionsReader,
+        showTopology: _showTopology,
       ),
     };
   }
@@ -315,12 +330,15 @@ class _LiveFeed extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
   final Future<List<TrackerInfo>> Function()? connectionsReader;
 
+  final bool showTopology;
+
   const _LiveFeed({
     super.key,
     required this.listController,
     required this.filters,
     required this.scrollController,
     required this.connectionsReader,
+    required this.showTopology,
   });
 
   @override
@@ -452,7 +470,16 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
             label: appLocalizations.nullTip(appLocalizations.connections),
             illustration: NullStatusIllustration.connections,
           ),
-          child: RecordTableFrame<TrackerInfo>(
+          child: widget.showTopology
+              ? ConnectionTopology(
+                  connections: connections,
+                  controller: _scrollController,
+                  padding: EdgeInsets.only(
+                    top: context.contentTopPadding,
+                    bottom: 16 + context.bottomInset,
+                  ),
+                )
+              : RecordTableFrame<TrackerInfo>(
             tableId: 'connections',
             items: connections,
             columnsOf: (width) =>
