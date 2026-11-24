@@ -84,4 +84,22 @@ void main() {
     expect(full.nodes[(2, TopologyRole.exit, '')]!.connections, 1);
     expect(full.nodes[(2, TopologyRole.exit, 'DIRECT')]!.connections, 2);
   });
+
+  test('node focus keeps only complete observed paths', () {
+    final routes = connectionRoutes([
+      connection('1', ['US', 'Shared'], source: 'Browser'),
+      connection('2', ['JP', 'Shared'], source: 'Chat'),
+      connection('3', ['US', 'Other'], source: 'Chat'),
+    ]);
+    const browser = (0, TopologyRole.source, 'Browser');
+    final focused = topologyRoutesFor(routes, browser);
+    expect(focused, hasLength(1));
+    final graph = ConnectionGraph(focused);
+    expect(graph.nodes.containsKey((3, TopologyRole.exit, 'US')), isTrue);
+    expect(graph.nodes.containsKey((3, TopologyRole.exit, 'JP')), isFalse);
+    expect(
+      topologyRoutesFor(routes, (2, TopologyRole.group, 'Shared')),
+      hasLength(2),
+    );
+  });
 }
