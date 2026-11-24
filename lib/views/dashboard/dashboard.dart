@@ -116,7 +116,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 /// Four columns fill the window, the tables taking what the rows above them
 /// leave. A window too short for the tables, and every two column one, gets
 /// the summary cards instead, so no list scrolls inside a page that scrolls.
-class _DesktopDashboard extends StatelessWidget {
+class _DesktopDashboard extends ConsumerWidget {
   const _DesktopDashboard({
     required this.platform,
     required this.columns,
@@ -128,7 +128,16 @@ class _DesktopDashboard extends StatelessWidget {
   final double gap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showTopology = platform == SupportPlatform.Windows ||
+        (platform == SupportPlatform.Android &&
+            ref.watch(
+              dashboardStateProvider.select(
+                (state) => state.dashboardWidgets.contains(
+                  DashboardWidget.networkTopology,
+                ),
+              ),
+            ));
     final density = DashboardDensityScope.of(context);
     final compact = density.isCompact;
     final scale = DashboardDensityScope.scaleOf(context);
@@ -210,7 +219,7 @@ class _DesktopDashboard extends StatelessWidget {
                   middleHeight,
                   row(const [(1, ServiceStatusCard()), (1, MemoryInfo())]),
                 ),
-                if (platform == SupportPlatform.Windows)
+                if (showTopology)
                   const RepaintBoundary(child: NetworkTopologyCard()),
                 sized(summaryHeight, summaries),
               ],
@@ -253,7 +262,7 @@ class _DesktopDashboard extends StatelessWidget {
             gap * 3;
         final tablesFit = constraints.maxHeight >= rowsHeight + tablesHeight;
         final fills = constraints.maxHeight >= rowsHeight + summaryHeight;
-        if (platform == SupportPlatform.Windows) {
+        if (showTopology) {
           return SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: padding,
