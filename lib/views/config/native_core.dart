@@ -3,12 +3,16 @@ import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/clash_native_file.dart';
+import 'package:fl_clash/core/connection_topology.dart';
+import 'package:fl_clash/core/desktop/native_clash_controller.dart';
 import 'package:fl_clash/core/desktop/native_config_kind.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_installer.dart';
 import 'package:fl_clash/core/desktop/network_diagnostics.dart';
+import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/views/connection/topology_graph.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +43,9 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   StreamSubscription<bool>? _handoffStateSubscription;
   bool _busy = false;
   bool _advanced = false;
+  int _nativeSnapshotRevision = 0;
+  List<TrackerInfo>? _nativeConnections;
+  Map<String, String> _nativeSelections = const {};
 
   @override
   void initState() {
@@ -55,7 +62,13 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     _logSubscription = nativeCoreRuntime.logs.listen(addLog);
     _handoffSubscription = nativeCoreHandoff.messages.listen(addLog);
     _handoffStateSubscription = nativeCoreHandoff.busyChanges.listen((_) {
-      if (mounted) setState(() {});
+      _nativeSnapshotRevision++;
+      if (mounted) {
+        setState(() {
+          _nativeConnections = null;
+          _nativeSelections = const {};
+        });
+      }
     });
   }
 
@@ -254,6 +267,35 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   Future<String> _stop() async {
     await nativeCoreHandoff.deactivate();
     return '独立内核已停止；已按先前状态恢复 Mihomo';
+  }
+
+  Future<String> _readNativeSnapshot() async {
+    final spec = nativeCoreRuntime.activeSpec;
+    if (spec == null || nativeCoreHandoff.busy) return '当前没有可读取的独立内核';
+    final revision = ++_nativeSnapshotRevision;
+    setState(() {
+      _nativeConnections = null;
+      _nativeSelections = const {};
+    });
+    bool current() =>
+        mounted &&
+        revision == _nativeSnapshotRevision &&
+        identical(nativeCoreRuntime.activeSpec, spec) &&
+        !nativeCoreHandoff.busy;
+    final controller = await NativeClashController.fromSpec(spec);
+    if (!current()) return '内核会话已变化，请重新读取';
+    if (controller == null) {
+      return '需要已启用且配置密钥的 127.0.0.1 Clash API；本次未修改原生配置';
+    }
+    final connections = await controller.connections();
+    if (!current()) return '内核会话已变化，请重新读取';
+    final selections = await controller.selections();
+    if (!current()) return '内核会话已变化，请重新读取';
+    setState(() {
+      _nativeConnections = connections;
+      _nativeSelections = selections;
+    });
+    return '已读取 sing-box 当前连接与策略组快照';
   }
 
   Future<String> _diagnose() async {
@@ -521,6 +563,34 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
             footer:
                 '默认使用 Mihomo；独立内核配置可自动识别并一键启动，也可仅识别后手动启动；不会根据测速或当前节点自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。已验证本机 HTTP 代理入口的独立内核异常退出时自动重启一次，仍失败则恢复 Mihomo；TUN 异常直接恢复 Mihomo，路由状态未独立验证。',
           ),
+          if (active == NativeCoreKind.singBox)
+            generateSection(
+              title: 'sing-box 连接与策略组',
+              items: [
+                ListItem(
+                  title: const Text('刷新原生连接快照'),
+                  subtitle: const Text('使用已配置的本机 Clash API，不额外开启监听'),
+                  onTap: _busy || nativeCoreHandoff.busy
+                      ? null
+                      : () => _perform(_readNativeSnapshot),
+                ),
+                if (_nativeConnections case final connections?) ...[
+                  ListItem(title: Text('当前连接：${connections.length}')),
+                  for (final entry in _nativeSelections.entries)
+                    ListItem(
+                      title: Text(entry.key),
+                      subtitle: Text(entry.value.isEmpty ? '暂无选择' : entry.value),
+                    ),
+                  TopologyGraphView(
+                    key: ValueKey(_nativeSnapshotRevision),
+                    routes: connectionRoutes(connections),
+                    viewportHeight: 260,
+                    fitToViewport: true,
+                  ),
+                ],
+              ],
+              footer: '按需读取当前 sing-box 实际数据；不显示 Mihomo 缓存或自动切换节点。',
+            ),
           if (_result.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
