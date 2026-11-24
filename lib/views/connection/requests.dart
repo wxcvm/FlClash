@@ -18,12 +18,14 @@ import 'topology.dart';
 class RequestsView extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
   final RequestFeed? initialFeed;
+  final bool initialTopology;
   final Future<List<TrackerInfo>> Function()? connectionsReader;
 
   const RequestsView({
     super.key,
     this.scrollController,
     this.initialFeed,
+    this.initialTopology = false,
     @visibleForTesting this.connectionsReader,
   });
 
@@ -36,10 +38,11 @@ class _RequestsViewState extends ConsumerState<RequestsView>
   final _recent = TrackerInfoListController();
   final _live = TrackerInfoListController();
   final _liveFeed = GlobalKey<_LiveFeedState>();
-  bool _showTopology = false;
+  late bool _showTopology = widget.initialTopology;
   late final _filters = trackerInfoFilterController(ref, 'requests');
-  late var _feed =
-      widget.initialFeed ?? ref.read(appSettingProvider).requestFeed;
+  late var _feed = widget.initialTopology
+      ? RequestFeed.live
+      : widget.initialFeed ?? ref.read(appSettingProvider).requestFeed;
 
   @override
   void initState() {
