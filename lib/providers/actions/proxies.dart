@@ -1119,7 +1119,7 @@ class ProxiesAction extends _$ProxiesAction {
           (target) => _delayTestPool.run(() => _runDelayTest(job, target)),
         ),
       );
-      await _retryAllRed(job, targets);
+      await _retryFailedDelayTests(job, targets);
     } finally {
       _delayTestJobs.remove(job);
       for (final target in targets) {
@@ -1139,10 +1139,9 @@ class ProxiesAction extends _$ProxiesAction {
     }
   }
 
-  // A batch of explicit failures can be a shared path or test congestion
-  // rather than independent dead nodes. Sample sequentially before spending
-  // another full batch on a genuinely unavailable network.
-  Future<void> _retryAllRed(
+  // Explicit failures can reflect shared path or test congestion, even when
+  // other nodes succeed. Sample failed nodes before spending another batch.
+  Future<void> _retryFailedDelayTests(
     _DelayTestJob job,
     List<_DelayTestTarget> targets,
   ) async {
@@ -1152,11 +1151,17 @@ class ProxiesAction extends _$ProxiesAction {
         _autoSpeedOnline &&
         _latestDelayTestGeneration[target.key] == job.generation;
     if (targets.length < 2 ||
-        !targets.every(
-          (target) => current(target) && (job.results[target.key] ?? 0) < 0,
-        )) {
+        !ref.mounted ||
+        job.cancelled ||
+        !_autoSpeedOnline) {
       return;
     }
+    final failed = targets
+        .where(
+          (target) => current(target) && (job.results[target.key] ?? 0) < 0,
+        )
+        .toList();
+    if (failed.isEmpty) return;
 
     Future<void> retry(List<_DelayTestTarget> batch) async {
       final active = batch.where(current).toList();
@@ -1173,7 +1178,7 @@ class ProxiesAction extends _$ProxiesAction {
       );
     }
 
-    final samples = targets.take(3).toList();
+    final samples = failed.take(3).toList();
     var recovered = false;
     for (final target in samples) {
       if (!current(target)) return;
@@ -1182,11 +1187,11 @@ class ProxiesAction extends _$ProxiesAction {
       if ((job.results[target.key] ?? 0) > 0) recovered = true;
     }
     if (!recovered) return;
-    // Retry the remaining nodes once, in small waves instead of another
-    // burst of 32. Never change a selection or reset working connections.
-    for (var offset = samples.length; offset < targets.length; offset += 4) {
+    // Retry only the remaining failures once, in small waves. Successful
+    // nodes and missing RPC replies are not retested or overwritten.
+    for (var offset = samples.length; offset < failed.length; offset += 4) {
       if (!ref.mounted || job.cancelled || !_autoSpeedOnline) return;
-      await retry(targets.skip(offset).take(4).toList());
+      await retry(failed.skip(offset).take(4).toList());
     }
   }
 
