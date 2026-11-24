@@ -154,6 +154,56 @@ void main() {
     expect(automaticSpeedCandidates(['A'], '', {}, 0, limit: 0), isEmpty);
   });
 
+  test('quality distinguishes completed probes and missing samples', () {
+    final history = NodeHealthHistory();
+    for (final delay in <int?>[10, 30, -1, 70, 80, null, 0]) {
+      history.observe('A', delay);
+    }
+    final quality = history.quality['A']!;
+    expect(quality.values, [10, 30, -1, 70, 80]);
+    expect(quality.successRate, 0.8);
+    expect(quality.meanDelay, 47.5);
+    expect(quality.delayVariation, 15);
+    expect(NodeProbeQuality([]).successRate, isNull);
+    expect(NodeProbeQuality([-1, 30]).delayVariation, isNull);
+    expect(NodeProbeQuality([-1]).meanDelay, isNull);
+  });
+
+  test('quality retains only the latest completed samples', () {
+    final history = NodeHealthHistory();
+    for (var i = 0; i < 4; i++) {
+      history.observe('A', -1);
+    }
+    for (var i = 0; i < NodeHealthHistory.sampleLimit; i++) {
+      history.observe('A', 20);
+    }
+    expect(history.quality['A']!.successRate, 1);
+    expect(history.samples['A'], (successes: 12, failures: 0));
+    history.reset();
+    expect(history.quality, isEmpty);
+  });
+
+  test('equally reliable candidates prefer steadier measured latency', () {
+    expect(
+      automaticSpeedCandidates(
+        ['fast', 'steady', 'unknown'],
+        '',
+        {'fast': 100000, 'steady': 10000},
+        2,
+        limit: 1,
+        health: {
+          'fast': (successes: 2, failures: 0),
+          'steady': (successes: 2, failures: 0),
+        },
+        quality: {
+          'fast': NodeProbeQuality([10, 100]),
+          'steady': NodeProbeQuality([30, 32]),
+        },
+      ),
+      ['steady'],
+    );
+  });
+
   test('network changes reset health but keep download budget', () {
     final health = NodeHealthHistory();
     final now = DateTime(2026);
