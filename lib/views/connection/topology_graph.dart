@@ -76,7 +76,15 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
     if (layers.isEmpty) {
       return Column(
         children: [
-          Text(chinese ? '暂无匹配连接' : 'No matching connections'),
+          if (widget.fitToViewport)
+            SizedBox(
+              height: widget.viewportHeight,
+              child: Center(
+                child: Text(chinese ? '暂无匹配连接' : 'No matching connections'),
+              ),
+            )
+          else
+            Text(chinese ? '暂无匹配连接' : 'No matching connections'),
           if (focus != null)
             _action(
               context,
@@ -138,9 +146,7 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
                 label: '${role(entry.key.$2)}: ${name(entry.key)}',
                 child: GestureDetector(
                   onTap: () => setState(() {
-                    _selected = selected == entry.key
-                        ? null
-                        : entry.key;
+                    _selected = selected == entry.key ? null : entry.key;
                   }),
                   child: DecoratedBox(
                     decoration: ShapeDecoration(
@@ -162,9 +168,7 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
                               role(entry.key.$2),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: nodeColor(entry.key),
-                              ),
+                              style: TextStyle(color: nodeColor(entry.key)),
                             ),
                           ),
                           Flexible(
