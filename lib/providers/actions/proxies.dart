@@ -128,6 +128,8 @@ class ProxiesAction extends _$ProxiesAction {
   int _autoRecoveryCursor = 0;
   int _autoSpeedGeneration = 0;
   final _nodeHealth = NodeHealthHistory();
+  String? _healthEndpoint;
+  int? _healthEpoch;
 
   final List<_DelayTestJob> _delayTestJobs = [];
   final Map<String, int> _latestDelayTestGeneration = {};
@@ -255,6 +257,12 @@ class ProxiesAction extends _$ProxiesAction {
     _autoSpeedRunning = true;
     final profile = ref.read(currentProfileIdProvider);
     final epoch = ref.read(routeTrackerProvider).hostEpoch;
+    final endpoint = ref.read(realTestUrlProvider(group.testUrl));
+    if (_healthEndpoint != endpoint || _healthEpoch != epoch) {
+      _nodeHealth.reset(keepOptimizationBudget: true);
+      _healthEndpoint = endpoint;
+      _healthEpoch = epoch;
+    }
     final generation = _speedTestGeneration;
     final autoGeneration = _autoSpeedGeneration;
     final selection = _currentSelectedName(group.name);
@@ -267,6 +275,9 @@ class ProxiesAction extends _$ProxiesAction {
         ref.read(routeTrackerProvider).hostEpoch == epoch &&
         _speedTestGeneration == generation &&
         _autoSpeedGeneration == autoGeneration &&
+        ref.read(groupsProvider).getGroup(group.name)?.testUrl ==
+            group.testUrl &&
+        ref.read(realTestUrlProvider(group.testUrl)) == endpoint &&
         _currentSelectedName(group.name) == selection;
     try {
       if (incumbent.isEmpty ||
