@@ -9,8 +9,8 @@ import 'topology_graph.dart';
 
 String topologyTitle(BuildContext context) =>
     Localizations.localeOf(context).languageCode == 'zh'
-        ? '网络拓扑'
-        : 'Network topology';
+    ? '网络拓扑'
+    : 'Network topology';
 
 /// Uses the existing live feed's filtered snapshot and scroll controller.
 /// Rows are built lazily; no separate core subscription or graph dependency.
@@ -124,7 +124,9 @@ class _ConnectionTopologyState extends State<ConnectionTopology> {
                           label: i == route.hops.length - 1
                               ? labels.outboundExit
                               : labels.proxyGroup,
-                          value: route.hops[i].isEmpty ? unknown : route.hops[i],
+                          value: route.hops[i].isEmpty
+                              ? unknown
+                              : route.hops[i],
                         ),
                       ],
                       if (route.hops.isEmpty) ...[
