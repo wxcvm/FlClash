@@ -87,7 +87,9 @@ class ConnectionGraph {
         nodes.putIfAbsent(key, TopologyWeight.new).add(route);
       }
       for (var i = 1; i < keys.length; i++) {
-        edges.putIfAbsent((keys[i - 1], keys[i]), TopologyWeight.new).add(route);
+        edges
+            .putIfAbsent((keys[i - 1], keys[i]), TopologyWeight.new)
+            .add(route);
       }
       shownPaths++;
       shownConnections += route.connections;
