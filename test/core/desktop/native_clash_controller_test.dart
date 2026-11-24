@@ -48,9 +48,7 @@ void main() {
       );
     }
     expect(
-      NativeClashController.fromConfig(
-        controllerConfig('127.0.0.1:9090', ''),
-      ),
+      NativeClashController.fromConfig(controllerConfig('127.0.0.1:9090', '')),
       isNull,
     );
   });
