@@ -67,7 +67,12 @@ List<String> automaticSpeedCandidates(
       if (reliability != 0) return reliability;
       final av = quality[a]?.delayVariation;
       final bv = quality[b]?.delayVariation;
-      if (av != null && bv != null && av != bv) return av.compareTo(bv);
+      if (av != null || bv != null) {
+        final variation = (av ?? double.infinity).compareTo(
+          bv ?? double.infinity,
+        );
+        if (variation != 0) return variation;
+      }
       return (rates[b] ?? 0).compareTo(rates[a] ?? 0);
     });
   for (final name in known
