@@ -31,6 +31,8 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
   bool _busy = false;
   bool _advanced = false;
   bool _refreshFailed = false;
+  bool _refreshing = false;
+  String _progress = '';
 
   @override
   void initState() {
@@ -51,6 +53,8 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
   }
 
   Future<void> _refresh() async {
+    if (_refreshing || !mounted) return;
+    setState(() => _refreshing = true);
     try {
       await _service.getNativeStatus();
       if (mounted) setState(() => _refreshFailed = false);
@@ -61,13 +65,16 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
           if (!widget.readOnly) _result = error.toString();
         });
       }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 
   Future<void> _perform(Future<String> Function() operation) async {
-    if (_busy) return;
+    if (_busy || _refreshing) return;
     setState(() {
       _busy = true;
+      _progress = '正在处理…';
       _result = '';
     });
     try {
@@ -94,8 +101,9 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
   }) async {
     final String yaml;
     final Map<String, String> selected;
+    final originalProfile = current ? ref.read(currentProfileProvider) : null;
     if (current) {
-      final profile = ref.read(currentProfileProvider);
+      final profile = originalProfile;
       if (profile == null) return '请先选择订阅';
       yaml = await ref
           .read(setupActionProvider.notifier)
@@ -128,17 +136,24 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
           },
         ],
       );
+      if (mounted) setState(() => _progress = '正在验证配置…');
       await _service.validateNativeCore(candidate.path);
       if (!mounted) {
         await directory.delete(recursive: true);
         return '未选择配置';
+      }
+      if (startAfterImport && ref.read(currentProfileProvider) != originalProfile) {
+        await directory.delete(recursive: true);
+        return '订阅已变化，请重新切换';
       }
       setState(() => _configPath = candidate.path);
     } catch (_) {
       await directory.delete(recursive: true);
       rethrow;
     }
-    if (startAfterImport) return _start();
+    if (startAfterImport) {
+      return _start(requireCurrentProfile: true, originalProfile: originalProfile);
+    }
     return 'Clash 配置已转换并通过预检；原配置未修改';
   }
 
@@ -175,7 +190,21 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
     return 'sing-box $version 配置验证通过；未改变当前 VPN';
   }
 
-  Future<String> _start() async {
+  Future<String> _start({
+    bool requireCurrentProfile = false,
+    Object? originalProfile,
+  }) async {
+    if (!mounted) return '已取消切换';
+    setState(() => _progress = '正在确认内核状态…');
+    final latest = await _service.getNativeStatus();
+    if (!mounted) return '已取消切换';
+    if (!AndroidCoreActions(latest, refreshFailed: false).canPrepareNative) {
+      return '内核状态已变化，请重新选择操作';
+    }
+    if (requireCurrentProfile && ref.read(currentProfileProvider) != originalProfile) {
+      return '订阅已变化，请重新切换';
+    }
+    setState(() => _progress = '正在切换内核…');
     final outcome = await _service.startNativeCore(_configPath);
     if (outcome.started) return 'sing-box VPN 已启动；请验证实际联网';
     return outcome.restoredMihomo
@@ -197,11 +226,15 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
         valueListenable: _service.nativeStatus,
         builder: (context, status, _) {
           final available = status?.available == true;
-          final native = status?.engine == 'sing-box';
-          final owned = status?.nativeOwner == true;
-          final busy =
-              _busy || status?.state == 'STARTING' || status?.state == 'STOPPING';
-          final canConfigure = available && !owned && !busy && !_refreshFailed;
+          final actions = AndroidCoreActions(
+            status,
+            refreshFailed: _refreshFailed || _refreshing,
+          );
+          final native = actions.nativeRunning;
+          final owned = status?.ownsRuntime == true;
+          final busy = _busy || _refreshing ||
+              status?.state == 'STARTING' || status?.state == 'STOPPING';
+          final canConfigure = actions.canPrepareNative && !busy;
           final hasProfile = ref.watch(currentProfileProvider) != null;
           final insight = AndroidCoreInsight.fromStatus(
             status,
@@ -243,7 +276,7 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
                 generateSection(
                   title: '切换内核',
                   items: [
-                    if (!native && !owned)
+                    if (actions.settled && !native && !owned)
                       ListItem(
                         title: const Text('使用当前订阅切换到 sing-box'),
                         subtitle: Text(
@@ -273,7 +306,9 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
                     if (native || owned)
                       ListItem(
                         title: const Text('停止 sing-box'),
-                        onTap: busy ? null : () => _perform(_stop),
+                        onTap: !busy && actions.canStopNative
+                            ? () => _perform(_stop)
+                            : null,
                       ),
                     ListItem(
                       title: Text(_advanced ? '收起高级配置' : '高级配置'),
@@ -324,9 +359,9 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
                   ],
                 ),
               if (!widget.readOnly && _busy)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('正在处理，请勿重复切换…'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(_progress),
                 ),
               if (_result.isNotEmpty && !widget.readOnly)
                 Padding(
