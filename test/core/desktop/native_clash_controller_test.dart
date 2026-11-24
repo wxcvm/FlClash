@@ -114,7 +114,12 @@ void main() {
                   'all': ['exit', 'backup'],
                   'now': 'exit',
                 },
-                'exit': {'type': 'VLESS'},
+                'exit': {
+                  'type': 'VLESS',
+                  'history': [
+                    {'delay': 88},
+                  ],
+                },
               },
             }),
           );
@@ -135,7 +140,9 @@ void main() {
         controllerConfig('127.0.0.1:${server.port}', 'test-secret'),
       )!;
       expect((await api.connections()).single.id, 'c1');
-      expect((await api.groups()).single.members, ['exit', 'backup']);
+      final group = (await api.groups()).single;
+      expect(group.members, ['exit', 'backup']);
+      expect(group.selectedDelayMs, 88);
       await api.select('selector', 'backup');
       expect(await api.testDelay('exit'), 42);
       expect(delayUrls, ['https://probe.example/generate_204']);
