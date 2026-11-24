@@ -23,6 +23,20 @@ for old, new in (
     ncsi_source = ncsi_source.replace(old, new, 1)
 ncsi_config.write_text(ncsi_source, encoding="utf-8", newline="\n")
 
+# Unified latency optionally sends a second HEAD. A failed optional sample
+# must not inflate the first successful sample by its entire timeout.
+adapter_path = root / "adapter/adapter.go"
+adapter_source = adapter_path.read_text(encoding="utf-8")
+for old, new in (
+    ("\t_ = resp.Body.Close()\n\n\tif unifiedDelay {", "\t_ = resp.Body.Close()\n\telapsed := time.Since(start)\n\n\tif unifiedDelay {"),
+    ("\t\t\tstart = second", "\t\t\telapsed = time.Since(second)"),
+    ("t = uint16(time.Since(start) / time.Millisecond)", "t = uint16(elapsed / time.Millisecond)"),
+):
+    if adapter_source.count(old) != 1:
+        raise SystemExit("Mihomo unified delay source changed")
+    adapter_source = adapter_source.replace(old, new, 1)
+adapter_path.write_text(adapter_source, encoding="utf-8", newline="\n")
+
 # MMDB discovery must not overwrite the protobuf GeoIP.dat filename.
 # With both packaged resources present, doing so makes a subsequent GEOIP
 # rule try to decode GEOIP.metadb as a protobuf, failing configuration load.
