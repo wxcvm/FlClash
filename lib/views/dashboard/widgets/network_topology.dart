@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:fl_clash/core/connection_topology.dart';
+import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/views/connection/topology.dart';
 import 'package:fl_clash/views/connection/topology_graph.dart';
@@ -27,6 +31,48 @@ class _NetworkTopologyCardState extends ConsumerState<NetworkTopologyCard>
         RouteMotionHoldMixin<NetworkTopologyCard>,
         ConnectionsPolling<NetworkTopologyCard> {
   List<TrackerInfo>? _frozen;
+  late final StreamSubscription<bool> _handoff;
+  late final StreamSubscription<NativeCoreExit> _exits;
+  int _session = 0;
+
+  bool get _nativeUnavailable =>
+      nativeCoreHandoff.blocksMihomoStart || nativeCoreRuntime.isRunning;
+
+  @override
+  void initState() {
+    super.initState();
+    _handoff = nativeCoreHandoff.busyChanges.listen((_) => _resetSession());
+    _exits = nativeCoreRuntime.exits.listen((_) => _resetSession());
+  }
+
+  void _resetSession() {
+    if (!mounted) return;
+    setState(() {
+      _session++;
+      _frozen = null;
+      connections = const [];
+      tcpCount = 0;
+      udpCount = 0;
+    });
+    connectionCount.value = 0;
+    restartPolling();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_handoff.cancel());
+    unawaited(_exits.cancel());
+    super.dispose();
+  }
+
+  @override
+  Future<void> poll(PollGuard isCurrent) async {
+    if (_nativeUnavailable) return;
+    final session = _session;
+    await super.poll(
+      () => isCurrent() && session == _session && !_nativeUnavailable,
+    );
+  }
 
   @override
   bool get pollsConnections => true;
@@ -39,7 +85,11 @@ class _NetworkTopologyCardState extends ConsumerState<NetworkTopologyCard>
     final desktop = DashboardDensityScope.of(context).isDesktop;
     final scale = DashboardDensityScope.scaleOf(context);
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
-    final snapshot = _frozen ?? connections;
+    final nativeUnavailable = _nativeUnavailable;
+    final snapshot = nativeUnavailable
+        ? const <TrackerInfo>[]
+        : _frozen ?? connections;
+    final label = nativeCoreRuntime.activeKind?.label;
     return DashboardCard(
       semanticLabel: topologyTitle(context),
       child: Column(
@@ -50,6 +100,7 @@ class _NetworkTopologyCardState extends ConsumerState<NetworkTopologyCard>
             glyph: AppGlyphs.split,
             title: topologyTitle(context),
             trailing: [
+              if (!nativeUnavailable) ...[
               PressSurface(
                 fill: context.colorScheme.surfaceContainer,
                 shape: AppShape.sm,
@@ -72,13 +123,30 @@ class _NetworkTopologyCardState extends ConsumerState<NetworkTopologyCard>
                 onPressed: () => openDashboardTopology(context),
                 child: Text(chinese ? '详情' : 'Details'),
               ),
+              ],
             ],
           ),
-          TopologyGraphView(
-            routes: connectionRoutes(snapshot),
-            viewportHeight: (desktop ? 260 : 220) * scale,
-            fitToViewport: true,
-          ),
+          if (nativeUnavailable)
+            SizedBox(
+              height: (desktop ? 260 : 220) * scale,
+              child: Center(
+                child: Text(
+                  nativeCoreHandoff.busy
+                      ? (chinese ? '正在切换内核' : 'Switching cores')
+                      : (chinese
+                            ? '${label ?? '独立内核'} 拓扑尚未接入仪表盘'
+                            : '${label ?? 'Native core'} topology unavailable'),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          else
+            TopologyGraphView(
+              key: ValueKey(_session),
+              routes: connectionRoutes(snapshot),
+              viewportHeight: (desktop ? 260 : 220) * scale,
+              fitToViewport: true,
+            ),
         ],
       ),
     );
