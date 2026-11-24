@@ -77,7 +77,7 @@ class AndroidCoreInsight {
         status: '已启动',
         explanation: '当前 Android VPN 由 Mihomo 运行。$standby',
         suggestion: hasProfile
-            ? '已选择订阅；如某节点仅在 Karing 可用，应先比较协议与拨号结果。'
+            ? '已选择订阅，可按需切换内核；实际连通性仍需网络检测。'
             : '尚未选择订阅，无法判断节点的协议兼容性。',
       );
     }
