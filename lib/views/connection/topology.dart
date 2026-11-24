@@ -1,6 +1,7 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/connection_topology.dart';
 import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/ui/ui.dart';
 import 'package:fl_clash/views/dashboard/style.dart';
 import 'package:flutter/widgets.dart';
 
@@ -82,9 +83,7 @@ class ConnectionTopology extends StatelessWidget {
                           label: i == route.hops.length - 1
                               ? labels.outboundExit
                               : labels.proxyGroup,
-                          value: route.hops[i].isEmpty
-                              ? unknown
-                              : route.hops[i],
+                          value: route.hops[i].isEmpty ? unknown : route.hops[i],
                         ),
                       ],
                       if (route.hops.isEmpty) ...[
