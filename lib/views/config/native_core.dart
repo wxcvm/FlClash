@@ -68,7 +68,6 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
         setState(() {
           _nativeConnections = null;
           _nativeGroups = const {};
-      _nativeTestUrl = 'https://www.cloudflare.com/cdn-cgi/trace';
           _nativeTestUrl = 'https://www.cloudflare.com/cdn-cgi/trace';
         });
       }
