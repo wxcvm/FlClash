@@ -154,9 +154,9 @@ class _RouteNode extends StatelessWidget {
     final colors = context.colorScheme;
     return DecoratedBox(
       decoration: ShapeDecoration(
-        shape: AppShape.all(10).copyWith(
-          side: BorderSide(color: colors.outlineVariant),
-        ),
+        shape: AppShape.all(
+          10,
+        ).copyWith(side: BorderSide(color: colors.outlineVariant)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
