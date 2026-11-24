@@ -55,7 +55,7 @@ class AndroidCoreInsight {
         suggestion: '等待状态稳定，不要把这一过程当成节点不可用。',
       );
     }
-    if (native.nativeOwner && native.engine != 'sing-box') {
+    if (native.ownsRuntime && native.engine != 'sing-box') {
       return const AndroidCoreInsight(
         engine: '切换待完成',
         status: '状态未稳定',
@@ -98,4 +98,32 @@ class AndroidCoreInsight {
       suggestion: '刷新状态确认，不自动改变 DNS、节点或 VPN。',
     );
   }
+}
+
+
+/// The UI offers only actions supported by confirmed runtime ownership.
+class AndroidCoreActions {
+  const AndroidCoreActions(this.native, {required this.refreshFailed});
+
+  final AndroidNativeStatus? native;
+  final bool refreshFailed;
+
+  bool get settled =>
+      !refreshFailed &&
+      native != null &&
+      (native!.state == 'STARTED' || native!.state == 'STOPPED');
+
+  bool get canPrepareNative =>
+      settled &&
+      native!.available &&
+      !native!.ownsRuntime &&
+      ((native!.state == 'STARTED' && native!.engine == 'mihomo') ||
+          (native!.state == 'STOPPED' && native!.engine == 'idle'));
+
+  bool get nativeRunning =>
+      settled &&
+      native!.state == 'STARTED' &&
+      native!.engine == 'sing-box';
+
+  bool get canStopNative => settled && native!.ownsRuntime;
 }
