@@ -271,8 +271,7 @@ class _TopologyLinks extends CustomPainter {
       final from = positions[entry.key.$1]!.centerRight;
       final to = positions[entry.key.$2]!.centerLeft;
       final mid = (from.dx + to.dx) / 2;
-      final highlighted =
-          selected == entry.key.$1 || selected == entry.key.$2;
+      final highlighted = selected == entry.key.$1 || selected == entry.key.$2;
       final path = Path()
         ..moveTo(from.dx, from.dy)
         ..cubicTo(mid, from.dy, mid, to.dy, to.dx, to.dy);
