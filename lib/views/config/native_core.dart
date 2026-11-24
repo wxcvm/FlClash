@@ -46,6 +46,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   int _nativeSnapshotRevision = 0;
   List<TrackerInfo>? _nativeConnections;
   Map<String, NativeProxyGroup> _nativeGroups = const {};
+  String _nativeTestUrl = 'https://www.cloudflare.com/cdn-cgi/trace';
 
   @override
   void initState() {
@@ -67,6 +68,8 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
         setState(() {
           _nativeConnections = null;
           _nativeGroups = const {};
+      _nativeTestUrl = 'https://www.cloudflare.com/cdn-cgi/trace';
+          _nativeTestUrl = 'https://www.cloudflare.com/cdn-cgi/trace';
         });
       }
     });
@@ -297,6 +300,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     setState(() {
       _nativeConnections = connections;
       _nativeGroups = {for (final group in groups) group.tag: group};
+      _nativeTestUrl = controller.testUrl;
     });
     return '已读取 sing-box 当前连接与策略组快照';
   }
@@ -320,6 +324,35 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
       return '已切换至 $outbound，内核返回值已确认';
     }
     return '$message；切换请求尚未由内核快照确认';
+  }
+
+  Future<String> _testNativeGroup(String groupTag) async {
+    final group = _nativeGroups[groupTag];
+    final spec = nativeCoreRuntime.activeSpec;
+    if (group == null ||
+        !group.selectable ||
+        group.selected.isEmpty ||
+        !group.members.contains(group.selected) ||
+        spec == null ||
+        spec.kind != NativeCoreKind.singBox) {
+      return '当前策略组没有可测速的已选节点';
+    }
+    final revision = _nativeSnapshotRevision;
+    final controller = await NativeClashController.fromSpec(spec);
+    if (!mounted ||
+        revision != _nativeSnapshotRevision ||
+        !identical(nativeCoreRuntime.activeSpec, spec) ||
+        controller == null) {
+      return '内核会话已变化，未开始测速';
+    }
+    final delay = await controller.testDelay(group.selected);
+    if (!mounted ||
+        revision != _nativeSnapshotRevision ||
+        !identical(nativeCoreRuntime.activeSpec, spec)) {
+      return '内核会话已变化，测速结果未应用';
+    }
+    await _readNativeSnapshot();
+    return '已测试 ${group.selected}：$delay ms（${controller.testUrl}）';
   }
 
   Future<String> _diagnose() async {
@@ -601,18 +634,30 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                   for (final group in _nativeGroups.values)
                     if (group.selectable &&
                         group.selected.isNotEmpty &&
-                        group.members.contains(group.selected))
+                        group.members.contains(group.selected)) ...[
                       ListItem<String>.options(
                         title: Text(group.tag),
-                        subtitle: const Text('sing-box Selector'),
+                        subtitle: Text(
+                          'sing-box Selector · '
+                          '${group.selectedDelayMs == null ? '暂无延迟' : '${group.selectedDelayMs} ms'}',
+                        ),
                         options: group.members,
                         value: group.selected,
                         textBuilder: (tag) => tag,
                         onChanged: (tag) => _perform(
                           () => _selectNativeOutbound(group.tag, tag),
                         ),
-                      )
-                    else
+                      ),
+                      ListItem(
+                        title: const Text('测试当前节点延迟'),
+                        subtitle: Text('测试地址：$_nativeTestUrl'),
+                        onTap: _busy
+                            ? null
+                            : () => _perform(
+                                () => _testNativeGroup(group.tag),
+                              ),
+                      ),
+                    ] else
                       ListItem(
                         title: Text(group.tag),
                         subtitle: Text('${group.type} · ${group.selected}'),
