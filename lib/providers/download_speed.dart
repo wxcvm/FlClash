@@ -117,6 +117,35 @@ String formatDownloadSpeed(int bytesPerSecond) {
   return '${(bytesPerSecond / 1000000).toStringAsFixed(1)} MB/s';
 }
 
+/// Recent HTTP probe statistics, not packet loss or transport-level jitter.
+class NodeProbeQuality {
+  NodeProbeQuality(Iterable<int> values) : values = List.unmodifiable(values);
+
+  final List<int> values;
+  int get successes => values.where((value) => value > 0).length;
+  int get failures => values.length - successes;
+  double? get successRate =>
+      values.isEmpty ? null : successes / values.length;
+
+  double? get meanDelay {
+    final valid = values.where((value) => value > 0).toList();
+    if (valid.isEmpty) return null;
+    return valid.reduce((a, b) => a + b) / valid.length;
+  }
+
+  /// Average absolute difference of adjacent successful probes only.
+  double? get delayVariation {
+    var sum = 0;
+    var pairs = 0;
+    for (var i = 1; i < values.length; i++) {
+      if (values[i - 1] <= 0 || values[i] <= 0) continue;
+      sum += (values[i] - values[i - 1]).abs();
+      pairs++;
+    }
+    return pairs == 0 ? null : sum / pairs;
+  }
+}
+
 enum NodeHealthDecision { wait, optimize, failover }
 
 /// In-memory health history for the current profile and network. Unknown
@@ -126,10 +155,21 @@ class NodeHealthHistory {
   int _failures = 0;
   DateTime? _lastOptimization;
   DateTime? _lastOptimizationAttempt;
-  final Map<String, ({int successes, int failures})> _samples = {};
+  static const sampleLimit = 12;
+  final _samples = <String, List<int>>{};
 
-  Map<String, ({int successes, int failures})> get samples =>
-      Map.unmodifiable(_samples);
+  Map<String, NodeProbeQuality> get quality => {
+    for (final entry in _samples.entries)
+      entry.key: NodeProbeQuality(entry.value),
+  };
+
+  Map<String, ({int successes, int failures})> get samples => {
+    for (final entry in quality.entries)
+      entry.key: (
+        successes: entry.value.successes,
+        failures: entry.value.failures,
+      ),
+  };
 
   void reset({bool keepOptimizationBudget = false}) {
     _node = null;
@@ -144,11 +184,9 @@ class NodeHealthHistory {
   /// Candidate observations do not modify incumbent failure streaks.
   void observe(String node, int? delay) {
     if (delay == null || delay == 0) return;
-    final previous = _samples[node] ?? (successes: 0, failures: 0);
-    _samples[node] = (
-      successes: previous.successes + (delay > 0 ? 1 : 0),
-      failures: previous.failures + (delay < 0 ? 1 : 0),
-    );
+    final recent = _samples.putIfAbsent(node, () => []);
+    recent.add(delay);
+    if (recent.length > sampleLimit) recent.removeAt(0);
   }
 
   NodeHealthDecision record(String node, int? delay, DateTime now) {
