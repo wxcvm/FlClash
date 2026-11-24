@@ -210,6 +210,8 @@ class _DesktopDashboard extends StatelessWidget {
                   middleHeight,
                   row(const [(1, ServiceStatusCard()), (1, MemoryInfo())]),
                 ),
+                if (platform == SupportPlatform.Windows)
+                  const RepaintBoundary(child: NetworkTopologyCard()),
                 sized(summaryHeight, summaries),
               ],
             ),
@@ -251,6 +253,42 @@ class _DesktopDashboard extends StatelessWidget {
             gap * 3;
         final tablesFit = constraints.maxHeight >= rowsHeight + tablesHeight;
         final fills = constraints.maxHeight >= rowsHeight + summaryHeight;
+        if (platform == SupportPlatform.Windows) {
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: padding,
+            child: Column(
+              spacing: gap,
+              children: [
+                ...rows,
+                SizedBox(
+                  width: span(columns),
+                  child: const RepaintBoundary(child: NetworkTopologyCard()),
+                ),
+                if (tablesFit)
+                  sized(
+                    math.max(tablesHeight, 220 * scale),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      spacing: gap,
+                      children: const [
+                        Expanded(
+                          flex: 3,
+                          child: RepaintBoundary(child: ConnectionsTableCard()),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: RepaintBoundary(child: ProxyGroupsCard()),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  sized(summaryHeight, summaries),
+              ],
+            ),
+          );
+        }
         return SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: SizedBox(
@@ -356,11 +394,15 @@ class _MobileDashboard extends ConsumerWidget {
                     Column(
                       spacing: gap,
                       children: [
-                        for (final widget in widgets)
+                        for (final widget in widgets) ...[
                           RepaintBoundary(
                             key: cardKeyOf(widget),
                             child: widget.card,
                           ),
+                          if (platform == SupportPlatform.Windows &&
+                              widget == DashboardWidget.currentOutbound)
+                            const RepaintBoundary(child: NetworkTopologyCard()),
+                        ],
                       ],
                     ),
                   ],
