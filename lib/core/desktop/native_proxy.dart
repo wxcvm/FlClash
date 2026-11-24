@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:yaml/yaml.dart';
 
 import 'native_core.dart';
+import 'windows_ipv4_routes.dart';
 
 /// A local HTTP-compatible listener that the OS proxy can safely point to.
 /// This intentionally excludes SOCKS-only, wildcard-bound and authenticated
@@ -88,8 +89,13 @@ Future<NativeHttpEndpoint?> detectNativeHttpEndpoint(
 final class NativeTunConfiguration {
   final String? interfaceName;
   final String? dnsMode;
+  final List<String> ipv4Addresses;
 
-  const NativeTunConfiguration({this.interfaceName, this.dnsMode});
+  const NativeTunConfiguration({
+    this.interfaceName,
+    this.dnsMode,
+    this.ipv4Addresses = const [],
+  });
 }
 
 Future<NativeTunConfiguration?> detectNativeTunConfiguration(
@@ -113,7 +119,19 @@ Future<NativeTunConfiguration?> detectNativeTunConfiguration(
   );
   if (routedTun.length != 1) return null;
   final inbound = routedTun.single as Map;
+  final addresses = inbound['address'];
+  final ipv4 = <String>{};
+  if (addresses is List) {
+    for (final value in addresses) {
+      if (value is! String) continue;
+      final address = InternetAddress.tryParse(value.split('/').first);
+      if (address?.type == InternetAddressType.IPv4) {
+        ipv4.add(address!.address);
+      }
+    }
+  }
   return NativeTunConfiguration(
+    ipv4Addresses: List.unmodifiable(ipv4),
     interfaceName: inbound['interface_name'] is String
         ? inbound['interface_name'] as String
         : null,
@@ -160,5 +178,39 @@ Future<bool> waitForNativeHttpEndpoint(
       await Future.delayed(const Duration(milliseconds: 120));
     }
   }
+  return false;
+}
+
+
+/// Verify only the presence of a configured IPv4 interface in active routes.
+/// This does not prove default-route coverage, DNS, or remote connectivity.
+Future<bool?> waitForWindowsNativeTun(
+  NativeTunConfiguration tun, {
+  Duration timeout = const Duration(seconds: 5),
+}) async {
+  if (tun.ipv4Addresses.isEmpty) return null;
+  final watch = Stopwatch()..start();
+  do {
+    final remaining = timeout - watch.elapsed;
+    if (remaining <= Duration.zero) break;
+    try {
+      final result = await Process.run('route', [
+        'print',
+        '-4',
+      ]).timeout(remaining);
+      if (result.exitCode == 0 &&
+          windowsHasNativeTunAddress(
+            result.stdout.toString(),
+            tun.ipv4Addresses,
+          )) {
+        return true;
+      }
+    } on Exception {
+      // An unavailable route query cannot establish readiness.
+    }
+    if (watch.elapsed < timeout) {
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+  } while (watch.elapsed < timeout);
   return false;
 }
