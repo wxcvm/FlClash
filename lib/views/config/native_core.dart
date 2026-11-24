@@ -319,6 +319,9 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   @override
   Widget build(BuildContext context) {
     final active = nativeCoreRuntime.activeKind;
+    final requiresTun =
+        ref.watch(isStartProvider) &&
+        ref.watch(patchClashConfigProvider).tun.enable;
     return BaseScaffold(
       title: '内核切换',
       body: ListView(
@@ -360,7 +363,11 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
             items: [
               ListItem(
                 title: const Text('使用当前订阅准备 sing-box'),
-                subtitle: const Text('自动转换并预检，不立即切换当前连接'),
+                subtitle: Text(
+                  requiresTun
+                      ? '当前使用 TUN；转换仅准备本地代理，切换需要原生 TUN 配置'
+                      : '自动转换并预检，不立即切换当前连接',
+                ),
                 onTap: _busy || active != null || !nativeCoreInstaller.supported
                     ? null
                     : () => _perform(() => _importClash(current: true)),
