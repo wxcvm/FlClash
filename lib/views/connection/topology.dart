@@ -40,7 +40,7 @@ class _ConnectionTopologyState extends State<ConnectionTopology> {
     final labels = context.appLocalizations;
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
     final unknown = chinese ? '未知' : 'Unknown';
-    return ListView.builder(
+    return PrismListView(
       controller: widget.controller,
       padding: widget.padding.add(const EdgeInsets.symmetric(horizontal: 16)),
       itemCount: routes.length + 1,
@@ -61,9 +61,7 @@ class _ConnectionTopologyState extends State<ConnectionTopology> {
                   alignment: AlignmentDirectional.centerStart,
                   child: PressSurface(
                     fill: context.colorScheme.surfaceContainer,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    shape: AppShape.sm,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
@@ -90,9 +88,9 @@ class _ConnectionTopologyState extends State<ConnectionTopology> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: DecoratedBox(
-            decoration: BoxDecoration(
+            decoration: ShapeDecoration(
               color: context.colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(16),
+              shape: AppShape.md,
             ),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -155,9 +153,10 @@ class _RouteNode extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colorScheme;
     return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: colors.outlineVariant),
-        borderRadius: BorderRadius.circular(10),
+      decoration: ShapeDecoration(
+        shape: AppShape.all(10).copyWith(
+          side: BorderSide(color: colors.outlineVariant),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
