@@ -9,6 +9,8 @@ import 'package:fl_clash/state.dart';
 final nativeCoreHandoff = NativeCoreHandoff(
   runtime: nativeCoreRuntime,
   restartHttpCoreOnCrash: true,
+  useMihomoTun: () =>
+      globalState.container.read(patchClashConfigProvider).tun.enable,
   useNativeSystemProxy: () {
     final config = globalState.container.read(networkSettingProvider);
     return config.systemProxy && !config.authentication.enable;
