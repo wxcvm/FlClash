@@ -97,6 +97,23 @@ void main() {
       .position
       .maxScrollExtent;
 
+  testWidgets('Windows shows the topology directly above the connection table', (
+    tester,
+  ) async {
+    await pumpDashboard(
+      tester,
+      const Size(1440, 900),
+      platform: SupportPlatform.Windows,
+    );
+    expect(find.byType(NetworkTopologyCard), findsOneWidget);
+    expect(find.byType(ConnectionsTableCard), findsOneWidget);
+    final graph = rectOf(tester, NetworkTopologyCard);
+    expect(graph.top, lessThan(900));
+    expect(graph.bottom, lessThan(rectOf(tester, ConnectionsTableCard).top));
+    expect(tester.takeException(), isNull);
+    await teardown(tester);
+  });
+
   testWidgets('desktop core status survives enlarged system text', (
     tester,
   ) async {
