@@ -7,9 +7,16 @@ import 'package:fl_clash/views/dashboard/style.dart';
 import 'package:flutter/widgets.dart';
 
 class TopologyGraphView extends StatefulWidget {
-  const TopologyGraphView({super.key, required this.routes});
+  const TopologyGraphView({
+    super.key,
+    required this.routes,
+    this.viewportHeight = 360,
+    this.fitToViewport = false,
+  });
 
   final List<ConnectionRoute> routes;
+  final double viewportHeight;
+  final bool fitToViewport;
 
   @override
   State<TopologyGraphView> createState() => _TopologyGraphViewState();
@@ -69,7 +76,15 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
     if (layers.isEmpty) {
       return Column(
         children: [
-          Text(chinese ? '暂无匹配连接' : 'No matching connections'),
+          if (widget.fitToViewport)
+            SizedBox(
+              height: widget.viewportHeight,
+              child: Center(
+                child: Text(chinese ? '暂无匹配连接' : 'No matching connections'),
+              ),
+            )
+          else
+            Text(chinese ? '暂无匹配连接' : 'No matching connections'),
           if (focus != null)
             _action(
               context,
@@ -106,6 +121,73 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
       TopologyRole.group => colors.secondary,
       TopologyRole.exit => colors.primary,
     };
+    final canvas = SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _TopologyLinks(
+                positions: positions,
+                graph: graph,
+                color: colors.outline,
+                accent: colors.primary,
+                selected: selected,
+              ),
+            ),
+          ),
+          for (final entry in positions.entries)
+            Positioned.fromRect(
+              rect: entry.value,
+              child: Semantics(
+                button: true,
+                selected: selected == entry.key,
+                label: '${role(entry.key.$2)}: ${name(entry.key)}',
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    _selected = selected == entry.key ? null : entry.key;
+                  }),
+                  child: DecoratedBox(
+                    decoration: ShapeDecoration(
+                      color: colors.surface,
+                      shape: AppShape.all(10).copyWith(
+                        side: BorderSide(
+                          color: nodeColor(entry.key),
+                          width: selected == entry.key ? 2 : 1,
+                        ),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              role(entry.key.$2),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: nodeColor(entry.key)),
+                            ),
+                          ),
+                          Flexible(
+                            child: Text(
+                              name(entry.key),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: 8,
@@ -132,84 +214,20 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
           child: ColoredBox(
             color: colors.surfaceContainer,
             child: SizedBox(
-              height: 360,
+              height: widget.viewportHeight,
               child: InteractiveViewer(
                 transformationController: _transform,
-                constrained: false,
+                constrained: widget.fitToViewport,
                 minScale: 0.25,
                 maxScale: 2,
                 boundaryMargin: const EdgeInsets.all(80),
-                child: SizedBox(
-                  width: width,
-                  height: height,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: _TopologyLinks(
-                            positions: positions,
-                            graph: graph,
-                            color: colors.outline,
-                            accent: colors.primary,
-                            selected: selected,
-                          ),
-                        ),
-                      ),
-                      for (final entry in positions.entries)
-                        Positioned.fromRect(
-                          rect: entry.value,
-                          child: Semantics(
-                            button: true,
-                            selected: selected == entry.key,
-                            label: '${role(entry.key.$2)}: ${name(entry.key)}',
-                            child: GestureDetector(
-                              onTap: () => setState(() {
-                                _selected = selected == entry.key
-                                    ? null
-                                    : entry.key;
-                              }),
-                              child: DecoratedBox(
-                                decoration: ShapeDecoration(
-                                  color: colors.surface,
-                                  shape: AppShape.all(10).copyWith(
-                                    side: BorderSide(
-                                      color: nodeColor(entry.key),
-                                      width: selected == entry.key ? 2 : 1,
-                                    ),
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(6),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          role(entry.key.$2),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: nodeColor(entry.key),
-                                          ),
-                                        ),
-                                      ),
-                                      Flexible(
-                                        child: Text(
-                                          name(entry.key),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                child: widget.fitToViewport
+                    ? FittedBox(
+                        fit: BoxFit.contain,
+                        alignment: Alignment.topLeft,
+                        child: canvas,
+                      )
+                    : canvas,
               ),
             ),
           ),
