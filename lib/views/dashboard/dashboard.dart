@@ -129,7 +129,8 @@ class _DesktopDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showTopology = platform == SupportPlatform.Windows ||
+    final showTopology =
+        platform == SupportPlatform.Windows ||
         (platform == SupportPlatform.Android &&
             ref.watch(
               dashboardStateProvider.select(
