@@ -49,35 +49,33 @@ List<String> automaticSpeedCandidates(
   double confidence(String name) {
     final sample = health[name];
     if (sample == null) return 0.5;
-    return (sample.successes + 1) /
-        (sample.successes + sample.failures + 2);
+    return (sample.successes + 1) / (sample.successes + sample.failures + 2);
   }
 
-  final known = names.where((name) {
-    final sample = health[name];
-    if (sample != null &&
-        sample.failures >= 2 &&
-        sample.failures >= sample.successes) {
-      return false;
-    }
-    return (rates[name] ?? 0) > 0 || (sample?.successes ?? 0) >= 2;
-  }).toList()
-    ..sort((a, b) {
-      final reliability = confidence(b).compareTo(confidence(a));
-      if (reliability != 0) return reliability;
-      final av = quality[a]?.delayVariation;
-      final bv = quality[b]?.delayVariation;
-      if (av != null || bv != null) {
-        final variation = (av ?? double.infinity).compareTo(
-          bv ?? double.infinity,
-        );
-        if (variation != 0) return variation;
-      }
-      return (rates[b] ?? 0).compareTo(rates[a] ?? 0);
-    });
-  for (final name in known
-      .where((name) => !candidates.contains(name))
-      .take(knownLimit)) {
+  final known =
+      names.where((name) {
+        final sample = health[name];
+        if (sample != null &&
+            sample.failures >= 2 &&
+            sample.failures >= sample.successes) {
+          return false;
+        }
+        return (rates[name] ?? 0) > 0 || (sample?.successes ?? 0) >= 2;
+      }).toList()..sort((a, b) {
+        final reliability = confidence(b).compareTo(confidence(a));
+        if (reliability != 0) return reliability;
+        final av = quality[a]?.delayVariation;
+        final bv = quality[b]?.delayVariation;
+        if (av != null || bv != null) {
+          final variation = (av ?? double.infinity).compareTo(
+            bv ?? double.infinity,
+          );
+          if (variation != 0) return variation;
+        }
+        return (rates[b] ?? 0).compareTo(rates[a] ?? 0);
+      });
+  for (final name
+      in known.where((name) => !candidates.contains(name)).take(knownLimit)) {
     if (candidates.length >= limit) break;
     candidates.add(name);
   }
