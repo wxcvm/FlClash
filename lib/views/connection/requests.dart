@@ -461,7 +461,7 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
       valueListenable: widget.listController,
       builder: (context, state, _) {
         final connections = widget.filters.apply(state.list);
-        if (widget.showTopology && _loaded && connections.isNotEmpty) {
+        if (widget.showTopology && _loaded) {
           return ConnectionTopology(
             connections: connections,
             controller: _scrollController,
