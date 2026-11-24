@@ -58,6 +58,22 @@ var (
 func cancelRecoveryHealth() {
 	recoveryHealthMu.Lock()
 	defer recoveryHealthMu.Unlock()
+	cancelRecoveryHealthLocked()
+}
+
+// Changing only the test endpoint may not change the route stamp. Serialize
+// endpoint updates with probe startup and invalidate in-flight evidence.
+func updateRecoveryTestURL(target string) {
+	recoveryHealthMu.Lock()
+	defer recoveryHealthMu.Unlock()
+	previous := currentTestURL()
+	setTestURL(target)
+	if previous != currentTestURL() {
+		cancelRecoveryHealthLocked()
+	}
+}
+
+func cancelRecoveryHealthLocked() {
 	if recoveryHealthCancel != nil {
 		recoveryHealthCancel()
 		recoveryHealthCancel = nil
@@ -144,12 +160,12 @@ func scheduleRecoveryHealth(rebuilt bool) {
 
 func startRecoveryHealth(source string, rebuilt bool) {
 	epoch, version := routeStamp()
+	recoveryHealthMu.Lock()
 	target := currentTestURL()
 	host := ""
 	if u, err := url.Parse(target); err == nil {
 		host = u.Hostname()
 	}
-	recoveryHealthMu.Lock()
 	// A manual tap must not replace an active handover verification.
 	if source == "manual" && recoveryHealth.State == "checking" &&
 		recoveryHealth.CoreEpoch == epoch && recoveryHealth.RouteVersion == version {
