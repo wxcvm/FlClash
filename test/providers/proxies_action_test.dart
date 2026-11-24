@@ -561,6 +561,68 @@ void main() {
       },
     );
 
+    test('mixed batch retries only failed nodes when a sample recovers', () async {
+      final calls = <String, int>{};
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((
+        invocation,
+      ) async {
+        final name =
+            (invocation.positionalArguments[0] as TestDelayParams).proxyName;
+        final count = calls.update(
+          name,
+          (value) => value + 1,
+          ifAbsent: () => 1,
+        );
+        if (name == 'HK-7') throw TimeoutException('no answer');
+        final healthy = name == 'HK-0' || name == 'HK-1';
+        return Delay(
+          name: name,
+          url: _testUrl,
+          value: healthy ? 10 : (count == 1 ? -2 : 42),
+        );
+      });
+      final container = _delayContainer(buildContainer);
+      await actionOf(container).delayTest(
+        List.generate(8, (index) => Proxy(name: 'HK-$index', type: 'ss')),
+      );
+
+      expect(calls['HK-0'], 1);
+      expect(calls['HK-1'], 1);
+      expect(calls['HK-7'], 1);
+      final delays = container.read(delayDataSourceProvider)[_testUrl]!;
+      for (var i = 2; i < 7; i++) {
+        expect(calls['HK-$i'], 2);
+        expect(delays['HK-$i'], 42);
+      }
+      expect(delays['HK-0'], 10);
+      expect(delays['HK-7'], isNull);
+      expect(container.read(pendingDelayTestsProvider), isEmpty);
+    });
+
+    test('persistent mixed failures only retry three samples', () async {
+      final calls = <String, int>{};
+      when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((
+        invocation,
+      ) async {
+        final name =
+            (invocation.positionalArguments[0] as TestDelayParams).proxyName;
+        calls.update(name, (value) => value + 1, ifAbsent: () => 1);
+        return Delay(
+          name: name,
+          url: _testUrl,
+          value: name == 'HK-0' ? 10 : -2,
+        );
+      });
+      final container = _delayContainer(buildContainer);
+      await actionOf(container).delayTest(
+        List.generate(8, (index) => Proxy(name: 'HK-$index', type: 'ss')),
+      );
+      expect(calls.values.where((count) => count == 2), hasLength(3));
+      expect(calls['HK-0'], 1);
+      expect(container.read(delayDataSourceProvider)[_testUrl]?['HK-7'], -2);
+      expect(container.read(pendingDelayTestsProvider), isEmpty);
+    });
+
     test('persistent all-red batch only retries three samples', () async {
       var calls = 0;
       when(() => core.testDelay(_delayTest(_testUrl))).thenAnswer((
