@@ -23,7 +23,8 @@ void main() {
     expect(insight.engine, 'Mihomo');
     expect(insight.status, '已启动');
     expect(insight.explanation, contains('已安装'));
-    expect(insight.suggestion, contains('协议与拨号'));
+    expect(insight.suggestion, contains('按需切换内核'));
+    expect(insight.suggestion, isNot(contains('Karing')));
   });
 
   test('native engine reports startup without claiming connectivity', () {
