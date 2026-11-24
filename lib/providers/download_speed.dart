@@ -141,18 +141,24 @@ class NodeHealthHistory {
     _samples.clear();
   }
 
+  /// Candidate observations do not modify incumbent failure streaks.
+  void observe(String node, int? delay) {
+    if (delay == null || delay == 0) return;
+    final previous = _samples[node] ?? (successes: 0, failures: 0);
+    _samples[node] = (
+      successes: previous.successes + (delay > 0 ? 1 : 0),
+      failures: previous.failures + (delay < 0 ? 1 : 0),
+    );
+  }
+
   NodeHealthDecision record(String node, int? delay, DateTime now) {
     if (_node != node) {
       _node = node;
       _failures = 0;
     }
     if (delay == null || delay == 0) return NodeHealthDecision.wait;
-    final previous = _samples[node] ?? (successes: 0, failures: 0);
+    observe(node, delay);
     final healthy = delay > 0;
-    _samples[node] = (
-      successes: previous.successes + (healthy ? 1 : 0),
-      failures: previous.failures + (healthy ? 0 : 1),
-    );
     if (!healthy) {
       _failures++;
       return _failures >= 2
