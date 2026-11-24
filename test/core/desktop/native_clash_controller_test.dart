@@ -97,8 +97,7 @@ void main() {
               'connections': [connection()],
             }),
           );
-        } else if (request.uri.path == '/proxies' &&
-            request.method == 'GET') {
+        } else if (request.uri.path == '/proxies' && request.method == 'GET') {
           request.response.write(
             jsonEncode({
               'proxies': {
@@ -128,15 +127,14 @@ void main() {
         controllerConfig('127.0.0.1:${server.port}', 'test-secret'),
       )!;
       expect((await api.connections()).single.id, 'c1');
-      expect(
-        (await api.groups()).single.members,
-        ['exit', 'backup'],
-      );
+      expect((await api.groups()).single.members, ['exit', 'backup']);
       await api.select('selector', 'backup');
-      expect(
-        paths,
-        ['/connections', '/proxies', '/proxies', '/proxies/selector'],
-      );
+      expect(paths, [
+        '/connections',
+        '/proxies',
+        '/proxies',
+        '/proxies/selector',
+      ]);
       expect(methods, ['GET', 'GET', 'GET', 'PUT']);
       expect(bodies, ['{"name":"backup"}']);
       await expectLater(
