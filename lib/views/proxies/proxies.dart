@@ -297,7 +297,7 @@ class _NodeQualitySnapshot extends StatelessWidget {
         value == null ? '—' : '${value.toStringAsFixed(1)} ms';
     return Scaffold(
       title: zh ? '节点质量统计' : 'Node quality statistics',
-      body: ListView.builder(
+      body: PrismListView(
         controller: controller,
         padding: EdgeInsets.fromLTRB(
           16,
@@ -332,7 +332,7 @@ class _NodeQualitySnapshot extends StatelessWidget {
               children: [
                 Text(
                   entry.key,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: AppTextStyle.subheadline.of(context, emphasized: true),
                 ),
                 Text(
                   '${zh ? '探测成功率' : 'Probe success'}: $success '
@@ -354,11 +354,11 @@ class _NodeQualitySnapshot extends StatelessWidget {
                         for (final value in sample.values)
                           Expanded(
                             child: DecoratedBox(
-                              decoration: BoxDecoration(
+                              decoration: ShapeDecoration(
                                 color: value > 0
                                     ? context.colorScheme.success
                                     : context.colorScheme.error,
-                                borderRadius: BorderRadius.circular(3),
+                                shape: AppShape.all(3),
                               ),
                               child: const SizedBox(height: 8),
                             ),
