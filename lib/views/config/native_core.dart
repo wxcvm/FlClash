@@ -366,6 +366,18 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                     : () => _perform(() => _importClash(current: true)),
               ),
               ListItem(
+                title: Text('切换到 ${_kind.label}'),
+                onTap:
+                    _busy ||
+                        _configPath.trim().isEmpty ||
+                        nativeCoreHandoff.busy ||
+                        active != null ||
+                        nativeCoreHandoff.ownsNativeSystemProxy ||
+                        nativeCoreHandoff.hasMihomoToRestore
+                    ? null
+                    : () => _perform(_start),
+              ),
+              ListItem(
                 title: const Text('导入 Clash 配置'),
                 subtitle: const Text('自动转换、准备 sing-box 并预检'),
                 onTap: _busy || active != null || !nativeCoreInstaller.supported
@@ -497,26 +509,6 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
               ListItem(
                 title: const Text('检查配置'),
                 onTap: _busy ? null : () => _perform(_validate),
-              ),
-              ListItem(
-                title: Text('切换到 ${_kind.label}'),
-                onTap:
-                    _busy ||
-                        active != null ||
-                        nativeCoreHandoff.ownsNativeSystemProxy ||
-                        nativeCoreHandoff.hasMihomoToRestore
-                    ? null
-                    : () => _perform(_start),
-              ),
-              ListItem(
-                title: const Text('停止独立内核并恢复 Mihomo'),
-                onTap:
-                    _busy ||
-                        (active == null &&
-                            !nativeCoreHandoff.hasMihomoToRestore &&
-                            !nativeCoreHandoff.ownsNativeSystemProxy)
-                    ? null
-                    : () => _perform(_stop),
               ),
             ],
             footer:
