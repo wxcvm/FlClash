@@ -46,6 +46,25 @@ enum TopologyRole { source, rule, group, exit }
 typedef TopologyNodeKey = (int, TopologyRole, String);
 typedef TopologyEdgeKey = (TopologyNodeKey, TopologyNodeKey);
 
+List<TopologyNodeKey> topologyKeys(ConnectionRoute route) => [
+  (0, TopologyRole.source, route.source),
+  (1, TopologyRole.rule, route.rule),
+  for (var i = 0; i < route.hops.length; i++)
+    (
+      i + 2,
+      i == route.hops.length - 1 ? TopologyRole.exit : TopologyRole.group,
+      route.hops[i],
+    ),
+  if (route.hops.isEmpty) (2, TopologyRole.exit, ''),
+];
+
+/// Focus on complete observed paths, not arbitrary graph reachability:
+/// merging shared edges must not invent combinations that never occurred.
+List<ConnectionRoute> topologyRoutesFor(
+  List<ConnectionRoute> routes,
+  TopologyNodeKey node,
+) => routes.where((route) => topologyKeys(route).contains(node)).toList();
+
 class TopologyWeight {
   int connections = 0;
   int traffic = 0;
@@ -63,19 +82,7 @@ class ConnectionGraph {
     : totalPaths = routes.length {
     final visible = routes.take(routeLimit).toList();
     for (final route in visible) {
-      final keys = <TopologyNodeKey>[
-        (0, TopologyRole.source, route.source),
-        (1, TopologyRole.rule, route.rule),
-        for (var i = 0; i < route.hops.length; i++)
-          (
-            i + 2,
-            i == route.hops.length - 1
-                ? TopologyRole.exit
-                : TopologyRole.group,
-            route.hops[i],
-          ),
-        if (route.hops.isEmpty) (2, TopologyRole.exit, ''),
-      ];
+      final keys = topologyKeys(route);
       for (final key in keys) {
         nodes.putIfAbsent(key, TopologyWeight.new).add(route);
       }
