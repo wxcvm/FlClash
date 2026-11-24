@@ -7,9 +7,9 @@ import 'package:fl_clash/views/dashboard/style.dart';
 import 'package:flutter/widgets.dart';
 
 class TopologyGraphView extends StatefulWidget {
-  const TopologyGraphView({super.key, required this.graph});
+  const TopologyGraphView({super.key, required this.routes});
 
-  final ConnectionGraph graph;
+  final List<ConnectionRoute> routes;
 
   @override
   State<TopologyGraphView> createState() => _TopologyGraphViewState();
@@ -21,6 +21,7 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
   static const _columnStep = 208.0;
   static const _rowStep = 76.0;
   TopologyNodeKey? _selected;
+  TopologyNodeKey? _focus;
   final _transform = TransformationController();
 
   @override
@@ -29,9 +30,27 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
     super.dispose();
   }
 
+  void _clearFocus() => setState(() {
+    _focus = null;
+    _transform.value = Matrix4.identity();
+  });
+
+  Widget _action(BuildContext context, String label, VoidCallback onPressed) =>
+      PressSurface(
+        fill: context.colorScheme.surfaceContainer,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        onPressed: onPressed,
+        child: Text(label),
+      );
+
   @override
   Widget build(BuildContext context) {
-    final graph = widget.graph;
+    final focus = _focus;
+    final routes = focus == null
+        ? widget.routes
+        : topologyRoutesFor(widget.routes, focus);
+    final graph = ConnectionGraph(routes);
     final colors = context.colorScheme;
     final labels = context.appLocalizations;
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
@@ -47,7 +66,19 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
     for (final key in graph.nodes.keys) {
       layers.putIfAbsent(key.$1, () => []).add(key);
     }
-    if (layers.isEmpty) return const SizedBox.shrink();
+    if (layers.isEmpty) {
+      return Column(
+        children: [
+          Text(chinese ? '暂无匹配连接' : 'No matching connections'),
+          if (focus != null)
+            _action(
+              context,
+              chinese ? '显示全部路径' : 'Show all paths',
+              _clearFocus,
+            ),
+        ],
+      );
+    }
     final rows = layers.values.map((keys) => keys.length).reduce(math.max);
     final lastLayer = layers.keys.reduce(math.max);
     final width = lastLayer * _columnStep + _nodeWidth + 32;
@@ -84,6 +115,12 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
               ? '拖动、缩放查看路径，点击节点查看统计'
               : 'Pan and zoom; tap a node for statistics',
         ),
+        if (focus != null)
+          Text(
+            chinese
+                ? '聚焦：${name(focus)} · ${routes.length}/${widget.routes.length} 条路径'
+                : 'Focused: ${name(focus)} · ${routes.length}/${widget.routes.length} paths',
+          ),
         if (graph.shownPaths < graph.totalPaths)
           Text(
             chinese
@@ -176,17 +213,31 @@ class _TopologyGraphViewState extends State<TopologyGraphView> {
             ),
           ),
         ),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: PressSurface(
-            fill: colors.surfaceContainer,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _action(
+              context,
+              chinese ? '重置视图' : 'Reset view',
+              () => _transform.value = Matrix4.identity(),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            onPressed: () => _transform.value = Matrix4.identity(),
-            child: Text(chinese ? '重置视图' : 'Reset view'),
-          ),
+            if (selected != null && selected != focus)
+              _action(
+                context,
+                chinese ? '仅显示相关路径' : 'Focus related paths',
+                () => setState(() {
+                  _focus = selected;
+                  _transform.value = Matrix4.identity();
+                }),
+              ),
+            if (focus != null)
+              _action(
+                context,
+                chinese ? '显示全部路径' : 'Show all paths',
+                _clearFocus,
+              ),
+          ],
         ),
         if (selected != null)
           Text(
