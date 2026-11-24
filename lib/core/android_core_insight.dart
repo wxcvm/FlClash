@@ -100,7 +100,6 @@ class AndroidCoreInsight {
   }
 }
 
-
 /// The UI offers only actions supported by confirmed runtime ownership.
 class AndroidCoreActions {
   const AndroidCoreActions(this.native, {required this.refreshFailed});
@@ -121,9 +120,7 @@ class AndroidCoreActions {
           (native!.state == 'STOPPED' && native!.engine == 'idle'));
 
   bool get nativeRunning =>
-      settled &&
-      native!.state == 'STARTED' &&
-      native!.engine == 'sing-box';
+      settled && native!.state == 'STARTED' && native!.engine == 'sing-box';
 
   bool get canStopNative => settled && native!.ownsRuntime;
 }
