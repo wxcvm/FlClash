@@ -349,7 +349,9 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
                       ),
                       ListItem(
                         title: const Text('导入 Clash 配置'),
-                        onTap: canConfigure ? () => _perform(_importClash) : null,
+                        onTap: canConfigure
+                            ? () => _perform(_importClash)
+                            : null,
                       ),
                       ListItem(
                         title: const Text('导入 sing-box 配置'),
