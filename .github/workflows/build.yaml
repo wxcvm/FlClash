@@ -2,10 +2,11 @@ name: build
 
 on:
   push:
-    branches:
-      - '**'
+    branches: [main, dev]
     tags:
       - 'v*'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
@@ -29,7 +30,7 @@ jobs:
       dart_only: ${{ steps.scope.outputs.dart_only }}
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev'
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
         with:
           fetch-depth: 0
           filter: blob:none
@@ -38,12 +39,13 @@ jobs:
         id: scope
         shell: bash
         env:
-          FULL: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          FULL: ${{ github.event_name != 'pull_request' || github.base_ref != 'main' }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [[ "$FULL" == true ]]; then
             echo 'dart_only=false' >> "$GITHUB_OUTPUT"
           else
-            echo "dart_only=$(bash tool/ci/branch-scope.sh origin/main HEAD)" >> "$GITHUB_OUTPUT"
+            echo "dart_only=$(bash tool/ci/branch-scope.sh "$BASE" HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
   dart:
