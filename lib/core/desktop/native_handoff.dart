@@ -140,7 +140,9 @@ final class NativeCoreHandoff {
             throw StateError('Native TUN interface route was not detected');
           }
           if (routeEvidence == true) {
-            _emit('Native TUN interface route detected; connectivity unverified');
+            _emit(
+              'Native TUN interface route detected; connectivity unverified',
+            );
           }
           _nativeTunConfigured = true;
           _emit(
