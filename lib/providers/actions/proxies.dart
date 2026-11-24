@@ -66,11 +66,12 @@ List<String> automaticSpeedCandidates(
       if (reliability != 0) return reliability;
       return (rates[b] ?? 0).compareTo(rates[a] ?? 0);
     });
-  candidates.addAll(
-    known.where((name) => !candidates.contains(name)).take(
-      min(knownLimit, limit - candidates.length),
-    ),
-  );
+  for (final name in known
+      .where((name) => !candidates.contains(name))
+      .take(knownLimit)) {
+    if (candidates.length >= limit) break;
+    candidates.add(name);
+  }
   for (var i = 0; i < names.length && candidates.length < limit; i++) {
     candidates.add(names[(cursor + i) % names.length]);
   }
