@@ -95,9 +95,9 @@ const serviceSweepBudgetFactor = 6;
 
 const coreConnectionWaitDuration = Duration(seconds: 10);
 
-/// Keep at or below the Core's delay-test concurrency (`delayTestConcurrency`
-/// in core/delay.go).
-const maxConcurrentDelayTests = 32;
+/// Limit manual probe bursts on shared mobile and desktop network paths.
+/// The core has a separate, higher capacity for concurrent callers.
+const maxConcurrentDelayTests = 10;
 const maxConcurrentImports = 4;
 const maxConcurrentIconLoads = 8;
 
