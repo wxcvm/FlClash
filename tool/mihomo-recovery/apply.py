@@ -23,39 +23,6 @@ for old, new in (
     ncsi_source = ncsi_source.replace(old, new, 1)
 ncsi_config.write_text(ncsi_source, encoding="utf-8", newline="\n")
 
-# Expose the exact timeout configured by a proxy group's health check to the
-# core's manual delay-test path. Keep the provider's URL scope and timeout
-# authoritative; unrelated URLs must not inherit this budget.
-provider_path = root / "adapter/provider/provider.go"
-provider_source = provider_path.read_text(encoding="utf-8")
-provider_marker = """func (bp *baseProvider) HealthCheckURL() string {
-	return bp.healthCheck.url
-}
-"""
-provider_method = provider_marker + """
-// TestTimeout reports the configured health-check budget for a registered URL.
-func (bp *baseProvider) TestTimeout(url string) (time.Duration, bool) {
-	hc := bp.healthCheck
-	if hc == nil || hc.timeout <= 0 {
-		return 0, false
-	}
-	if url == hc.url {
-		return hc.timeout, true
-	}
-	hc.mu.Lock()
-	_, ok := hc.extra[url]
-	hc.mu.Unlock()
-	return hc.timeout, ok
-}
-"""
-if provider_source.count(provider_marker) != 1:
-    raise SystemExit("Mihomo provider timeout source changed")
-provider_path.write_text(
-    provider_source.replace(provider_marker, provider_method, 1),
-    encoding="utf-8",
-    newline="\n",
-)
-
 # MMDB discovery must not overwrite the protobuf GeoIP.dat filename.
 # With both packaged resources present, doing so makes a subsequent GEOIP
 # rule try to decode GEOIP.metadb as a protobuf, failing configuration load.
