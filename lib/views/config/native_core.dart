@@ -45,7 +45,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   bool _advanced = false;
   int _nativeSnapshotRevision = 0;
   List<TrackerInfo>? _nativeConnections;
-  Map<String, String> _nativeSelections = const {};
+  Map<String, NativeProxyGroup> _nativeGroups = const {};
 
   @override
   void initState() {
@@ -66,7 +66,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
       if (mounted) {
         setState(() {
           _nativeConnections = null;
-          _nativeSelections = const {};
+          _nativeGroups = const {};
         });
       }
     });
@@ -275,7 +275,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     final revision = ++_nativeSnapshotRevision;
     setState(() {
       _nativeConnections = null;
-      _nativeSelections = const {};
+      _nativeGroups = const {};
     });
     bool current() =>
         mounted &&
@@ -287,15 +287,39 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     if (controller == null) {
       return '需要已启用且配置密钥的 127.0.0.1 Clash API；本次未修改原生配置';
     }
-    final connections = await controller.connections();
+    final results = await Future.wait([
+      controller.connections(),
+      controller.groups(),
+    ]);
     if (!current()) return '内核会话已变化，请重新读取';
-    final selections = await controller.selections();
-    if (!current()) return '内核会话已变化，请重新读取';
+    final connections = results[0] as List<TrackerInfo>;
+    final groups = results[1] as List<NativeProxyGroup>;
     setState(() {
       _nativeConnections = connections;
-      _nativeSelections = selections;
+      _nativeGroups = {for (final group in groups) group.tag: group};
     });
     return '已读取 sing-box 当前连接与策略组快照';
+  }
+
+  Future<String> _selectNativeOutbound(String group, String outbound) async {
+    final spec = nativeCoreRuntime.activeSpec;
+    if (spec == null || spec.kind != NativeCoreKind.singBox) {
+      return 'sing-box 会话已结束';
+    }
+    final revision = _nativeSnapshotRevision;
+    final controller = await NativeClashController.fromSpec(spec);
+    if (!mounted ||
+        revision != _nativeSnapshotRevision ||
+        !identical(nativeCoreRuntime.activeSpec, spec) ||
+        controller == null) {
+      return '内核会话已变化，未执行切换';
+    }
+    await controller.select(group, outbound);
+    final message = await _readNativeSnapshot();
+    if (_nativeGroups[group]?.selected == outbound) {
+      return '已切换至 $outbound，内核返回值已确认';
+    }
+    return '$message；切换请求尚未由内核快照确认';
   }
 
   Future<String> _diagnose() async {
@@ -574,13 +598,25 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                 ),
                 if (_nativeConnections case final connections?) ...[
                   ListItem(title: Text('当前连接：${connections.length}')),
-                  for (final entry in _nativeSelections.entries)
-                    ListItem(
-                      title: Text(entry.key),
-                      subtitle: Text(
-                        entry.value.isEmpty ? '暂无选择' : entry.value,
+                  for (final group in _nativeGroups.values)
+                    if (group.selectable &&
+                        group.selected.isNotEmpty &&
+                        group.members.contains(group.selected))
+                      ListItem<String>.options(
+                        title: Text(group.tag),
+                        subtitle: const Text('sing-box Selector'),
+                        options: group.members,
+                        value: group.selected,
+                        textBuilder: (tag) => tag,
+                        onChanged: (tag) => _perform(
+                          () => _selectNativeOutbound(group.tag, tag),
+                        ),
+                      )
+                    else
+                      ListItem(
+                        title: Text(group.tag),
+                        subtitle: Text('${group.type} · ${group.selected}'),
                       ),
-                    ),
                   TopologyGraphView(
                     key: ValueKey(_nativeSnapshotRevision),
                     routes: connectionRoutes(connections),
