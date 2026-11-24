@@ -1,6 +1,8 @@
 FlClash Windows x64 + Android ARM64 preview release request
 Date: 2026-11-24
-Request base: 6ffc56b9c1778dda1f430a50ff708a61bb9ef977
+Request base: b50b4e42df94d517ac0da0058885eef3f1fb59da
+Merged features: #153 #154 #155 #156 #157
+CI policy: #158 #159
 Native UI removal: https://github.com/wxcvm/FlClash/pull/139
 Native UI PR exact-head CI: https://github.com/wxcvm/FlClash/actions/runs/44885721607
 
