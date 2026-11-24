@@ -15,6 +15,7 @@ final class NativeCoreHandoff {
   final MihomoRunSetter setMihomoRunning;
   final Future<void> Function() releaseMihomoProxy;
   final bool Function() useNativeSystemProxy;
+  final bool Function() useMihomoTun;
   final Future<NativeHttpEndpoint?> Function(NativeCoreSpec) detectHttpEndpoint;
   final Future<NativeTunConfiguration?> Function(NativeCoreSpec) detectTun;
   final Future<bool> Function(NativeHttpEndpoint) isHttpPortAvailable;
@@ -43,6 +44,7 @@ final class NativeCoreHandoff {
     required this.setMihomoRunning,
     required this.releaseMihomoProxy,
     this.useNativeSystemProxy = _noNativeProxy,
+    this.useMihomoTun = _noNativeProxy,
     this.detectHttpEndpoint = detectNativeHttpEndpoint,
     this.detectTun = detectNativeTunConfiguration,
     this.isHttpPortAvailable = isNativeHttpPortAvailable,
@@ -91,6 +93,12 @@ final class NativeCoreHandoff {
       }
       final wantsSystemProxy = useNativeSystemProxy();
       final tun = await detectTun(spec);
+      if (isMihomoRunning() && useMihomoTun() && tun == null) {
+        throw StateError(
+          'The current Mihomo connection uses TUN. Select a sing-box '
+          'auto_route TUN configuration before switching cores.',
+        );
+      }
       // A native auto-route TUN owns system routing itself. Do not also claim
       // the OS HTTP proxy even if the original Mihomo setting was enabled.
       final endpoint = wantsSystemProxy && tun == null
