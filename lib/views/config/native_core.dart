@@ -320,7 +320,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   Widget build(BuildContext context) {
     final active = nativeCoreRuntime.activeKind;
     return BaseScaffold(
-      title: '内核管理',
+      title: '内核切换',
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(
           top: context.sectionsTopPadding,
@@ -328,11 +328,39 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
         ),
         children: [
           generateSection(
-            title: '内核与配置',
+            title: '当前内核',
             items: [
               ListItem(
-                title: const Text('使用当前订阅'),
-                subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
+                title: Text(
+                  nativeCoreHandoff.busy
+                      ? '正在切换'
+                      : active?.label ?? 'Mihomo',
+                ),
+                subtitle: Text(
+                  active != null
+                      ? '独立内核已运行，实际连通性仍需验证'
+                      : ref.watch(isStartProvider)
+                      ? '已启动'
+                      : '未启动',
+                ),
+              ),
+              if (active != null ||
+                  nativeCoreHandoff.hasMihomoToRestore ||
+                  nativeCoreHandoff.ownsNativeSystemProxy)
+                ListItem(
+                  title: const Text('恢复 Mihomo'),
+                  onTap: _busy || nativeCoreHandoff.busy
+                      ? null
+                      : () => _perform(_stop),
+                ),
+            ],
+          ),
+          generateSection(
+            title: '切换内核',
+            items: [
+              ListItem(
+                title: const Text('使用当前订阅准备 sing-box'),
+                subtitle: const Text('自动转换并预检，不立即切换当前连接'),
                 onTap: _busy || active != null || !nativeCoreInstaller.supported
                     ? null
                     : () => _perform(() => _importClash(current: true)),
@@ -471,7 +499,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                 onTap: _busy ? null : () => _perform(_validate),
               ),
               ListItem(
-                title: const Text('启动独立内核'),
+                title: Text('切换到 ${_kind.label}'),
                 onTap:
                     _busy ||
                         active != null ||
@@ -481,7 +509,7 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                     : () => _perform(_start),
               ),
               ListItem(
-                title: const Text('停止独立内核'),
+                title: const Text('停止独立内核并恢复 Mihomo'),
                 onTap:
                     _busy ||
                         (active == null &&
