@@ -181,7 +181,6 @@ Future<bool> waitForNativeHttpEndpoint(
   return false;
 }
 
-
 /// Verify only the presence of a configured IPv4 interface in active routes.
 /// This does not prove default-route coverage, DNS, or remote connectivity.
 Future<bool?> waitForWindowsNativeTun(
