@@ -2,6 +2,7 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/system_dns.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_handoff.dart';
+import 'package:fl_clash/core/desktop/native_proxy.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
 
@@ -9,6 +10,8 @@ import 'package:fl_clash/state.dart';
 final nativeCoreHandoff = NativeCoreHandoff(
   runtime: nativeCoreRuntime,
   restartHttpCoreOnCrash: true,
+  verifyTun: (tun) async =>
+      system.isWindows ? await waitForWindowsNativeTun(tun) : null,
   useMihomoTun: () =>
       globalState.container.read(patchClashConfigProvider).tun.enable,
   useNativeSystemProxy: () {
