@@ -461,6 +461,16 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
       valueListenable: widget.listController,
       builder: (context, state, _) {
         final connections = widget.filters.apply(state.list);
+        if (widget.showTopology && _loaded && connections.isNotEmpty) {
+          return ConnectionTopology(
+            connections: connections,
+            controller: _scrollController,
+            padding: EdgeInsets.only(
+              top: context.contentTopPadding,
+              bottom: 16 + context.bottomInset,
+            ),
+          );
+        }
         return NullStatusSwitcher(
           isLoading: !_loaded,
           loadingStatus: const Center(child: ActivityIndicator.page()),
@@ -470,16 +480,7 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
             label: appLocalizations.nullTip(appLocalizations.connections),
             illustration: NullStatusIllustration.connections,
           ),
-          child: widget.showTopology
-              ? ConnectionTopology(
-                  connections: connections,
-                  controller: _scrollController,
-                  padding: EdgeInsets.only(
-                    top: context.contentTopPadding,
-                    bottom: 16 + context.bottomInset,
-                  ),
-                )
-              : RecordTableFrame<TrackerInfo>(
+          child: RecordTableFrame<TrackerInfo>(
             tableId: 'connections',
             items: connections,
             columnsOf: (width) =>
