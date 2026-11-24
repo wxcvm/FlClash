@@ -168,6 +168,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
         label: topologyTitle(context),
         checked: _showTopology,
         onPressed: () {
+          if (_showTopology) return;
           _selectFeed(RequestFeed.live);
           setState(() => _showTopology = true);
         },
