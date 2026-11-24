@@ -36,9 +36,9 @@ final class NativeClashController {
   }
 
   Future<Map<String, dynamic>> _read(String path) async {
-    final client = HttpClient()
-      ..findProxy = (_) => 'DIRECT'
-      ..connectionTimeout = const Duration(seconds: 3);
+    final client = HttpClient();
+    client.findProxy = (_) => 'DIRECT';
+    client.connectionTimeout = const Duration(seconds: 3);
     try {
       return await (() async {
         final request = await client.getUrl(
