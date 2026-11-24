@@ -284,7 +284,7 @@ class _NodeQualitySnapshot extends StatelessWidget {
     required this.speeds,
   });
 
-  final ScrollController controller;
+  final ScrollController? controller;
   final Map<String, NodeProbeQuality> quality;
   final Map<String, int> speeds;
 
@@ -340,9 +340,7 @@ class _NodeQualitySnapshot extends StatelessWidget {
                 ),
                 if (sample.values.isNotEmpty)
                   Semantics(
-                    label: zh
-                        ? '探测历史，从旧到新'
-                        : 'Probe history, oldest first',
+                    label: zh ? '探测历史，从旧到新' : 'Probe history, oldest first',
                     value: sample.values
                         .map(
                           (value) => value > 0
@@ -378,7 +376,11 @@ class _NodeQualitySnapshot extends StatelessWidget {
                 ),
                 Text(
                   '${zh ? '最近下载测速' : 'Last download test'}: '
-                  '${speed == null ? '—' : speed <= 0 ? (zh ? '失败' : 'Failed') : formatDownloadSpeed(speed)}',
+                  '${speed == null
+                      ? '—'
+                      : speed <= 0
+                      ? (zh ? '失败' : 'Failed')
+                      : formatDownloadSpeed(speed)}',
                 ),
               ],
             ),
