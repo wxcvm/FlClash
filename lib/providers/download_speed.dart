@@ -124,8 +124,7 @@ class NodeProbeQuality {
   final List<int> values;
   int get successes => values.where((value) => value > 0).length;
   int get failures => values.length - successes;
-  double? get successRate =>
-      values.isEmpty ? null : successes / values.length;
+  double? get successRate => values.isEmpty ? null : successes / values.length;
 
   double? get meanDelay {
     final valid = values.where((value) => value > 0).toList();
