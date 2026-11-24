@@ -39,9 +39,14 @@ void main() {
       connection('3', ['DIRECT'], rule: 'DOMAIN'),
     ]);
     expect(routes, hasLength(3));
-    expect(routes.singleWhere((route) => route.hops.isEmpty).source,
-        '192.0.2.1');
-    expect(routes.where((route) => route.hops.contains('DIRECT')), hasLength(2));
+    expect(
+      routes.singleWhere((route) => route.hops.isEmpty).source,
+      '192.0.2.1',
+    );
+    expect(
+      routes.where((route) => route.hops.contains('DIRECT')),
+      hasLength(2),
+    );
   });
 
   test('empty snapshot contains no invented routes', () {
