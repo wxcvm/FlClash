@@ -77,7 +77,9 @@ void main() {
     );
   });
 
-  test('local API sends bearer credentials and reads actual selections', () async {
+  test(
+    'local API sends bearer credentials and reads actual selections',
+    () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
     final paths = <String>[];
