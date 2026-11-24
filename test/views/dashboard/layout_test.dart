@@ -484,21 +484,27 @@ void main() {
     tester,
   ) async {
     for (final size in const [Size(400, 900), Size(800, 600), Size(915, 412)]) {
-      container.read(appSettingProvider.notifier).update(
-        (state) => state.copyWith(dashboardWidgets: const [
-          DashboardWidget.currentOutbound,
-          DashboardWidget.networkTopology,
-        ]),
-      );
+      container
+          .read(appSettingProvider.notifier)
+          .update(
+            (state) => state.copyWith(
+              dashboardWidgets: const [
+                DashboardWidget.currentOutbound,
+                DashboardWidget.networkTopology,
+              ],
+            ),
+          );
       await pumpDashboard(tester, size, platform: SupportPlatform.Android);
       expect(find.byType(NetworkTopologyCard), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      container.read(appSettingProvider.notifier).update(
-        (state) => state.copyWith(dashboardWidgets: const [
-          DashboardWidget.currentOutbound,
-        ]),
-      );
+      container
+          .read(appSettingProvider.notifier)
+          .update(
+            (state) => state.copyWith(
+              dashboardWidgets: const [DashboardWidget.currentOutbound],
+            ),
+          );
       await tester.pump();
       expect(find.byType(NetworkTopologyCard), findsNothing);
       expect(tester.takeException(), isNull);
