@@ -158,18 +158,20 @@ class Request {
       return latestPreviewRelease(selfUpdateSuffix);
     }
     try {
-      final response = await dio.get<Map<String, dynamic>>(
+      final response = await releaseDio.get<Map<String, dynamic>>(
         'https://api.github.com/repos/$repository/releases/latest',
         options: Options(responseType: ResponseType.json),
       );
       return response.data!;
     } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      if (status != 403 && status != 429) rethrow;
       commonPrint.log(
         'latest release API failed: ${compactError(error)}',
         logLevel: LogLevel.warning,
       );
     }
-    final response = await dio.get<void>(
+    final response = await releaseDio.get<void>(
       'https://github.com/$repository/releases/latest',
       options: Options(
         followRedirects: false,
