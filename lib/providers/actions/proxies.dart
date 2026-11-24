@@ -39,16 +39,46 @@ List<String> automaticSpeedCandidates(
   int cursor, {
   int limit = 4,
   int knownLimit = 2,
+  Map<String, ({int successes, int failures})> health = const {},
+  Map<String, NodeProbeQuality> quality = const {},
 }) {
-  if (names.isEmpty) {
+  if (names.isEmpty || limit <= 0) {
     return [];
   }
   final candidates = <String>{if (names.contains(incumbent)) incumbent};
-  final known = names.where((name) => (rates[name] ?? 0) > 0).toList()
-    ..sort((a, b) => rates[b]!.compareTo(rates[a]!));
-  candidates.addAll(
-    known.where((name) => !candidates.contains(name)).take(knownLimit),
-  );
+  double confidence(String name) {
+    final sample = health[name];
+    if (sample == null) return 0.5;
+    return (sample.successes + 1) / (sample.successes + sample.failures + 2);
+  }
+
+  final known =
+      names.where((name) {
+        final sample = health[name];
+        if (sample != null &&
+            sample.failures >= 2 &&
+            sample.failures >= sample.successes) {
+          return false;
+        }
+        return (rates[name] ?? 0) > 0 || (sample?.successes ?? 0) >= 2;
+      }).toList()..sort((a, b) {
+        final reliability = confidence(b).compareTo(confidence(a));
+        if (reliability != 0) return reliability;
+        final av = quality[a]?.delayVariation;
+        final bv = quality[b]?.delayVariation;
+        if (av != null || bv != null) {
+          final variation = (av ?? double.infinity).compareTo(
+            bv ?? double.infinity,
+          );
+          if (variation != 0) return variation;
+        }
+        return (rates[b] ?? 0).compareTo(rates[a] ?? 0);
+      });
+  for (final name
+      in known.where((name) => !candidates.contains(name)).take(knownLimit)) {
+    if (candidates.length >= limit) break;
+    candidates.add(name);
+  }
   for (var i = 0; i < names.length && candidates.length < limit; i++) {
     candidates.add(names[(cursor + i) % names.length]);
   }
@@ -96,6 +126,8 @@ class ProxiesAction extends _$ProxiesAction {
   int _autoRecoveryCursor = 0;
   int _autoSpeedGeneration = 0;
   final _nodeHealth = NodeHealthHistory();
+  String? _healthEndpoint;
+  int? _healthEpoch;
 
   final List<_DelayTestJob> _delayTestJobs = [];
   final Map<String, int> _latestDelayTestGeneration = {};
@@ -159,6 +191,8 @@ class ProxiesAction extends _$ProxiesAction {
       ref.read(isStartProvider) &&
       ref.read(coreStatusProvider) == CoreStatus.connected;
 
+  Map<String, NodeProbeQuality> get nodeProbeQuality => _nodeHealth.quality;
+
   void setDownloadSpeedAutoGroup(String? name) {
     ref.read(downloadSpeedAutoGroupProvider.notifier).select(name);
     _autoSpeedCursor = 0;
@@ -221,6 +255,12 @@ class ProxiesAction extends _$ProxiesAction {
     _autoSpeedRunning = true;
     final profile = ref.read(currentProfileIdProvider);
     final epoch = ref.read(routeTrackerProvider).hostEpoch;
+    final endpoint = ref.read(realTestUrlProvider(group.testUrl));
+    if (_healthEndpoint != endpoint || _healthEpoch != epoch) {
+      _nodeHealth.reset(keepOptimizationBudget: true);
+      _healthEndpoint = endpoint;
+      _healthEpoch = epoch;
+    }
     final generation = _speedTestGeneration;
     final autoGeneration = _autoSpeedGeneration;
     final selection = _currentSelectedName(group.name);
@@ -233,6 +273,9 @@ class ProxiesAction extends _$ProxiesAction {
         ref.read(routeTrackerProvider).hostEpoch == epoch &&
         _speedTestGeneration == generation &&
         _autoSpeedGeneration == autoGeneration &&
+        ref.read(groupsProvider).getGroup(group.name)?.testUrl ==
+            group.testUrl &&
+        ref.read(realTestUrlProvider(group.testUrl)) == endpoint &&
         _currentSelectedName(group.name) == selection;
     try {
       if (incumbent.isEmpty ||
@@ -359,6 +402,8 @@ class ProxiesAction extends _$ProxiesAction {
       _autoRecoveryCursor,
       limit: 3,
       knownLimit: 1,
+      health: _nodeHealth.samples,
+      quality: _nodeHealth.quality,
     );
     if (candidates.isNotEmpty) {
       _autoRecoveryCursor = alternatives.indexOf(candidates.last) + 1;
@@ -367,13 +412,16 @@ class ProxiesAction extends _$ProxiesAction {
       if (!isCurrent()) return;
       final first = await _probeAutoNode(group, name);
       if (!isCurrent()) return;
+      _nodeHealth.observe(name, first);
       if (first == null || first <= 0) continue;
       final second = await _probeAutoNode(group, name);
       if (!isCurrent()) return;
+      _nodeHealth.observe(name, second);
       if (second == null || second <= 0) continue;
       final recovered = await _probeAutoNode(group, incumbent);
-      if (!isCurrent() || recovered == null || recovered == 0) return;
-      if (recovered > 0) return;
+      if (!isCurrent()) return;
+      _nodeHealth.observe(incumbent, recovered);
+      if (recovered == null || recovered == 0 || recovered > 0) return;
       final current = ref.read(groupsProvider).getGroup(group.name);
       if (current == null || !current.all.any((proxy) => proxy.name == name)) {
         return;
