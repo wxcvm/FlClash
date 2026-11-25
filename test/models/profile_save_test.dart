@@ -129,8 +129,10 @@ void main() {
       expect(await (await profile.file).readAsString(), 'proxies: [new]');
     });
 
-    test('deletion invalidates a pending save without recreating the file', () async {
-      final profile = Profile.normal(label: 'deleted-pending');
+    test(
+      'deletion invalidates a pending save without recreating the file',
+      () async {
+        final profile = Profile.normal(label: 'deleted-pending');
       final savedFile = await profile.file;
       await savedFile.writeAsString('proxies: []');
       final validating = Completer<void>();
@@ -149,8 +151,9 @@ void main() {
       await savedFile.delete();
       resume.complete();
       await rejected;
-      expect(await savedFile.exists(), isFalse);
-    });
+        expect(await savedFile.exists(), isFalse);
+      },
+    );
 
     test('copies validated bytes and stamps the update time', () async {
       final profile = Profile.normal(label: 'p');
