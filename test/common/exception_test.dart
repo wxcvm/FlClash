@@ -35,6 +35,7 @@ void main() {
     expect(stackTrace, isNotNull);
     expect(stackTrace.toString(), isNotEmpty);
   });
+
   test('release failures include their stage and the network cause', () async {
     final localizations = await AppLocalizations.load(const Locale('en'));
     final error = ReleaseUpdateStageException(
@@ -50,4 +51,4 @@ void main() {
       localizations.updateDownloadFailed + '\n' + localizations.networkTlsError,
     );
   });
-
+}
