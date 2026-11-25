@@ -21,7 +21,13 @@ class ProfilesAction extends _$ProfilesAction {
   }
 
   Future<void> deleteProfile(int id) async {
-    await ref.read(profilesProvider.notifier).del(id);
+    final deletion = ProfileWriteGuard.markDeleted(id);
+    try {
+      await ref.read(profilesProvider.notifier).del(id);
+    } catch (_) {
+      ProfileWriteGuard.restoreAfterFailedDelete(id, deletion);
+      rethrow;
+    }
     await clearEffect(id);
     final currentProfileId = ref.read(currentProfileIdProvider);
     if (currentProfileId == id) {
@@ -469,6 +475,7 @@ class ProfilesAction extends _$ProfilesAction {
   }
 
   Future<void> clearEffect(int profileId) async {
+    ProfileWriteGuard.markDeleted(profileId);
     final profilePath = await appPath.getProfilePath(profileId.toString());
     final profileFile = File(profilePath);
     final isExists = await profileFile.exists();
