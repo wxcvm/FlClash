@@ -157,7 +157,7 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
     final NativeClashController? controller;
     try {
       controller = await _controller;
-    } catch (error) {
+    } catch (_) {
       if (isCurrent() && _currentSession) {
         _updateSnapshot(const [], _NativeTopologyIssue.snapshotUnavailable);
       }
@@ -175,7 +175,7 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
       if (!isCurrent() || !_currentSession) return;
       connections.sort((a, b) => b.start.compareTo(a.start));
       _updateSnapshot(connections, null);
-    } catch (error) {
+    } catch (_) {
       if (isCurrent() && _currentSession) {
         _updateSnapshot(const [], _NativeTopologyIssue.snapshotUnavailable);
       }
