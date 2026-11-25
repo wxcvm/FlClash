@@ -108,6 +108,20 @@ String? coreLaunchBlockedMessage(
   };
 }
 
+String _releaseUpdateStageMessage(
+  ReleaseUpdateStage stage,
+  Object cause,
+  AppLocalizations appLocalizations,
+) {
+  final heading = switch (stage) {
+    ReleaseUpdateStage.metadata => appLocalizations.checkUpdateError,
+    ReleaseUpdateStage.checksum => appLocalizations.updateNotVerified,
+    ReleaseUpdateStage.package => appLocalizations.updateDownloadFailed,
+  };
+  final detail = userFacingErrorMessage(cause, appLocalizations);
+  return detail == heading ? heading : '$heading\n$detail';
+}
+
 String userFacingErrorMessage(Object error, AppLocalizations appLocalizations) {
   return networkErrorMessage(error, appLocalizations) ??
       coreLaunchBlockedMessage(error, appLocalizations) ??
@@ -115,6 +129,8 @@ String userFacingErrorMessage(Object error, AppLocalizations appLocalizations) {
         AgeSecretKeyRequiredException() =>
           appLocalizations.ageSecretKeyRequiredTip,
         ReleaseNotVerifiedException() => appLocalizations.updateNotVerified,
+        ReleaseUpdateStageException(:final stage, :final cause) =>
+          _releaseUpdateStageMessage(stage, cause, appLocalizations),
         SystemDownloadException() => appLocalizations.updateDownloadFailed,
         CoreMethodException(code: 'rule_set_empty') =>
           appLocalizations.ruleSetEmptyTip,

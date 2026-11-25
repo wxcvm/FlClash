@@ -5,6 +5,7 @@ export 'current_outbound.dart';
 export 'intranet_ip.dart';
 export 'memory_info.dart';
 export 'network_takeover.dart';
+export 'network_topology.dart';
 export 'outbound_mode.dart';
 export 'profiles.dart';
 export 'proxy_groups.dart';

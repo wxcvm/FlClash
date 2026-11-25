@@ -106,7 +106,14 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
       if (network == 'ws') {
         final ws = proxy['ws-opts'];
         if (ws is! Map ||
-            ws.keys.any((key) => key != 'path' && key != 'headers')) {
+            ws.keys.any(
+              (key) => !const {
+                'path',
+                'headers',
+                'max-early-data',
+                'early-data-header-name',
+              }.contains(key),
+            )) {
           throw const FormatException('Unsupported WebSocket options');
         }
         final transport = <String, dynamic>{'type': 'ws'};
@@ -124,6 +131,27 @@ Map<String, dynamic> convertClashOutbound(Map<String, dynamic> proxy) {
             throw const FormatException('Invalid WebSocket headers');
           }
           transport['headers'] = Map<String, String>.from(headers);
+        }
+        if (ws.containsKey('max-early-data')) {
+          final size = ws['max-early-data'];
+          if (size is! int || size < 0 || size > 65535) {
+            throw const FormatException('Invalid WebSocket early data size');
+          }
+          transport['max_early_data'] = size;
+          if (size > 0 && !ws.containsKey('early-data-header-name')) {
+            throw const FormatException(
+              'WebSocket early data requires an explicit header name',
+            );
+          }
+        }
+        if (ws.containsKey('early-data-header-name')) {
+          final header = ws['early-data-header-name'];
+          if (header is! String ||
+              (header.isNotEmpty &&
+                  !RegExp(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$").hasMatch(header))) {
+            throw const FormatException('Invalid WebSocket early data header');
+          }
+          transport['early_data_header_name'] = header;
         }
         result['transport'] = transport;
       } else if (proxy.containsKey('ws-opts')) {

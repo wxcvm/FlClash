@@ -274,7 +274,7 @@ func updateConfig(params *UpdateParams) error {
 }
 
 func applyOptions(options CoreOptions) {
-	setTestURL(options.TestURL)
+	updateRecoveryTestURL(options.TestURL)
 	provider.SetDefaultTestTimeout(timeoutFromMillis(options.DelayTestTimeout, 0))
 	skipCertVerify.Store(options.SkipCertVerify)
 }
