@@ -111,9 +111,9 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(tester.takeException(), isNull);
   });
-  testWidgets('sing-box dashboard explains when its local controller is absent', (
-    tester,
-  ) async {
+  testWidgets(
+    'sing-box dashboard explains when its local controller is absent',
+    (tester) async {
     late Directory directory;
     late NativeCoreRuntime runtime;
     late NativeCoreHandoff handoff;
@@ -183,8 +183,8 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 2));
     expect(tester.takeException(), isNull);
-  });
-
+    },
+  );
 }
 
 class _Child implements Process {
