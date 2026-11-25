@@ -52,9 +52,7 @@ class Logs extends _$Logs with AutoDisposeNotifierMixin {
     if (!ref.mounted) {
       return;
     }
-    final safe = value.copyWith(
-      payload: redactSensitiveLogText(value.payload),
-    );
+    final safe = value.copyWith(payload: redactSensitiveLogText(value.payload));
     this.value = state.append(safe);
   }
 
