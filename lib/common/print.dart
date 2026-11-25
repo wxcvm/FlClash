@@ -21,14 +21,14 @@ String redactSensitiveLogText(String value) {
   );
   text = text.replaceAllMapped(
     RegExp(
-      r'(\bauthorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;&#]+',
+      r'(\bauthorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;]+',
       caseSensitive: false,
     ),
     (match) => '${match[1]}[REDACTED]',
   );
   text = text.replaceAllMapped(
     RegExp(
-      r'''(\b(?:password|passwd|token|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|secret|private[_-]?key|pre[_-]?shared[_-]?key|username|psk|auth(?:[_-]?str)?|authorization|uuid)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)''',
+      r'''(\b(?:password|passwd|token|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|secret|private[_-]?key|pre[_-]?shared[_-]?key|username|psk|auth(?:[_-]?str)?|authorization|uuid)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&#]+)''',
       caseSensitive: false,
     ),
     (match) => '${match[1]}[REDACTED]',
