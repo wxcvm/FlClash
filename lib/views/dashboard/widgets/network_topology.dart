@@ -191,6 +191,7 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
     final snapshot = _frozen ?? _connections;
     final issue = _frozen == null ? _issue : null;
+    final count = issue == null ? snapshot.length.toString() : '—';
     final status = switch (issue) {
       _NativeTopologyIssue.controllerUnavailable =>
         chinese
@@ -214,18 +215,20 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
             trailing: [
               Text(
                 chinese
-                    ? 'sing-box · ${snapshot.length} 条连接'
-                    : 'sing-box · ${snapshot.length}',
+                    ? 'sing-box · $count 条连接'
+                    : 'sing-box · $count',
               ),
               PressSurface(
                 fill: context.colorScheme.surfaceContainer,
                 shape: AppShape.sm,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                onPressed: () => setState(() {
-                  _frozen = _frozen == null
-                      ? List.unmodifiable(_connections)
-                      : null;
-                }),
+                onPressed: issue != null && _frozen == null
+                    ? null
+                    : () => setState(() {
+                        _frozen = _frozen == null
+                            ? List.unmodifiable(_connections)
+                            : null;
+                      }),
                 child: Text(
                   _frozen == null
                       ? (chinese ? '暂停' : 'Freeze')
