@@ -119,7 +119,7 @@ String _releaseUpdateStageMessage(
     ReleaseUpdateStage.package => appLocalizations.updateDownloadFailed,
   };
   final detail = userFacingErrorMessage(cause, appLocalizations);
-  return detail == heading ? heading : '$heading\\n$detail';
+  return detail == heading ? heading : '$heading\n$detail';
 }
 
 String userFacingErrorMessage(Object error, AppLocalizations appLocalizations) {
