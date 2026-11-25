@@ -145,3 +145,15 @@ _WindowsIpv4Route? _bestWindowsRoute(
             : '样本出口一致，不代表全部路由完整'}',
   );
 }
+
+/// Evidence that a configured native TUN address has an active route row.
+/// A stale or conflicting adapter may also have that address, so this is
+/// readiness evidence, not proof of full traffic coverage or connectivity.
+bool windowsHasNativeTunAddress(String output, List<String> addresses) {
+  final expected = addresses.toSet();
+  if (expected.isEmpty) return false;
+  final observed = _parseWindowsIpv4Routes(
+    output,
+  ).map((route) => route.interfaceAddress).toSet();
+  return observed.containsAll(expected);
+}
