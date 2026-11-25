@@ -192,33 +192,13 @@ void main() {
     },
   );
   group('updateWindowsDnsPreference', () {
-    test('keeps the new preference when the running core applies it', () async {
-      final saved = <bool>[];
-      var applyCalls = 0;
+    test(
+      'keeps the new preference when the running core applies it',
+      () async {
+        final saved = <bool>[];
+        var applyCalls = 0;
 
-      await updateWindowsDnsPreference(
-        previous: false,
-        coreRunning: true,
-        save: (enabled) async {
-          saved.add(enabled);
-          return true;
-        },
-        apply: () async {
-          applyCalls++;
-          return true;
-        },
-      );
-
-      expect(saved, [true]);
-      expect(applyCalls, 1);
-    });
-
-    test('restores the previous preference and reapplies it after failure', () async {
-      final saved = <bool>[];
-      var applyCalls = 0;
-
-      await expectLater(
-        updateWindowsDnsPreference(
+        await updateWindowsDnsPreference(
           previous: false,
           coreRunning: true,
           save: (enabled) async {
@@ -227,69 +207,51 @@ void main() {
           },
           apply: () async {
             applyCalls++;
-            return applyCalls == 2;
+            return true;
           },
-        ),
-        throwsA(isA<StateError>()),
-      );
+        );
 
-      expect(saved, [true, false]);
-      expect(applyCalls, 2);
-    });
+        expect(saved, [true]);
+        expect(applyCalls, 1);
+      },
+    );
 
-    test('does not reload a stopped core after saving the preference', () async {
-      final saved = <bool>[];
-      var applyCalls = 0;
+    test(
+      'restores the previous preference and reapplies it after failure',
+      () async {
+        final saved = <bool>[];
+        var applyCalls = 0;
 
-      await updateWindowsDnsPreference(
-        previous: false,
-        coreRunning: false,
-        save: (enabled) async {
-          saved.add(enabled);
-          return true;
-        },
-        apply: () async {
-          applyCalls++;
-          return false;
-        },
-      );
+        await expectLater(
+          updateWindowsDnsPreference(
+            previous: false,
+            coreRunning: true,
+            save: (enabled) async {
+              saved.add(enabled);
+              return true;
+            },
+            apply: () async {
+              applyCalls++;
+              return applyCalls == 2;
+            },
+          ),
+          throwsA(isA<StateError>()),
+        );
 
-      expect(saved, [true]);
-      expect(applyCalls, 0);
-    });
+        expect(saved, [true, false]);
+        expect(applyCalls, 2);
+      },
+    );
 
-    test('reports when the previous preference cannot be restored', () async {
-      final saved = <bool>[];
-      var applyCalls = 0;
+    test(
+      'does not reload a stopped core after saving the preference',
+      () async {
+        final saved = <bool>[];
+        var applyCalls = 0;
 
-      await expectLater(
-        updateWindowsDnsPreference(
+        await updateWindowsDnsPreference(
           previous: false,
-          coreRunning: true,
-          save: (enabled) async {
-            saved.add(enabled);
-            return saved.length == 1;
-          },
-          apply: () async {
-            applyCalls++;
-            return false;
-          },
-        ),
-        throwsA(isA<StateError>()),
-      );
-
-      expect(saved, [true, false]);
-      expect(applyCalls, 1);
-    });
-
-    test('reports when restoring the preference succeeds but reapply fails', () async {
-      final saved = <bool>[];
-      var applyCalls = 0;
-
-      await expectLater(
-        updateWindowsDnsPreference(
-          previous: false,
-          coreRunning: true,
+          coreRunning: false,
           save: (enabled) async {
             saved.add(enabled);
             return true;
@@ -298,13 +260,66 @@ void main() {
             applyCalls++;
             return false;
           },
-        ),
-        throwsA(isA<StateError>()),
-      );
+        );
 
-      expect(saved, [true, false]);
-      expect(applyCalls, 2);
-    });
+        expect(saved, [true]);
+        expect(applyCalls, 0);
+      },
+    );
+
+    test(
+      'reports when the previous preference cannot be restored',
+      () async {
+        final saved = <bool>[];
+        var applyCalls = 0;
+
+        await expectLater(
+          updateWindowsDnsPreference(
+            previous: false,
+            coreRunning: true,
+            save: (enabled) async {
+              saved.add(enabled);
+              return saved.length == 1;
+            },
+            apply: () async {
+              applyCalls++;
+              return false;
+            },
+          ),
+          throwsA(isA<StateError>()),
+        );
+
+        expect(saved, [true, false]);
+        expect(applyCalls, 1);
+      },
+    );
+
+    test(
+      'reports when restoring the preference succeeds but reapply fails',
+      () async {
+        final saved = <bool>[];
+        var applyCalls = 0;
+
+        await expectLater(
+          updateWindowsDnsPreference(
+            previous: false,
+            coreRunning: true,
+            save: (enabled) async {
+              saved.add(enabled);
+              return true;
+            },
+            apply: () async {
+              applyCalls++;
+              return false;
+            },
+          ),
+          throwsA(isA<StateError>()),
+        );
+
+        expect(saved, [true, false]);
+        expect(applyCalls, 2);
+      },
+    );
   });
 
 }
