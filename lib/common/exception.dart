@@ -29,3 +29,15 @@ final class ReleaseNotVerifiedException implements Exception {
   @override
   String toString() => 'ReleaseNotVerifiedException: $name';
 }
+
+enum ReleaseUpdateStage { metadata, checksum, package }
+
+final class ReleaseUpdateStageException implements Exception {
+  final ReleaseUpdateStage stage;
+  final Object cause;
+
+  const ReleaseUpdateStageException(this.stage, this.cause);
+
+  @override
+  String toString() => 'Release update ${stage.name} failed: $cause';
+}
