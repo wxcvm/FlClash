@@ -191,12 +191,14 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
     final snapshot = _frozen ?? _connections;
     final issue = _frozen == null ? _issue : null;
     final status = switch (issue) {
-      _NativeTopologyIssue.controllerUnavailable => chinese
-          ? '请在 sing-box 配置中启用带密钥的 127.0.0.1 Clash API'
-          : 'Enable an authenticated 127.0.0.1 Clash API in sing-box config',
-      _NativeTopologyIssue.snapshotUnavailable => chinese
-          ? '暂时无法读取 sing-box 连接数据，正在重试'
-          : 'Cannot read sing-box connections; retrying',
+      _NativeTopologyIssue.controllerUnavailable =>
+        chinese
+            ? '请在 sing-box 配置中启用带密钥的 127.0.0.1 Clash API'
+            : 'Enable an authenticated 127.0.0.1 Clash API in sing-box config',
+      _NativeTopologyIssue.snapshotUnavailable =>
+        chinese
+            ? '暂时无法读取 sing-box 连接数据，正在重试'
+            : 'Cannot read sing-box connections; retrying',
       null => null,
     };
     return DashboardCard(
@@ -239,9 +241,7 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
                     viewportHeight: (desktop ? 260 : 220) * scale,
                     fitToViewport: true,
                   )
-                : Center(
-                    child: Text(status, textAlign: TextAlign.center),
-                  ),
+                : Center(child: Text(status, textAlign: TextAlign.center)),
           ),
         ],
       ),
