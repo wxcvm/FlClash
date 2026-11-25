@@ -111,78 +111,79 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(tester.takeException(), isNull);
   });
+
   testWidgets(
     'sing-box dashboard explains when its local controller is absent',
     (tester) async {
-    late Directory directory;
-    late NativeCoreRuntime runtime;
-    late NativeCoreHandoff handoff;
-    final child = _Child();
+      late Directory directory;
+      late NativeCoreRuntime runtime;
+      late NativeCoreHandoff handoff;
+      final child = _Child();
 
-    await tester.runAsync(() async {
-      directory = await Directory.systemTemp.createTemp('native-topology-');
-      final config = File('${directory.path}/config.json');
-      await config.writeAsString('{"outbounds":[]}');
-      runtime = NativeCoreRuntime(
-        run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
-        start: (_, _, {workingDirectory}) async => child,
-      );
-      final spec = NativeCoreSpec(
-        kind: NativeCoreKind.singBox,
-        executable: 'unused',
-        configPath: config.path,
-      );
-      await runtime.start(spec);
-      handoff = NativeCoreHandoff(
-        runtime: runtime,
-        isMihomoRunning: () => false,
-        setMihomoRunning: (_) async => true,
-        releaseMihomoProxy: () async {},
-      );
-    });
+      await tester.runAsync(() async {
+        directory = await Directory.systemTemp.createTemp('native-topology-');
+        final config = File('${directory.path}/config.json');
+        await config.writeAsString('{"outbounds":[]}');
+        runtime = NativeCoreRuntime(
+          run: (_, _, {workingDirectory}) async => ProcessResult(1, 0, '', ''),
+          start: (_, _, {workingDirectory}) async => child,
+        );
+        final spec = NativeCoreSpec(
+          kind: NativeCoreKind.singBox,
+          executable: 'unused',
+          configPath: config.path,
+        );
+        await runtime.start(spec);
+        handoff = NativeCoreHandoff(
+          runtime: runtime,
+          isMihomoRunning: () => false,
+          setMihomoRunning: (_) async => true,
+          releaseMihomoProxy: () async {},
+        );
+      });
 
-    final container = ProviderContainer(
-      overrides: [
-        coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.disconnected),
-      ],
-    );
-    globalState.container = container;
-    addTearDown(container.dispose);
-    addTearDown(() async {
-      await handoff.close();
-      await runtime.close();
-      await directory.delete(recursive: true);
-    });
+      final container = ProviderContainer(
+        overrides: [
+          coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.disconnected),
+        ],
+      );
+      globalState.container = container;
+      addTearDown(container.dispose);
+      addTearDown(() async {
+        await handoff.close();
+        await runtime.close();
+        await directory.delete(recursive: true);
+      });
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: TestApp(
-          child: HostScaffold(
-            body: DashboardDensityScope(
-              density: DashboardDensity.standard,
-              scale: 1,
-              child: NetworkTopologyCard(handoff: handoff),
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: TestApp(
+            child: HostScaffold(
+              body: DashboardDensityScope(
+                density: DashboardDensity.standard,
+                scale: 1,
+                child: NetworkTopologyCard(handoff: handoff),
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
 
-    expect(
-      find.textContaining('127.0.0.1 Clash API'),
-      findsOneWidget,
-    );
-    expect(find.byType(TopologyGraphView), findsNothing);
+      expect(
+        find.textContaining('127.0.0.1 Clash API'),
+        findsOneWidget,
+      );
+      expect(find.byType(TopologyGraphView), findsNothing);
 
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(seconds: 2));
-    expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 2));
+      expect(tester.takeException(), isNull);
     },
   );
 }
