@@ -41,6 +41,22 @@ void main() {
     test('accepts a path that is already gone', () async {
       await expectLater(safeDeletePath(join(root.path, 'missing')), completes);
     });
+
+    test('tolerates concurrent deletion of the same directory', () async {
+      final path = join(root.path, 'concurrent');
+      for (var index = 0; index < 64; index++) {
+        File(join(path, '$index.txt'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('content');
+      }
+
+      await Future.wait([
+        Directory(path).safeDelete(recursive: true),
+        Directory(path).safeDelete(recursive: true),
+      ]);
+
+      expect(Directory(path).existsSync(), isFalse);
+    });
   });
 
   group('writeAsStringAtomically', () {
