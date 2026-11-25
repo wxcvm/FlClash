@@ -1,4 +1,8 @@
+import 'package:dio/dio.dart';
+import 'package:fl_clash/common/app_localizations.dart';
 import 'package:fl_clash/common/exception.dart';
+import 'package:fl_clash/l10n/l10n.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -31,4 +35,19 @@ void main() {
     expect(stackTrace, isNotNull);
     expect(stackTrace.toString(), isNotEmpty);
   });
-}
+  test('release failures include their stage and the network cause', () async {
+    final localizations = await AppLocalizations.load(const Locale('en'));
+    final error = ReleaseUpdateStageException(
+      ReleaseUpdateStage.package,
+      DioException(
+        requestOptions: RequestOptions(path: '/release.apk'),
+        type: DioExceptionType.badCertificate,
+      ),
+    );
+
+    expect(
+      userFacingErrorMessage(error, localizations),
+      localizations.updateDownloadFailed + '\n' + localizations.networkTlsError,
+    );
+  });
+
