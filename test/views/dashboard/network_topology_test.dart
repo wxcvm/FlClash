@@ -152,6 +152,7 @@ void main() {
       globalState.container = container;
       addTearDown(container.dispose);
       addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
         await handoff.close();
         await runtime.close();
         await directory.delete(recursive: true);
