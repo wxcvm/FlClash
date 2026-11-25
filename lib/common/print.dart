@@ -21,7 +21,7 @@ String redactSensitiveLogText(String value) {
   );
   text = text.replaceAll(
     RegExp(
-      r'([\\b]authorization\\s*[:=]\\s*)(?:bearer|basic)\\s+[^\\s,;]+',
+      r'(\bauthorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;]+',
       caseSensitive: false,
     ),
     r'$1[REDACTED]',
