@@ -91,7 +91,7 @@ void main() {
 
   group('latestRelease', () {
     Request requestAnswering(Map<String, ResponseBody Function()> byHost) {
-      return Request()..dio.httpClientAdapter = _HostAdapter(byHost);
+      return Request()..releaseDio.httpClientAdapter = _HostAdapter(byHost);
     }
 
     test('reads the release from the API', () async {
@@ -130,6 +130,32 @@ void main() {
         expect(await request.latestRelease(), {'tag_name': 'v1.2.4'});
       },
     );
+
+    test('does not fall back after a certificate failure', () async {
+      var fallbackCalls = 0;
+      final request = requestAnswering({
+        'api.github.com': () => throw DioException(
+          requestOptions: RequestOptions(path: '/releases/latest'),
+          type: DioExceptionType.badCertificate,
+        ),
+        'github.com': () {
+          fallbackCalls++;
+          return ResponseBody.fromString('', 302);
+        },
+      });
+
+      await expectLater(
+        request.latestRelease(),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.type,
+            'type',
+            DioExceptionType.badCertificate,
+          ),
+        ),
+      );
+      expect(fallbackCalls, 0);
+    });
 
     test('fails instead of answering when neither endpoint does', () async {
       final request = requestAnswering({

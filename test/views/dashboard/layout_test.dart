@@ -97,6 +97,24 @@ void main() {
       .position
       .maxScrollExtent;
 
+  testWidgets(
+    'Windows shows the topology directly above the connection table',
+    (tester) async {
+      await pumpDashboard(
+        tester,
+        const Size(1440, 900),
+        platform: SupportPlatform.Windows,
+      );
+      expect(find.byType(NetworkTopologyCard), findsOneWidget);
+      expect(find.byType(ConnectionsTableCard), findsOneWidget);
+      final graph = rectOf(tester, NetworkTopologyCard);
+      expect(graph.top, lessThan(900));
+      expect(graph.bottom, lessThan(rectOf(tester, ConnectionsTableCard).top));
+      expect(tester.takeException(), isNull);
+      await teardown(tester);
+    },
+  );
+
   testWidgets('desktop core status survives enlarged system text', (
     tester,
   ) async {
@@ -459,6 +477,38 @@ void main() {
     expect(find.byType(VpnCard), findsOneWidget);
     expect(find.byType(NetworkTakeoverCard), findsNothing);
 
+    await teardown(tester);
+  });
+
+  testWidgets('Android topology opt-in survives wide dashboard layouts', (
+    tester,
+  ) async {
+    for (final size in const [Size(400, 900), Size(800, 600), Size(915, 412)]) {
+      container
+          .read(appSettingProvider.notifier)
+          .update(
+            (state) => state.copyWith(
+              dashboardWidgets: const [
+                DashboardWidget.currentOutbound,
+                DashboardWidget.networkTopology,
+              ],
+            ),
+          );
+      await pumpDashboard(tester, size, platform: SupportPlatform.Android);
+      expect(find.byType(NetworkTopologyCard), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      container
+          .read(appSettingProvider.notifier)
+          .update(
+            (state) => state.copyWith(
+              dashboardWidgets: const [DashboardWidget.currentOutbound],
+            ),
+          );
+      await tester.pump();
+      expect(find.byType(NetworkTopologyCard), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
     await teardown(tester);
   });
 
