@@ -60,11 +60,12 @@ class _NetworkTopologyCardState extends State<NetworkTopologyCard> {
     final spec = _handoff.runtime.activeSpec;
     if (!_handoff.busy &&
         _handoff.runtime.isRunning &&
-        spec?.kind == NativeCoreKind.singBox) {
+        spec != null &&
+        spec.kind == NativeCoreKind.singBox) {
       return _NativeTopologyCard(
         key: ValueKey(_session),
         handoff: _handoff,
-        spec: spec!,
+        spec: spec,
       );
     }
     final desktop = DashboardDensityScope.of(context).isDesktop;
