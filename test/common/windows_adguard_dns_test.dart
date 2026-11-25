@@ -240,26 +240,29 @@ void main() {
       },
     );
 
-    test('does not reload a stopped core after saving the preference', () async {
-      final saved = <bool>[];
-      var applyCalls = 0;
+    test(
+      'does not reload a stopped core after saving the preference',
+      () async {
+        final saved = <bool>[];
+        var applyCalls = 0;
 
-      await updateWindowsDnsPreference(
-        previous: false,
-        coreRunning: false,
-        save: (enabled) async {
-          saved.add(enabled);
-          return true;
-        },
-        apply: () async {
-          applyCalls++;
-          return false;
-        },
-      );
+        await updateWindowsDnsPreference(
+          previous: false,
+          coreRunning: false,
+          save: (enabled) async {
+            saved.add(enabled);
+            return true;
+          },
+          apply: () async {
+            applyCalls++;
+            return false;
+          },
+        );
 
-      expect(saved, [true]);
-      expect(applyCalls, 0);
-    });
+        expect(saved, [true]);
+        expect(applyCalls, 0);
+      },
+    );
 
     test('reports when the previous preference cannot be restored', () async {
       final saved = <bool>[];
