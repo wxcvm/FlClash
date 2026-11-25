@@ -117,10 +117,7 @@ class _NativeTopologyCard extends StatefulWidget {
 }
 
 class _NativeTopologyCardState extends State<_NativeTopologyCard>
-    with
-        WidgetsBindingObserver,
-        ActivePollingMixin<_NativeTopologyCard>,
-        RouteMotionHoldMixin<_NativeTopologyCard> {
+    with WidgetsBindingObserver, ActivePollingMixin<_NativeTopologyCard> {
   late final Future<NativeClashController?> _controller;
   List<TrackerInfo> _connections = const [];
   List<TrackerInfo>? _frozen;
@@ -138,18 +135,28 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
   void initState() {
     super.initState();
     _controller = NativeClashController.fromSpec(widget.spec);
+    unawaited(
+      _controller.then(
+        (controller) {
+          if (!mounted || !_currentSession || controller != null) return;
+          _updateSnapshot(const [], _NativeTopologyIssue.controllerUnavailable);
+        },
+        onError: (Object _, StackTrace __) {
+          if (!mounted || !_currentSession) return;
+          _updateSnapshot(const [], _NativeTopologyIssue.snapshotUnavailable);
+        },
+      ),
+    );
   }
 
   void _updateSnapshot(
     List<TrackerInfo> connections,
     _NativeTopologyIssue? issue,
   ) {
-    updateWhenRouteSettled(() {
-      if (!mounted) return;
-      setState(() {
-        _connections = connections;
-        _issue = issue;
-      });
+    if (!mounted) return;
+    setState(() {
+      _connections = connections;
+      _issue = issue;
     });
   }
 
