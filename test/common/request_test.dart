@@ -167,6 +167,27 @@ void main() {
     });
   });
 
+    test('marks release metadata failures separately', () async {
+      final error = DioException(
+        requestOptions: RequestOptions(path: '/releases'),
+        type: DioExceptionType.badCertificate,
+      );
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases/latest': () => throw error,
+          '/repos/$repository/releases': () => throw error,
+        });
+
+      await expectLater(
+        request.checkForUpdate(),
+        throwsA(
+          isA<ReleaseUpdateStageException>()
+              .having((e) => e.stage, 'stage', ReleaseUpdateStage.metadata)
+              .having((e) => e.cause, 'cause', isA<DioException>()),
+        ),
+      );
+    });
+
   group('latestPreviewRelease', () {
     const suffix = 'windows-amd64-setup.exe';
     const older = 'v0.9.3-preview.9.2';
@@ -248,6 +269,72 @@ void main() {
       final path = await download(request);
 
       expect(await File(path).readAsBytes(), package);
+    });
+
+    test('marks checksum transport failures separately', () async {
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/$repository/releases/download/v1.2.3/SHA256SUMS': () =>
+              throw DioException(
+                requestOptions: RequestOptions(path: '/SHA256SUMS'),
+                type: DioExceptionType.badCertificate,
+              ),
+        });
+
+      await expectLater(
+        download(request),
+        throwsA(
+          isA<ReleaseUpdateStageException>()
+              .having((e) => e.stage, 'stage', ReleaseUpdateStage.checksum)
+              .having((e) => e.cause, 'cause', isA<DioException>()),
+        ),
+      );
+    });
+
+    test('marks package transport failures separately', () async {
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/$repository/releases/download/v1.2.3/SHA256SUMS': () =>
+              ResponseBody.fromString('$digest  ./$name\n', 200),
+          '/$repository/releases/download/v1.2.3/$name': () =>
+              throw DioException(
+                requestOptions: RequestOptions(path: '/$name'),
+                type: DioExceptionType.badCertificate,
+              ),
+        });
+
+      await expectLater(
+        download(request),
+        throwsA(
+          isA<ReleaseUpdateStageException>()
+              .having((e) => e.stage, 'stage', ReleaseUpdateStage.package)
+              .having((e) => e.cause, 'cause', isA<DioException>()),
+        ),
+      );
+    });
+
+    test('does not wrap user-cancelled package downloads', () async {
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/$repository/releases/download/v1.2.3/SHA256SUMS': () =>
+              ResponseBody.fromString('$digest  ./$name\n', 200),
+          '/$repository/releases/download/v1.2.3/$name': () =>
+              throw DioException(
+                requestOptions: RequestOptions(path: '/$name'),
+                type: DioExceptionType.cancel,
+              ),
+        });
+
+      await expectLater(
+        download(request),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.type,
+            'type',
+            DioExceptionType.cancel,
+          ),
+        ),
+      );
     });
 
     test('refuses a file that does not match', () async {
