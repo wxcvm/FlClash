@@ -148,6 +148,11 @@ void main() {
     );
     globalState.container = container;
     addTearDown(container.dispose);
+    addTearDown(() async {
+      await handoff.close();
+      await runtime.close();
+      await directory.delete(recursive: true);
+    });
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -177,11 +182,6 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 2));
-    await tester.runAsync(() async {
-      await handoff.close();
-      await runtime.close();
-      await directory.delete(recursive: true);
-    });
     expect(tester.takeException(), isNull);
   });
 
