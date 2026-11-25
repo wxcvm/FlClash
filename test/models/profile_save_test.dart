@@ -133,24 +133,24 @@ void main() {
       'deletion invalidates a pending save without recreating the file',
       () async {
         final profile = Profile.normal(label: 'deleted-pending');
-      final savedFile = await profile.file;
-      await savedFile.writeAsString('proxies: []');
-      final validating = Completer<void>();
-      final resume = Completer<void>();
-      final pending = profile.saveFile(
-        Uint8List.fromList(utf8.encode('proxies: [stale]')),
-        validate: (_, _) async {
-          validating.complete();
-          await resume.future;
-          return null;
-        },
-      );
-      final rejected = expectLater(pending, throwsA(isA<StateError>()));
-      await validating.future;
-      ProfileWriteGuard.markDeleted(profile.id);
-      await savedFile.delete();
-      resume.complete();
-      await rejected;
+        final savedFile = await profile.file;
+        await savedFile.writeAsString('proxies: []');
+        final validating = Completer<void>();
+        final resume = Completer<void>();
+        final pending = profile.saveFile(
+          Uint8List.fromList(utf8.encode('proxies: [stale]')),
+          validate: (_, _) async {
+            validating.complete();
+            await resume.future;
+            return null;
+          },
+        );
+        final rejected = expectLater(pending, throwsA(isA<StateError>()));
+        await validating.future;
+        ProfileWriteGuard.markDeleted(profile.id);
+        await savedFile.delete();
+        resume.complete();
+        await rejected;
         expect(await savedFile.exists(), isFalse);
       },
     );
