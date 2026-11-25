@@ -213,11 +213,7 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
             glyph: AppGlyphs.split,
             title: topologyTitle(context),
             trailing: [
-              Text(
-                chinese
-                    ? 'sing-box · $count 条连接'
-                    : 'sing-box · $count',
-              ),
+              Text(chinese ? 'sing-box · $count 条连接' : 'sing-box · $count'),
               PressSurface(
                 fill: context.colorScheme.surfaceContainer,
                 shape: AppShape.sm,
