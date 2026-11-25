@@ -167,6 +167,7 @@ void main() {
     });
   });
 
+  group('checkForUpdate', () {
     test('marks release metadata failures separately', () async {
       final error = DioException(
         requestOptions: RequestOptions(path: '/releases'),
@@ -187,6 +188,7 @@ void main() {
         ),
       );
     });
+  });
 
   group('latestPreviewRelease', () {
     const suffix = 'windows-amd64-setup.exe';
