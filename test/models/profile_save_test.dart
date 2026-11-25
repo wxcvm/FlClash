@@ -92,7 +92,6 @@ void main() {
       final profile = Profile.normal(label: 'concurrent');
       final validating = Completer<void>();
       final resume = Completer<void>();
-      var current = true;
       final older = profile.saveFile(
         Uint8List.fromList(utf8.encode('proxies: [old]')),
         validate: (_, _) async {
@@ -100,11 +99,9 @@ void main() {
           await resume.future;
           return null;
         },
-        canCommit: () => current,
       );
       final rejected = expectLater(older, throwsA(isA<StateError>()));
       await validating.future;
-      current = false;
       try {
         await profile.saveFile(
           Uint8List.fromList(utf8.encode('proxies: [new]')),
@@ -115,6 +112,44 @@ void main() {
       }
       await rejected;
       expect(await (await profile.file).readAsString(), 'proxies: [new]');
+    });
+
+    test('a later save atomically replaces an existing profile file', () async {
+      final profile = Profile.normal(label: 'replace');
+      await profile.saveFile(
+        Uint8List.fromList(utf8.encode('proxies: [old]')),
+        validate: (_, _) async => null,
+      );
+
+      await profile.saveFile(
+        Uint8List.fromList(utf8.encode('proxies: [new]')),
+        validate: (_, _) async => null,
+      );
+
+      expect(await (await profile.file).readAsString(), 'proxies: [new]');
+    });
+
+    test('deletion invalidates a pending save without recreating the file', () async {
+      final profile = Profile.normal(label: 'deleted-pending');
+      final savedFile = await profile.file;
+      await savedFile.writeAsString('proxies: []');
+      final validating = Completer<void>();
+      final resume = Completer<void>();
+      final pending = profile.saveFile(
+        Uint8List.fromList(utf8.encode('proxies: [stale]')),
+        validate: (_, _) async {
+          validating.complete();
+          await resume.future;
+          return null;
+        },
+      );
+      final rejected = expectLater(pending, throwsA(isA<StateError>()));
+      await validating.future;
+      ProfileWriteGuard.markDeleted(profile.id);
+      await savedFile.delete();
+      resume.complete();
+      await rejected;
+      expect(await savedFile.exists(), isFalse);
     });
 
     test('copies validated bytes and stamps the update time', () async {
