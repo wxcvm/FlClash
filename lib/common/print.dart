@@ -8,30 +8,30 @@ import 'package:flutter/widgets.dart';
 /// Removes credentials from application and core log payloads before storage/export.
 String redactSensitiveLogText(String value) {
   var text = value;
-  text = text.replaceAll(
+  text = text.replaceAllMapped(
     RegExp(r'([a-z][a-z0-9+.-]*://)[^\s/@]+@', caseSensitive: false),
-    r'$1[REDACTED]@',
+    (match) => '${match[1]}[REDACTED]@',
   );
-  text = text.replaceAll(
+  text = text.replaceAllMapped(
     RegExp(
       r'([?&](?:access[_-]?token|refresh[_-]?token|token|api[_-]?key|client[_-]?secret|username|key|secret|password|passwd|authorization|auth|credential|uuid|subscription(?:[_-]?token)?)=)[^&#\s]*',
       caseSensitive: false,
     ),
-    r'$1[REDACTED]',
+    (match) => '${match[1]}[REDACTED]',
   );
-  text = text.replaceAll(
+  text = text.replaceAllMapped(
     RegExp(
       r'(\bauthorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;]+',
       caseSensitive: false,
     ),
-    r'$1[REDACTED]',
+    (match) => '${match[1]}[REDACTED]',
   );
-  text = text.replaceAll(
+  text = text.replaceAllMapped(
     RegExp(
       r'''(\b(?:password|passwd|token|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|secret|private[_-]?key|pre[_-]?shared[_-]?key|username|psk|auth(?:[_-]?str)?|authorization|uuid)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)''',
       caseSensitive: false,
     ),
-    r'$1[REDACTED]',
+    (match) => '${match[1]}[REDACTED]',
   );
   text = text.replaceAll(
     RegExp(
