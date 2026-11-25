@@ -141,7 +141,7 @@ class _NativeTopologyCardState extends State<_NativeTopologyCard>
           if (!mounted || !_currentSession || controller != null) return;
           _updateSnapshot(const [], _NativeTopologyIssue.controllerUnavailable);
         },
-        onError: (Object _, StackTrace __) {
+        onError: (_, _) {
           if (!mounted || !_currentSession) return;
           _updateSnapshot(const [], _NativeTopologyIssue.snapshotUnavailable);
         },
