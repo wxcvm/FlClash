@@ -144,7 +144,9 @@ void main() {
 
       final container = ProviderContainer(
         overrides: [
-          coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.disconnected),
+          coreStatusProvider.overrideWithBuild(
+            (_, _) => CoreStatus.disconnected,
+          ),
         ],
       );
       globalState.container = container;
@@ -175,10 +177,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(
-        find.textContaining('127.0.0.1 Clash API'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('127.0.0.1 Clash API'), findsOneWidget);
       expect(find.byType(TopologyGraphView), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
