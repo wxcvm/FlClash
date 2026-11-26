@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fl_clash/core/connection_topology.dart';
+import 'package:fl_clash/core/desktop/native_clash_controller.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_handoff.dart';
 import 'package:fl_clash/models/models.dart';
@@ -56,6 +57,17 @@ class _NetworkTopologyCardState extends State<NetworkTopologyCard> {
     if (!_handoff.blocksMihomoStart && !_handoff.runtime.isRunning) {
       return _MihomoTopologyCard(key: ValueKey(_session));
     }
+    final spec = _handoff.runtime.activeSpec;
+    if (!_handoff.busy &&
+        _handoff.runtime.isRunning &&
+        spec != null &&
+        spec.kind == NativeCoreKind.singBox) {
+      return _NativeTopologyCard(
+        key: ValueKey(_session),
+        handoff: _handoff,
+        spec: spec,
+      );
+    }
     final desktop = DashboardDensityScope.of(context).isDesktop;
     final scale = DashboardDensityScope.scaleOf(context);
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
@@ -81,6 +93,162 @@ class _NetworkTopologyCardState extends State<NetworkTopologyCard> {
                 textAlign: TextAlign.center,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _NativeTopologyIssue { controllerUnavailable, snapshotUnavailable }
+
+class _NativeTopologyCard extends StatefulWidget {
+  const _NativeTopologyCard({
+    super.key,
+    required this.handoff,
+    required this.spec,
+  });
+
+  final NativeCoreHandoff handoff;
+  final NativeCoreSpec spec;
+
+  @override
+  State<_NativeTopologyCard> createState() => _NativeTopologyCardState();
+}
+
+class _NativeTopologyCardState extends State<_NativeTopologyCard>
+    with WidgetsBindingObserver, ActivePollingMixin<_NativeTopologyCard> {
+  late final Future<NativeClashController?> _controller;
+  List<TrackerInfo> _connections = const [];
+  List<TrackerInfo>? _frozen;
+  _NativeTopologyIssue? _issue;
+
+  bool get _currentSession =>
+      widget.handoff.runtime.isRunning &&
+      !widget.handoff.busy &&
+      identical(widget.handoff.runtime.activeSpec, widget.spec);
+
+  @override
+  Duration get pollInterval => const Duration(seconds: 2);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = NativeClashController.fromSpec(widget.spec);
+    unawaited(
+      _controller.then(
+        (controller) {
+          if (!mounted || !_currentSession || controller != null) return;
+          _updateSnapshot(const [], _NativeTopologyIssue.controllerUnavailable);
+        },
+        onError: (_, _) {
+          if (!mounted || !_currentSession) return;
+          _updateSnapshot(const [], _NativeTopologyIssue.snapshotUnavailable);
+        },
+      ),
+    );
+  }
+
+  void _updateSnapshot(
+    List<TrackerInfo> connections,
+    _NativeTopologyIssue? issue,
+  ) {
+    if (!mounted) return;
+    setState(() {
+      _connections = connections;
+      _issue = issue;
+    });
+  }
+
+  @override
+  Future<void> poll(PollGuard isCurrent) async {
+    final NativeClashController? controller;
+    try {
+      controller = await _controller;
+    } catch (_) {
+      if (isCurrent() && _currentSession) {
+        _updateSnapshot(const [], _NativeTopologyIssue.snapshotUnavailable);
+      }
+      stopPolling();
+      rethrow;
+    }
+    if (!isCurrent() || !_currentSession) return;
+    if (controller == null) {
+      _updateSnapshot(const [], _NativeTopologyIssue.controllerUnavailable);
+      stopPolling();
+      return;
+    }
+    try {
+      final connections = await controller.connections();
+      if (!isCurrent() || !_currentSession) return;
+      connections.sort((a, b) => b.start.compareTo(a.start));
+      _updateSnapshot(connections, null);
+    } catch (_) {
+      if (isCurrent() && _currentSession) {
+        _updateSnapshot(const [], _NativeTopologyIssue.snapshotUnavailable);
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final desktop = DashboardDensityScope.of(context).isDesktop;
+    final scale = DashboardDensityScope.scaleOf(context);
+    final chinese = Localizations.localeOf(context).languageCode == 'zh';
+    final snapshot = _frozen ?? _connections;
+    final issue = _frozen == null ? _issue : null;
+    final count = issue == null ? snapshot.length.toString() : '—';
+    final status = switch (issue) {
+      _NativeTopologyIssue.controllerUnavailable =>
+        chinese
+            ? '请在 sing-box 配置中启用带密钥的 127.0.0.1 Clash API'
+            : 'Enable an authenticated 127.0.0.1 Clash API in sing-box config',
+      _NativeTopologyIssue.snapshotUnavailable =>
+        chinese
+            ? '暂时无法读取 sing-box 连接数据，正在重试'
+            : 'Cannot read sing-box connections; retrying',
+      null => null,
+    };
+    return DashboardCard(
+      semanticLabel: topologyTitle(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 12,
+        children: [
+          DashboardCardHeader(
+            glyph: AppGlyphs.split,
+            title: topologyTitle(context),
+            trailing: [
+              Text(chinese ? 'sing-box · $count 条连接' : 'sing-box · $count'),
+              PressSurface(
+                fill: context.colorScheme.surfaceContainer,
+                shape: AppShape.sm,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                onPressed: issue != null && _frozen == null
+                    ? null
+                    : () => setState(() {
+                        _frozen = _frozen == null
+                            ? List.unmodifiable(_connections)
+                            : null;
+                      }),
+                child: Text(
+                  _frozen == null
+                      ? (chinese ? '暂停' : 'Freeze')
+                      : (chinese ? '恢复' : 'Resume'),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(
+            height: (desktop ? 260 : 220) * scale,
+            child: status == null
+                ? TopologyGraphView(
+                    routes: connectionRoutes(snapshot),
+                    viewportHeight: (desktop ? 260 : 220) * scale,
+                    fitToViewport: true,
+                  )
+                : Center(child: Text(status, textAlign: TextAlign.center)),
           ),
         ],
       ),
