@@ -102,7 +102,8 @@ void main() {
                 'connections': [connection()],
               }),
             );
-          } else if (request.uri.path == '/proxies' && request.method == 'GET') {
+          } else if (request.uri.path == '/proxies' &&
+              request.method == 'GET') {
             request.response.write(
               jsonEncode({
                 'proxies': {
