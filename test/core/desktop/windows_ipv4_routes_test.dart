@@ -65,6 +65,15 @@ void main() {
     expect(finding.detail, contains('（/16）'));
   });
 
+  test('ignores non-contiguous masks rather than treating them as CIDR', () {
+    final finding = inspectWindowsTunFakeIpRoute(
+      '$_physical$_tunLocal'
+      '196.0.0.0 252.0.0.1 On-link 198.18.0.1 1\n',
+    );
+    expect(finding.escaped, isTrue);
+    expect(finding.detail, contains('192.0.2.20'));
+  });
+
   test('a lower metric wins between equal-length routes', () {
     final finding = inspectWindowsTunFakeIpRoute(
       '$_physical$_tunLocal'
@@ -73,5 +82,19 @@ void main() {
     );
     expect(finding.escaped, isFalse);
     expect(finding.detail, contains('（/6）'));
+  });
+
+  test('native TUN readiness requires configured interface addresses', () {
+    const routes = '''
+0.0.0.0 0.0.0.0 192.168.1.1 192.168.1.5 25
+172.19.0.0 255.255.255.252 On-link 172.19.0.1 5
+''';
+    expect(windowsHasNativeTunAddress(routes, ['172.19.0.1']), isTrue);
+    expect(windowsHasNativeTunAddress(routes, ['172.19.0.2']), isFalse);
+    expect(
+      windowsHasNativeTunAddress(routes, ['172.19.0.1', '172.20.0.1']),
+      isFalse,
+    );
+    expect(windowsHasNativeTunAddress(routes, []), isFalse);
   });
 }

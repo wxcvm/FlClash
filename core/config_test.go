@@ -1023,8 +1023,15 @@ func TestTestDelayKeepsToTheTimeoutTheGroupNames(t *testing.T) {
 	tunnel.UpdateProxies(map[string]constant.Proxy{"node": node}, map[string]cp.ProxyProvider{"group": group})
 	t.Cleanup(func() { tunnel.UpdateProxies(nil, nil) })
 
+	if got, ok := group.TestTimeout(testURL); !ok || got != named {
+		t.Fatalf("provider timeout = %v, %t; want %v, true", got, ok, named)
+	}
+	if got, ok := configuredTestTimeout("node", testURL); !ok || got != named {
+		t.Fatalf("configured provider timeout = %v, %t; want %v, true", got, ok, named)
+	}
+
 	start := time.Now()
-	delay := handleTestDelay(&TestDelayParams{ProxyName: "node", TestUrl: testURL, Timeout: 5000})
+	delay := handleTestDelay(&TestDelayParams{ProxyName: "node", TestUrl: testURL})
 	elapsed := time.Since(start)
 
 	if delay == nil || delay.Value != delayTimedOut {

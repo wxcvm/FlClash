@@ -119,6 +119,27 @@ void main() {
     await teardown(tester);
   });
 
+  testWidgets('Android topology is opt-in and removable in the editor', (
+    tester,
+  ) async {
+    seed(const [DashboardWidget.currentOutbound]);
+    await pumpEditor(tester);
+    expect(find.byType(NetworkTopologyCard), findsNothing);
+    final add = find.byTooltip('Add Network topology');
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await settle(tester);
+    expect(saved(), contains(DashboardWidget.networkTopology));
+    expect(find.byType(NetworkTopologyCard), findsOneWidget);
+    final remove = find.byTooltip('Remove Network topology');
+    await tester.ensureVisible(remove);
+    await tester.tap(remove);
+    await settle(tester);
+    expect(saved(), isNot(contains(DashboardWidget.networkTopology)));
+    expect(tester.takeException(), isNull);
+    await teardown(tester);
+  });
+
   testWidgets('the current outbound holds the start button and stays', (
     tester,
   ) async {

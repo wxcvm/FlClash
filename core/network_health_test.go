@@ -140,3 +140,48 @@ func TestRecoveryHealthCountsOnlyConfirmedFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestRecoveryHealthInvalidatesChangedTestEndpoint(t *testing.T) {
+	previousURL := currentTestURL()
+	previousRunning := isRunning.Load()
+	isRunning.Store(true)
+	t.Cleanup(func() {
+		updateRecoveryTestURL(previousURL)
+		cancelRecoveryHealth()
+		isRunning.Store(previousRunning)
+	})
+	updateRecoveryTestURL("https://example.test/first")
+	epoch, version := routeStamp()
+	ctx, cancel := context.WithCancel(context.Background())
+	recoveryHealthMu.Lock()
+	recoveryHealthCancel = cancel
+	recoveryHealth = NetworkHealthSnapshot{
+		State: "dns-failure", DNS: "failed",
+		CoreEpoch: epoch, RouteVersion: version,
+	}
+	run := recoveryHealthRun
+	recoveryHealthMu.Unlock()
+
+	updateRecoveryTestURL("https://example.test/first")
+	if got := handleNetworkHealth(); got.State != "dns-failure" {
+		t.Fatalf("unchanged endpoint lost evidence: %+v", got)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("unchanged endpoint canceled active probe")
+	}
+
+	// Even a path-only change on the same host invalidates the HTTP evidence.
+	updateRecoveryTestURL("https://example.test/second")
+	if got := handleNetworkHealth(); got.State != "idle" || got.DNS != "untested" {
+		t.Fatalf("old endpoint evidence remained current: %+v", got)
+	}
+	if ctx.Err() != context.Canceled {
+		t.Fatal("old endpoint probe was not canceled")
+	}
+	recoveryHealthMu.Lock()
+	invalidated := recoveryHealthRun != run
+	recoveryHealthMu.Unlock()
+	if !invalidated {
+		t.Fatal("old endpoint generation remained valid")
+	}
+}

@@ -1,3 +1,4 @@
+import 'package:fl_clash/providers/action.dart';
 import 'package:fl_clash/providers/download_speed.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +109,99 @@ void main() {
     health.reset();
     expect(health.samples, isEmpty);
     expect(health.record('A', -1, now), NodeHealthDecision.wait);
+  });
+
+  test('candidate observations leave incumbent failure streak unchanged', () {
+    final history = NodeHealthHistory();
+    final now = DateTime(2026);
+    expect(history.record('A', -1, now), NodeHealthDecision.wait);
+    history.observe('B', 40);
+    history.observe('B', null);
+    history.observe('B', 50);
+    expect(history.samples['B'], (successes: 2, failures: 0));
+    expect(history.record('A', -2, now), NodeHealthDecision.failover);
+    history.reset();
+    expect(history.samples, isEmpty);
+  });
+
+  test('recovery prefers reliable nodes and still explores unknown nodes', () {
+    final candidates = automaticSpeedCandidates(
+      ['fast', 'stable', 'unknown', 'next'],
+      '',
+      {'fast': 100000000},
+      2,
+      limit: 3,
+      knownLimit: 1,
+      health: {
+        'fast': (successes: 0, failures: 2),
+        'stable': (successes: 2, failures: 0),
+      },
+    );
+    expect(candidates, ['stable', 'unknown', 'next']);
+  });
+
+  test('candidate limit also applies to preferred known nodes', () {
+    expect(
+      automaticSpeedCandidates(
+        ['A', 'B', 'C'],
+        'A',
+        {'B': 10, 'C': 20},
+        0,
+        limit: 1,
+      ),
+      ['A'],
+    );
+    expect(automaticSpeedCandidates(['A'], '', {}, 0, limit: 0), isEmpty);
+  });
+
+  test('quality distinguishes completed probes and missing samples', () {
+    final history = NodeHealthHistory();
+    for (final delay in <int?>[10, 30, -1, 70, 80, null, 0]) {
+      history.observe('A', delay);
+    }
+    final quality = history.quality['A']!;
+    expect(quality.values, [10, 30, -1, 70, 80]);
+    expect(quality.successRate, 0.8);
+    expect(quality.meanDelay, 47.5);
+    expect(quality.delayVariation, 15);
+    expect(NodeProbeQuality([]).successRate, isNull);
+    expect(NodeProbeQuality([-1, 30]).delayVariation, isNull);
+    expect(NodeProbeQuality([-1]).meanDelay, isNull);
+  });
+
+  test('quality retains only the latest completed samples', () {
+    final history = NodeHealthHistory();
+    for (var i = 0; i < 4; i++) {
+      history.observe('A', -1);
+    }
+    for (var i = 0; i < NodeHealthHistory.sampleLimit; i++) {
+      history.observe('A', 20);
+    }
+    expect(history.quality['A']!.successRate, 1);
+    expect(history.samples['A'], (successes: 12, failures: 0));
+    history.reset();
+    expect(history.quality, isEmpty);
+  });
+
+  test('equally reliable candidates prefer steadier measured latency', () {
+    expect(
+      automaticSpeedCandidates(
+        ['fast', 'steady', 'unknown'],
+        '',
+        {'fast': 100000, 'steady': 10000},
+        2,
+        limit: 1,
+        health: {
+          'fast': (successes: 2, failures: 0),
+          'steady': (successes: 2, failures: 0),
+        },
+        quality: {
+          'fast': NodeProbeQuality([10, 100]),
+          'steady': NodeProbeQuality([30, 32]),
+        },
+      ),
+      ['steady'],
+    );
   });
 
   test('network changes reset health but keep download budget', () {

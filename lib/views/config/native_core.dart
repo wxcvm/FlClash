@@ -3,12 +3,16 @@ import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/clash_native_file.dart';
+import 'package:fl_clash/core/connection_topology.dart';
+import 'package:fl_clash/core/desktop/native_clash_controller.dart';
 import 'package:fl_clash/core/desktop/native_config_kind.dart';
 import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:fl_clash/core/desktop/native_installer.dart';
 import 'package:fl_clash/core/desktop/network_diagnostics.dart';
+import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/native_core.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/views/connection/topology_graph.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +43,10 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   StreamSubscription<bool>? _handoffStateSubscription;
   bool _busy = false;
   bool _advanced = false;
+  int _nativeSnapshotRevision = 0;
+  List<TrackerInfo>? _nativeConnections;
+  Map<String, NativeProxyGroup> _nativeGroups = const {};
+  String _nativeTestUrl = 'https://www.cloudflare.com/cdn-cgi/trace';
 
   @override
   void initState() {
@@ -55,7 +63,14 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     _logSubscription = nativeCoreRuntime.logs.listen(addLog);
     _handoffSubscription = nativeCoreHandoff.messages.listen(addLog);
     _handoffStateSubscription = nativeCoreHandoff.busyChanges.listen((_) {
-      if (mounted) setState(() {});
+      _nativeSnapshotRevision++;
+      if (mounted) {
+        setState(() {
+          _nativeConnections = null;
+          _nativeGroups = const {};
+          _nativeTestUrl = 'https://www.cloudflare.com/cdn-cgi/trace';
+        });
+      }
     });
   }
 
@@ -256,6 +271,92 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
     return '独立内核已停止；已按先前状态恢复 Mihomo';
   }
 
+  Future<String> _readNativeSnapshot() async {
+    final spec = nativeCoreRuntime.activeSpec;
+    if (spec == null || nativeCoreHandoff.busy) return '当前没有可读取的独立内核';
+    final revision = ++_nativeSnapshotRevision;
+    setState(() {
+      _nativeConnections = null;
+      _nativeGroups = const {};
+    });
+    bool current() =>
+        mounted &&
+        revision == _nativeSnapshotRevision &&
+        identical(nativeCoreRuntime.activeSpec, spec) &&
+        !nativeCoreHandoff.busy;
+    final controller = await NativeClashController.fromSpec(spec);
+    if (!current()) return '内核会话已变化，请重新读取';
+    if (controller == null) {
+      return '需要已启用且配置密钥的 127.0.0.1 Clash API；本次未修改原生配置';
+    }
+    final results = await Future.wait([
+      controller.connections(),
+      controller.groups(),
+    ]);
+    if (!current()) return '内核会话已变化，请重新读取';
+    final connections = results[0] as List<TrackerInfo>;
+    final groups = results[1] as List<NativeProxyGroup>;
+    setState(() {
+      _nativeConnections = connections;
+      _nativeGroups = {for (final group in groups) group.tag: group};
+      _nativeTestUrl = controller.testUrl;
+    });
+    return '已读取 sing-box 当前连接与策略组快照';
+  }
+
+  Future<String> _selectNativeOutbound(String group, String outbound) async {
+    final spec = nativeCoreRuntime.activeSpec;
+    if (spec == null || spec.kind != NativeCoreKind.singBox) {
+      return 'sing-box 会话已结束';
+    }
+    final revision = _nativeSnapshotRevision;
+    final controller = await NativeClashController.fromSpec(spec);
+    if (!mounted ||
+        revision != _nativeSnapshotRevision ||
+        !identical(nativeCoreRuntime.activeSpec, spec) ||
+        controller == null) {
+      return '内核会话已变化，未执行切换';
+    }
+    await controller.select(group, outbound);
+    final message = await _readNativeSnapshot();
+    if (_nativeGroups[group]?.selected == outbound) {
+      return '已切换至 $outbound，内核返回值已确认';
+    }
+    return '$message；切换请求尚未由内核快照确认';
+  }
+
+  Future<String> _testNativeGroup(String groupTag) async {
+    final group = _nativeGroups[groupTag];
+    final spec = nativeCoreRuntime.activeSpec;
+    if (group == null ||
+        !group.selectable ||
+        group.selected.isEmpty ||
+        !group.members.contains(group.selected) ||
+        spec == null ||
+        spec.kind != NativeCoreKind.singBox) {
+      return '当前策略组没有可测速的已选节点';
+    }
+    final revision = _nativeSnapshotRevision;
+    final controller = await NativeClashController.fromSpec(spec);
+    if (!mounted ||
+        revision != _nativeSnapshotRevision ||
+        !identical(nativeCoreRuntime.activeSpec, spec) ||
+        controller == null) {
+      return '内核会话已变化，未开始测速';
+    }
+    final delay = await controller.testDelay(group.selected);
+    if (!mounted ||
+        revision != _nativeSnapshotRevision ||
+        !identical(nativeCoreRuntime.activeSpec, spec)) {
+      return '内核会话已变化，测速结果未应用';
+    }
+    await _readNativeSnapshot();
+    if (_nativeGroups[groupTag]?.selected != group.selected) {
+      return '测速完成，但策略组已变化；请重新读取当前状态';
+    }
+    return '已测试 ${group.selected}：$delay ms（${controller.testUrl}）';
+  }
+
   Future<String> _diagnose() async {
     final kind = nativeCoreRuntime.activeKind;
     final mihomoRunning = ref.read(isStartProvider);
@@ -319,8 +420,11 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
   @override
   Widget build(BuildContext context) {
     final active = nativeCoreRuntime.activeKind;
+    final requiresTun =
+        ref.watch(isStartProvider) &&
+        ref.watch(patchClashConfigProvider).tun.enable;
     return BaseScaffold(
-      title: '内核管理',
+      title: '内核切换',
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(
           top: context.sectionsTopPadding,
@@ -328,14 +432,56 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
         ),
         children: [
           generateSection(
-            title: '内核与配置',
+            title: '当前内核',
             items: [
               ListItem(
-                title: const Text('使用当前订阅'),
-                subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
+                title: Text(
+                  nativeCoreHandoff.busy ? '正在切换' : active?.label ?? 'Mihomo',
+                ),
+                subtitle: Text(
+                  active != null
+                      ? '独立内核已运行，实际连通性仍需验证'
+                      : ref.watch(isStartProvider)
+                      ? '已启动'
+                      : '未启动',
+                ),
+              ),
+              if (active != null ||
+                  nativeCoreHandoff.hasMihomoToRestore ||
+                  nativeCoreHandoff.ownsNativeSystemProxy)
+                ListItem(
+                  title: const Text('恢复 Mihomo'),
+                  onTap: _busy || nativeCoreHandoff.busy
+                      ? null
+                      : () => _perform(_stop),
+                ),
+            ],
+          ),
+          generateSection(
+            title: '切换内核',
+            items: [
+              ListItem(
+                title: const Text('使用当前订阅准备 sing-box'),
+                subtitle: Text(
+                  requiresTun
+                      ? '当前使用 TUN；转换仅准备本地代理，切换需要原生 TUN 配置'
+                      : '自动转换并预检，不立即切换当前连接',
+                ),
                 onTap: _busy || active != null || !nativeCoreInstaller.supported
                     ? null
                     : () => _perform(() => _importClash(current: true)),
+              ),
+              ListItem(
+                title: Text('切换到 ${_kind.label}'),
+                onTap:
+                    _busy ||
+                        _configPath.trim().isEmpty ||
+                        nativeCoreHandoff.busy ||
+                        active != null ||
+                        nativeCoreHandoff.ownsNativeSystemProxy ||
+                        nativeCoreHandoff.hasMihomoToRestore
+                    ? null
+                    : () => _perform(_start),
               ),
               ListItem(
                 title: const Text('导入 Clash 配置'),
@@ -470,30 +616,62 @@ class _NativeCoreViewState extends ConsumerState<NativeCoreView> {
                 title: const Text('检查配置'),
                 onTap: _busy ? null : () => _perform(_validate),
               ),
-              ListItem(
-                title: const Text('启动独立内核'),
-                onTap:
-                    _busy ||
-                        active != null ||
-                        nativeCoreHandoff.ownsNativeSystemProxy ||
-                        nativeCoreHandoff.hasMihomoToRestore
-                    ? null
-                    : () => _perform(_start),
-              ),
-              ListItem(
-                title: const Text('停止独立内核'),
-                onTap:
-                    _busy ||
-                        (active == null &&
-                            !nativeCoreHandoff.hasMihomoToRestore &&
-                            !nativeCoreHandoff.ownsNativeSystemProxy)
-                    ? null
-                    : () => _perform(_stop),
-              ),
             ],
             footer:
                 '默认使用 Mihomo；独立内核配置可自动识别并一键启动，也可仅识别后手动启动；不会根据测速或当前节点自动切换。启动时先停止 Mihomo 网络监听。sing-box / Xray 使用 JSON，Hysteria 2 使用 YAML。若 sing-box 配有 auto_route TUN，由 sing-box 管理路由与 DNS；否则使用本机 HTTP 入口接管系统代理。已验证本机 HTTP 代理入口的独立内核异常退出时自动重启一次，仍失败则恢复 Mihomo；TUN 异常直接恢复 Mihomo，路由状态未独立验证。',
           ),
+          if (active == NativeCoreKind.singBox)
+            generateSection(
+              title: 'sing-box 连接与策略组',
+              items: [
+                ListItem(
+                  title: const Text('刷新原生连接快照'),
+                  subtitle: const Text('使用已配置的本机 Clash API，不额外开启监听'),
+                  onTap: _busy || nativeCoreHandoff.busy
+                      ? null
+                      : () => _perform(_readNativeSnapshot),
+                ),
+                if (_nativeConnections case final connections?) ...[
+                  ListItem(title: Text('当前连接：${connections.length}')),
+                  for (final group in _nativeGroups.values)
+                    if (group.selectable &&
+                        group.selected.isNotEmpty &&
+                        group.members.contains(group.selected)) ...[
+                      ListItem<String>.options(
+                        title: Text(group.tag),
+                        subtitle: Text(
+                          'sing-box Selector · '
+                          '${group.selectedDelayMs == null ? '未测速' : '上次延迟 ${group.selectedDelayMs} ms'}',
+                        ),
+                        options: group.members,
+                        value: group.selected,
+                        textBuilder: (tag) => tag,
+                        onChanged: (tag) => _perform(
+                          () => _selectNativeOutbound(group.tag, tag),
+                        ),
+                      ),
+                      ListItem(
+                        title: const Text('测试当前节点延迟'),
+                        subtitle: Text('测试地址：$_nativeTestUrl'),
+                        onTap: _busy
+                            ? null
+                            : () => _perform(() => _testNativeGroup(group.tag)),
+                      ),
+                    ] else
+                      ListItem(
+                        title: Text(group.tag),
+                        subtitle: Text('${group.type} · ${group.selected}'),
+                      ),
+                  TopologyGraphView(
+                    key: ValueKey(_nativeSnapshotRevision),
+                    routes: connectionRoutes(connections),
+                    viewportHeight: 260,
+                    fitToViewport: true,
+                  ),
+                ],
+              ],
+              footer: '按需读取当前 sing-box 实际数据；不显示 Mihomo 缓存或自动切换节点。',
+            ),
           if (_result.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),

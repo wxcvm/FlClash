@@ -52,7 +52,8 @@ class Logs extends _$Logs with AutoDisposeNotifierMixin {
     if (!ref.mounted) {
       return;
     }
-    this.value = state.append(value);
+    final safe = value.copyWith(payload: redactSensitiveLogText(value.payload));
+    this.value = state.append(safe);
   }
 
   Future<bool> exportLogs() async {
