@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:fl_clash/core/connection_topology.dart';
 import 'package:fl_clash/core/desktop/native_clash_controller.dart';
+import 'package:fl_clash/core/desktop/native_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Map<String, dynamic> controllerConfig(String address, String secret) => {
@@ -55,6 +56,25 @@ void main() {
       isNull,
     );
   });
+
+  test(
+    'fromSpec has no controller without authenticated loopback config',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'native-controller-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/config.json');
+      await file.writeAsString(jsonEncode({'outbounds': []}));
+      final spec = NativeCoreSpec(
+        kind: NativeCoreKind.singBox,
+        executable: 'unused',
+        configPath: file.path,
+      );
+
+      expect(await NativeClashController.fromSpec(spec), isNull);
+    },
+  );
 
   test('native graph preserves reported exit-first chain and traffic', () {
     final rows = nativeClashConnections({
