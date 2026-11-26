@@ -19,6 +19,15 @@ String redactSensitiveLogText(String value) {
     ),
     (match) => '${match[1]}[REDACTED]',
   );
+  // Structured logs quote both the field name and its value. Match escaped
+  // quotes as part of a value so that no credential suffix is left behind.
+  text = text.replaceAllMapped(
+    RegExp(
+      r'''(["'](?:password|passwd|token|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|secret|private[_-]?key|pre[_-]?shared[_-]?key|username|psk|auth(?:[_-]?str)?|authorization|uuid)["']\s*:\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')''',
+      caseSensitive: false,
+    ),
+    (match) => '${match[1]}"[REDACTED]"',
+  );
   text = text.replaceAllMapped(
     RegExp(
       r'(\bauthorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;]+',

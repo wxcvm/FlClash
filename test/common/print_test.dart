@@ -56,4 +56,14 @@ void main() {
     expect(safe, isNot(contains('my pass')));
     expect(safe, isNot(contains('abcdefghijklmnop')));
   });
+
+  test('redacts quoted structured fields including escaped quotes', () {
+    const raw = r'{"password":"abc\"suffix","token":"short","region":"us"}';
+    final safe = redactSensitiveLogText(raw);
+    expect(
+      safe,
+      '{"password":"[REDACTED]","token":"[REDACTED]","region":"us"}',
+    );
+    expect(redactSensitiveLogText(safe), safe);
+  });
 }
