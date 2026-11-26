@@ -83,82 +83,87 @@ void main() {
   test(
     'local API sends bearer credentials and reads actual selections',
     () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(() => server.close(force: true));
-      final paths = <String>[];
-      final methods = <String>[];
-      final bodies = <String>[];
-      final delayUrls = <String>[];
-      server.listen((request) async {
-        paths.add(request.uri.path);
-        methods.add(request.method);
-        if (request.headers.value(HttpHeaders.authorizationHeader) !=
-            'Bearer test-secret') {
-          request.response.statusCode = HttpStatus.unauthorized;
-        } else if (request.uri.path == '/connections') {
-          request.response.write(
-            jsonEncode({
-              'connections': [connection()],
-            }),
-          );
-        } else if (request.uri.path == '/proxies' && request.method == 'GET') {
-          request.response.write(
-            jsonEncode({
-              'proxies': {
-                'GLOBAL': {
-                  'all': ['selector'],
-                  'now': 'selector',
+      await HttpOverrides.runWithHttpOverrides(() async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close(force: true));
+        final paths = <String>[];
+        final methods = <String>[];
+        final bodies = <String>[];
+        final delayUrls = <String>[];
+        server.listen((request) async {
+          paths.add(request.uri.path);
+          methods.add(request.method);
+          if (request.headers.value(HttpHeaders.authorizationHeader) !=
+              'Bearer test-secret') {
+            request.response.statusCode = HttpStatus.unauthorized;
+          } else if (request.uri.path == '/connections') {
+            request.response.write(
+              jsonEncode({
+                'connections': [connection()],
+              }),
+            );
+          } else if (request.uri.path == '/proxies' && request.method == 'GET') {
+            request.response.write(
+              jsonEncode({
+                'proxies': {
+                  'GLOBAL': {
+                    'all': ['selector'],
+                    'now': 'selector',
+                  },
+                  'selector': {
+                    'type': 'Selector',
+                    'all': ['exit', 'backup'],
+                    'now': 'exit',
+                  },
+                  'exit': {
+                    'type': 'VLESS',
+                    'history': [
+                      {'delay': 88},
+                    ],
+                  },
                 },
-                'selector': {
-                  'type': 'Selector',
-                  'all': ['exit', 'backup'],
-                  'now': 'exit',
-                },
-                'exit': {
-                  'type': 'VLESS',
-                  'history': [
-                    {'delay': 88},
-                  ],
-                },
-              },
-            }),
-          );
-        } else if (request.uri.path == '/proxies/exit/delay' &&
-            request.method == 'GET') {
-          delayUrls.add(request.uri.queryParameters['url'] ?? '');
-          request.response.write(jsonEncode({'delay': 42}));
-        } else if (request.uri.path == '/proxies/selector' &&
-            request.method == 'PUT') {
-          bodies.add(await utf8.decoder.bind(request).join());
-          request.response.statusCode = HttpStatus.noContent;
-        } else {
-          request.response.statusCode = HttpStatus.notFound;
-        }
-        await request.response.close();
-      });
-      final api = NativeClashController.fromConfig(
-        controllerConfig('127.0.0.1:${server.port}', 'test-secret'),
-      )!;
-      expect((await api.connections()).single.id, 'c1');
-      final group = (await api.groups()).single;
-      expect(group.members, ['exit', 'backup']);
-      expect(group.selectedDelayMs, 88);
-      await api.select('selector', 'backup');
-      expect(await api.testDelay('exit'), 42);
-      expect(delayUrls, ['https://probe.example/generate_204']);
-      expect(paths, [
-        '/connections',
-        '/proxies',
-        '/proxies',
-        '/proxies/selector',
-        '/proxies/exit/delay',
-      ]);
-      expect(methods, ['GET', 'GET', 'GET', 'PUT', 'GET']);
-      expect(bodies, ['{"name":"backup"}']);
-      await expectLater(
-        api.select('selector', 'missing'),
-        throwsA(isA<StateError>()),
-      );
+              }),
+            );
+          } else if (request.uri.path == '/proxies/exit/delay' &&
+              request.method == 'GET') {
+            delayUrls.add(request.uri.queryParameters['url'] ?? '');
+            request.response.write(jsonEncode({'delay': 42}));
+          } else if (request.uri.path == '/proxies/selector' &&
+              request.method == 'PUT') {
+            bodies.add(await utf8.decoder.bind(request).join());
+            request.response.statusCode = HttpStatus.noContent;
+          } else {
+            request.response.statusCode = HttpStatus.notFound;
+          }
+          await request.response.close();
+        });
+        final api = NativeClashController.fromConfig(
+          controllerConfig('127.0.0.1:${server.port}', 'test-secret'),
+        )!;
+        expect((await api.connections()).single.id, 'c1');
+        final group = (await api.groups()).single;
+        expect(group.members, ['exit', 'backup']);
+        expect(group.selectedDelayMs, 88);
+        await api.select('selector', 'backup');
+        expect(await api.testDelay('exit'), 42);
+        expect(delayUrls, ['https://probe.example/generate_204']);
+        expect(paths, [
+          '/connections',
+          '/proxies',
+          '/proxies',
+          '/proxies/selector',
+          '/proxies/exit/delay',
+        ]);
+        expect(methods, ['GET', 'GET', 'GET', 'PUT', 'GET']);
+        expect(bodies, ['{"name":"backup"}']);
+        await expectLater(
+          api.select('selector', 'missing'),
+          throwsA(isA<StateError>()),
+        );
+      }, _LoopbackHttpOverrides());
     },
   );
 }
+
+// Keep the real socket test isolated from widget-test HTTP overrides.
+class _LoopbackHttpOverrides extends HttpOverrides {}
