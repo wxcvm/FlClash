@@ -86,10 +86,8 @@ func handleTestDelay(params *TestDelayParams) *Delay {
 		return result
 	}
 
-	timeout, configured := configuredTestTimeout(proxy.Name(), url)
-	if !configured {
-		timeout = timeoutFromMillis(params.Timeout, defaultDelayTestTimeout)
-	}
+	configuredTimeout, _ := configuredTestTimeout(proxy.Name(), url)
+	timeout := effectiveDelayTestTimeout(params.Timeout, configuredTimeout)
 	if !delayTestSlots.acquireWithin(context.Background(), timeout) {
 		return nil
 	}
@@ -117,6 +115,15 @@ func reportDelayTestFailure(name string, err error) {
 	if failedDelayTestAt.CompareAndSwap(last, now) {
 		logError("delay test: %q failed: %v", name, err)
 	}
+}
+
+// A manual probe must get at least the requested time budget, while still
+// respecting longer provider health-check budgets for the same node and URL.
+func effectiveDelayTestTimeout(requestedMillis int64, configured time.Duration) time.Duration {
+	if requestedMillis <= 0 && configured > 0 {
+		return configured
+	}
+	return max(timeoutFromMillis(requestedMillis, defaultDelayTestTimeout), configured)
 }
 
 type testTimeoutProvider interface {

@@ -159,16 +159,17 @@ class _CoreContainerState extends ConsumerState<CoreManager>
 
   @override
   void onLog(Log log) {
-    ref.read(logsProvider.notifier).add(log);
-    if (log.logLevel == LogLevel.error) {
+    final safeLog = log.copyWith(payload: redactSensitiveLogText(log.payload));
+    ref.read(logsProvider.notifier).add(safeLog);
+    if (safeLog.logLevel == LogLevel.error) {
       throttler.call(
         FunctionTag.coreErrorNotifier,
-        () => dialogs.showBanner(log.payload, level: BannerLevel.error),
+        () => dialogs.showBanner(safeLog.payload, level: BannerLevel.error),
         duration: const Duration(seconds: 3),
         fire: true,
       );
     }
-    super.onLog(log);
+    super.onLog(safeLog);
   }
 
   @override

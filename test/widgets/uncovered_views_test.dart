@@ -277,10 +277,10 @@ void main() {
     tester,
   ) async {
     final container = _containerFor(tester);
-    final originalAdapter = request.dio.httpClientAdapter;
-    addTearDown(() => request.dio.httpClientAdapter = originalAdapter);
+    final originalAdapter = request.releaseDio.httpClientAdapter;
+    addTearDown(() => request.releaseDio.httpClientAdapter = originalAdapter);
     final adapter = _PendingAdapter();
-    request.dio.httpClientAdapter = adapter;
+    request.releaseDio.httpClientAdapter = adapter;
 
     await tester.pumpWidget(
       UncontrolledProviderScope(

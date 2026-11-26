@@ -11,7 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'card.dart';
 
-/// A passive status view; core changes remain in Advanced.
+/// Opens the same guarded core-management view as Advanced.
 class AndroidCoreStatusCard extends ConsumerStatefulWidget {
   const AndroidCoreStatusCard({super.key});
 
@@ -68,7 +68,7 @@ class _AndroidCoreStatusCardState extends ConsumerState<AndroidCoreStatusCard>
           onTap: () => unawaited(
             showSheet<void>(
               context: context,
-              builder: (_) => const AndroidCoreView(),
+              builder: (_) => const AndroidCoreView(readOnly: false),
             ),
           ),
           child: Column(
@@ -77,7 +77,7 @@ class _AndroidCoreStatusCardState extends ConsumerState<AndroidCoreStatusCard>
             children: [
               const DashboardCardHeader(
                 glyph: AppGlyphs.cpu,
-                title: '内核状态',
+                title: '内核管理',
                 chevron: true,
               ),
               Row(
