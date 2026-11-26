@@ -237,8 +237,13 @@ class CommonAction extends _$CommonAction {
         onTap: () => unawaited(installUpdate()),
       );
     } catch (error) {
-      download.value = null;
-      await clearUpdateDownloads();
+      // Keep the download slot occupied until cleanup finishes. Otherwise a
+      // retry can create a new file while the previous attempt deletes it.
+      try {
+        await clearUpdateDownloads();
+      } finally {
+        download.value = null;
+      }
       if (error is DioException && CancelToken.isCancel(error)) {
         return;
       }

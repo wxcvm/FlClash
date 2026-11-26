@@ -231,6 +231,14 @@ void main() {
         container.read(updateDownloadStateProvider),
         isA<UpdateDownloading>(),
       );
+      bool? directoryPresentWhenIdle;
+      container.listen(updateDownloadStateProvider, (previous, next) {
+        if (previous is UpdateDownloading && next == null) {
+          directoryPresentWhenIdle = Directory(
+            '${home.path}/update',
+          ).existsSync();
+        }
+      });
       await settleUntil(tester, () => shows('Update failed'));
       await tester.pumpAndSettle();
 
@@ -240,6 +248,7 @@ void main() {
       );
       expect(container.read(updateDownloadStateProvider), isNull);
       expect(File('${home.path}/update/$asset').existsSync(), isFalse);
+      expect(directoryPresentWhenIdle, isFalse);
 
       await tapCancel(tester);
     });
