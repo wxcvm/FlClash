@@ -266,6 +266,35 @@ func TestLoadConfigWithBaseRejectsAProfileThatIsNotAMapping(t *testing.T) {
 	}
 }
 
+func TestLoadConfigWithBaseKeepsPreviousSnapshotWhenCoreRejectsDNS(t *testing.T) {
+	path := writeBaseProfile(t, "")
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	previous := []byte("rules:\n  - MATCH,DIRECT\n")
+	if err := os.WriteFile(configPath, previous, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := loadConfigWithBase(&SetupBase{
+		Path:    path,
+		Overlay: `{"rules":["MATCH,DIRECT"],"dns":{"enable":true,"enhanced-mode":"fake-ip","fake-ip-range":"not-a-cidr","nameserver":["1.1.1.1"]}}`,
+	}, configPath)
+	if err == nil {
+		t.Fatal("core accepted an invalid fake-ip range")
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(previous) {
+		t.Fatalf("rejected config replaced previous snapshot: %s", got)
+	}
+	entries, err := filepath.Glob(filepath.Join(dir, ".config-*.yaml"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("staged config not removed: %v, %v", entries, err)
+	}
+}
+
 func TestLoadSetupConfigReadsConfigYamlWithoutABase(t *testing.T) {
 	home := t.TempDir()
 	previous := constant.Path.HomeDir()
