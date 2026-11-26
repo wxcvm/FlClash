@@ -143,13 +143,17 @@ class Request {
 
   /// Null when this build is current; throws when GitHub cannot be asked.
   Future<Map<String, dynamic>?> checkForUpdate() async {
-    final release = await latestRelease();
-    final remoteVersion = release['tag_name'] as String;
-    final version = globalState.packageInfo.version;
-    final hasUpdate = previewTag.isNotEmpty
-        ? isNewerPreviewTag(remoteVersion, previewTag)
-        : compareVersions(remoteVersion.replaceAll('v', ''), version) > 0;
-    return hasUpdate ? release : null;
+    try {
+      final release = await latestRelease();
+      final remoteVersion = release['tag_name'] as String;
+      final version = globalState.packageInfo.version;
+      final hasUpdate = previewTag.isNotEmpty
+          ? isNewerPreviewTag(remoteVersion, previewTag)
+          : compareVersions(remoteVersion.replaceAll('v', ''), version) > 0;
+      return hasUpdate ? release : null;
+    } catch (error) {
+      throw ReleaseUpdateStageException(ReleaseUpdateStage.metadata, error);
+    }
   }
 
   /// The release page redirect still answers once the hourly API quota is spent.
@@ -158,18 +162,20 @@ class Request {
       return latestPreviewRelease(selfUpdateSuffix);
     }
     try {
-      final response = await dio.get<Map<String, dynamic>>(
+      final response = await releaseDio.get<Map<String, dynamic>>(
         'https://api.github.com/repos/$repository/releases/latest',
         options: Options(responseType: ResponseType.json),
       );
       return response.data!;
     } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      if (status != 403 && status != 429) rethrow;
       commonPrint.log(
         'latest release API failed: ${compactError(error)}',
         logLevel: LogLevel.warning,
       );
     }
-    final response = await dio.get<void>(
+    final response = await releaseDio.get<void>(
       'https://github.com/$repository/releases/latest',
       options: Options(
         followRedirects: false,
@@ -269,32 +275,47 @@ class Request {
     ProgressCallback? onReceiveProgress,
     CancelToken? cancelToken,
   }) async {
-    final sums = await releaseDio.getUri<String>(
-      releaseAssetUri(tag, releaseChecksumsName),
-      options: Options(responseType: ResponseType.plain),
-      cancelToken: cancelToken,
-    );
+    final Response<String> sums;
+    try {
+      sums = await releaseDio.getUri<String>(
+        releaseAssetUri(tag, releaseChecksumsName),
+        options: Options(responseType: ResponseType.plain),
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) rethrow;
+      throw ReleaseUpdateStageException(ReleaseUpdateStage.checksum, error);
+    } catch (error) {
+      throw ReleaseUpdateStageException(ReleaseUpdateStage.checksum, error);
+    }
     final expected = releaseChecksum(sums.data ?? '', name);
     if (expected == null) {
       throw ReleaseNotVerifiedException(name);
     }
     final path = join(directory, name);
     final uri = releaseAssetUri(tag, name);
-    if (app case final android?) {
-      await android.downloadFile(
-        uri,
-        path,
-        title: name,
-        onReceiveProgress: onReceiveProgress ?? (_, _) {},
-        cancelToken: cancelToken ?? CancelToken(),
-      );
-    } else {
-      await releaseDio.downloadUri(
-        uri,
-        path,
-        onReceiveProgress: onReceiveProgress,
-        cancelToken: cancelToken,
-      );
+    try {
+      if (app case final android?) {
+        await android.downloadFile(
+          uri,
+          path,
+          title: name,
+          onReceiveProgress: onReceiveProgress ?? (_, _) {},
+          cancelToken: cancelToken ?? CancelToken(),
+        );
+      } else {
+        await releaseDio.downloadUri(
+          uri,
+          path,
+          onReceiveProgress: onReceiveProgress,
+          cancelToken: cancelToken,
+        );
+      }
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) rethrow;
+      throw ReleaseUpdateStageException(ReleaseUpdateStage.package, error);
+    } catch (error) {
+      throw ReleaseUpdateStageException(ReleaseUpdateStage.package, error);
     }
     if (await fileSha256(path) != expected) {
       throw ReleaseNotVerifiedException(name);

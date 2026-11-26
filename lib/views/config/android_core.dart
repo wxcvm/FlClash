@@ -23,21 +23,38 @@ class AndroidCoreView extends ConsumerStatefulWidget {
   ConsumerState<AndroidCoreView> createState() => _AndroidCoreViewState();
 }
 
-class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
+class _AndroidCoreViewState extends ConsumerState<AndroidCoreView>
+    with WidgetsBindingObserver {
   final Service _service = Service();
   String _configPath = '';
   String _result = '';
   bool _busy = false;
   bool _advanced = false;
   bool _refreshFailed = false;
+  bool _refreshing = false;
+  String _progress = '';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_refresh());
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_busy) unawaited(_refresh());
+  }
+
   Future<void> _refresh() async {
+    if (_refreshing || !mounted) return;
+    setState(() => _refreshing = true);
     try {
       await _service.getNativeStatus();
       if (mounted) setState(() => _refreshFailed = false);
@@ -48,13 +65,16 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
           if (!widget.readOnly) _result = error.toString();
         });
       }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 
   Future<void> _perform(Future<String> Function() operation) async {
-    if (_busy) return;
+    if (_busy || _refreshing) return;
     setState(() {
       _busy = true;
+      _progress = '正在处理…';
       _result = '';
     });
     try {
@@ -75,11 +95,15 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
     return '已选择原生配置，启动前将进行完整预检';
   }
 
-  Future<String> _importClash({bool current = false}) async {
+  Future<String> _importClash({
+    bool current = false,
+    bool startAfterImport = false,
+  }) async {
     final String yaml;
     final Map<String, String> selected;
+    final originalProfile = current ? ref.read(currentProfileProvider) : null;
     if (current) {
-      final profile = ref.read(currentProfileProvider);
+      final profile = originalProfile;
       if (profile == null) return '请先选择订阅';
       yaml = await ref
           .read(setupActionProvider.notifier)
@@ -112,17 +136,29 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
           },
         ],
       );
+      if (mounted) setState(() => _progress = '正在验证配置…');
       await _service.validateNativeCore(candidate.path);
       if (!mounted) {
         await directory.delete(recursive: true);
         return '未选择配置';
       }
+      if (startAfterImport &&
+          ref.read(currentProfileProvider) != originalProfile) {
+        await directory.delete(recursive: true);
+        return '订阅已变化，请重新切换';
+      }
       setState(() => _configPath = candidate.path);
-      return 'Clash 配置已转换并通过预检；原配置未修改';
     } catch (_) {
       await directory.delete(recursive: true);
       rethrow;
     }
+    if (startAfterImport) {
+      return _start(
+        requireCurrentProfile: true,
+        originalProfile: originalProfile,
+      );
+    }
+    return 'Clash 配置已转换并通过预检；原配置未修改';
   }
 
   Future<String> _createAutoProfile() async {
@@ -158,7 +194,22 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
     return 'sing-box $version 配置验证通过；未改变当前 VPN';
   }
 
-  Future<String> _start() async {
+  Future<String> _start({
+    bool requireCurrentProfile = false,
+    Object? originalProfile,
+  }) async {
+    if (!mounted) return '已取消切换';
+    setState(() => _progress = '正在确认内核状态…');
+    final latest = await _service.getNativeStatus();
+    if (!mounted) return '已取消切换';
+    if (!AndroidCoreActions(latest, refreshFailed: false).canPrepareNative) {
+      return '内核状态已变化，请重新选择操作';
+    }
+    if (requireCurrentProfile &&
+        ref.read(currentProfileProvider) != originalProfile) {
+      return '订阅已变化，请重新切换';
+    }
+    setState(() => _progress = '正在切换内核…');
     final outcome = await _service.startNativeCore(_configPath);
     if (outcome.started) return 'sing-box VPN 已启动；请验证实际联网';
     return outcome.restoredMihomo
@@ -166,27 +217,50 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
         : '启动未成功：${outcome.error}';
   }
 
-  Future<String> _switchToMihomo() async =>
-      await _service.startMihomoCore() ? '已切回 Mihomo' : '切换未完成，请检查当前 VPN 状态与配置';
+  Future<String> _switchToMihomo() async {
+    final latest = await _service.getNativeStatus();
+    if (!mounted) return '已取消切换';
+    if (!AndroidCoreActions(latest, refreshFailed: false).nativeRunning) {
+      return '内核状态已变化，请重新选择操作';
+    }
+    return await _service.startMihomoCore()
+        ? '已切回 Mihomo'
+        : '切换未完成，请检查当前 VPN 状态与配置';
+  }
 
-  Future<String> _stop() async =>
-      await _service.stopNativeCore() ? 'VPN 已停止' : '停止未完成，请重试';
+  Future<String> _stop() async {
+    final latest = await _service.getNativeStatus();
+    if (!mounted) return '已取消停止';
+    if (!AndroidCoreActions(latest, refreshFailed: false).canStopNative) {
+      return '内核状态已变化，请重新选择操作';
+    }
+    return await _service.stopNativeCore() ? 'VPN 已停止' : '停止未完成，请重试';
+  }
 
   @override
   Widget build(BuildContext context) {
     return BaseScaffold(
-      title: widget.readOnly ? '内核状态' : '内核配置与切换',
+      title: widget.readOnly ? '内核状态' : '内核切换',
       body: ValueListenableBuilder<AndroidNativeStatus?>(
         valueListenable: _service.nativeStatus,
         builder: (context, status, _) {
           final available = status?.available == true;
-          final native = status?.engine == 'sing-box';
-          final owned = status?.nativeOwner == true;
-          final busy = _busy || status?.state == 'STARTING';
-          final canConfigure = available && !owned && !busy;
+          final actions = AndroidCoreActions(
+            status,
+            refreshFailed: _refreshFailed || _refreshing,
+          );
+          final native = actions.nativeRunning;
+          final owned = status?.ownsRuntime == true;
+          final busy =
+              _busy ||
+              _refreshing ||
+              status?.state == 'STARTING' ||
+              status?.state == 'STOPPING';
+          final canConfigure = actions.canPrepareNative && !busy;
+          final hasProfile = ref.watch(currentProfileProvider) != null;
           final insight = AndroidCoreInsight.fromStatus(
             status,
-            hasProfile: ref.watch(currentProfileProvider) != null,
+            hasProfile: hasProfile,
             refreshFailed: _refreshFailed,
           );
           return ListView(
@@ -202,28 +276,13 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
                     title: Text('${insight.engine} · ${insight.status}'),
                     subtitle: Text(insight.explanation),
                   ),
-                  ListItem(
-                    title: const Text('运行判断'),
-                    subtitle: Text(insight.suggestion),
-                  ),
-                  ListItem(
-                    title: const Text('Mihomo'),
-                    subtitle: Text(
-                      status?.mihomoSuspended == true
-                          ? '已暂停 Core 请求 · 使用 sing-box 运行管理'
-                          : '内置 · 默认内核',
+                  if (_refreshFailed)
+                    ListItem(
+                      title: const Text('重试读取状态'),
+                      onTap: _busy || _refreshing
+                          ? null
+                          : () => unawaited(_refresh()),
                     ),
-                  ),
-                  ListItem(
-                    title: const Text('sing-box'),
-                    subtitle: Text(
-                      available ? '原生内核可用 · ARM64' : '当前 APK 未包含可用原生内核',
-                    ),
-                  ),
-                  ListItem(
-                    title: const Text('刷新运行状态'),
-                    onTap: busy ? null : () => unawaited(_refresh()),
-                  ),
                 ],
               ),
               if (!widget.readOnly && native)
@@ -239,78 +298,96 @@ class _AndroidCoreViewState extends ConsumerState<AndroidCoreView> {
                 ),
               if (!widget.readOnly)
                 generateSection(
-                  title: 'sing-box 原生配置',
+                  title: '切换内核',
                   items: [
-                    ListItem(
-                      title: const Text('使用当前订阅'),
-                      subtitle: const Text('读取有效配置并尝试转换，保留当前选择'),
-                      onTap: canConfigure
-                          ? () => _perform(() => _importClash(current: true))
-                          : null,
-                    ),
-                    ListItem(
-                      title: const Text('导入 Clash 配置'),
-                      subtitle: const Text('兼容配置自动转换并预检'),
-                      onTap: canConfigure ? () => _perform(_importClash) : null,
-                    ),
-                    ListItem(
-                      title: const Text('导入 sing-box 配置'),
-                      subtitle: Text(
-                        _configPath.isEmpty ? '尚未选择' : _configPath,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                    if (actions.settled && !native && !owned)
+                      ListItem(
+                        title: const Text('使用当前订阅切换到 sing-box'),
+                        subtitle: Text(
+                          !available
+                              ? '当前安装包不支持'
+                              : !hasProfile
+                              ? '请先选择订阅'
+                              : '自动转换、预检；启动失败时尝试恢复 Mihomo',
+                        ),
+                        onTap: canConfigure && hasProfile
+                            ? () => _perform(
+                                () => _importClash(
+                                  current: true,
+                                  startAfterImport: true,
+                                ),
+                              )
+                            : null,
                       ),
-                      onTap: canConfigure ? () => _perform(_choose) : null,
-                    ),
+                    if (native)
+                      ListItem(
+                        title: const Text('切回 Mihomo'),
+                        subtitle: const Text('恢复原订阅配置'),
+                        onTap: busy || _refreshFailed
+                            ? null
+                            : () => _perform(_switchToMihomo),
+                      ),
+                    if (native || owned)
+                      ListItem(
+                        title: const Text('停止 sing-box'),
+                        onTap: !busy && actions.canStopNative
+                            ? () => _perform(_stop)
+                            : null,
+                      ),
                     ListItem(
-                      title: Text(_advanced ? '收起高级设置' : '展开高级设置'),
+                      title: Text(_advanced ? '收起高级配置' : '高级配置'),
                       onTap: busy
                           ? null
                           : () => setState(() => _advanced = !_advanced),
                     ),
-                    if (_advanced)
+                    if (_advanced) ...[
+                      ListItem(
+                        title: const Text('使用当前订阅生成配置'),
+                        onTap: canConfigure && hasProfile
+                            ? () => _perform(() => _importClash(current: true))
+                            : null,
+                      ),
+                      ListItem(
+                        title: const Text('导入 Clash 配置'),
+                        onTap: canConfigure
+                            ? () => _perform(_importClash)
+                            : null,
+                      ),
+                      ListItem(
+                        title: const Text('导入 sing-box 配置'),
+                        subtitle: Text(
+                          _configPath.isEmpty ? '尚未选择' : _configPath,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: canConfigure ? () => _perform(_choose) : null,
+                      ),
                       ListItem(
                         title: const Text('检查配置'),
                         onTap: canConfigure && _configPath.isNotEmpty
                             ? () => _perform(_validate)
                             : null,
                       ),
-                    if (_advanced)
                       ListItem(
                         title: const Text('生成自动恢复配置副本'),
-                        subtitle: const Text('最多 5 个原有代理组成原生自动组；不改原文件或默认路由'),
+                        subtitle: const Text('最多 5 个原有代理；不改原配置'),
                         onTap: canConfigure && _configPath.isNotEmpty
                             ? () => _perform(_createAutoProfile)
                             : null,
                       ),
-                    ListItem(
-                      title: const Text('启动 / 切换到 sing-box'),
-                      onTap: canConfigure && _configPath.isNotEmpty
-                          ? () => _perform(_start)
-                          : null,
-                    ),
-                    if (native)
                       ListItem(
-                        title: const Text('切回 Mihomo'),
-                        subtitle: const Text('停止 sing-box 后恢复原订阅配置'),
-                        onTap: busy ? null : () => _perform(_switchToMihomo),
+                        title: const Text('启动所选 sing-box 配置'),
+                        onTap: canConfigure && _configPath.isNotEmpty
+                            ? () => _perform(_start)
+                            : null,
                       ),
-                    ListItem(
-                      title: const Text('停止 sing-box'),
-                      onTap: !busy && (native || owned)
-                          ? () => _perform(_stop)
-                          : null,
-                    ),
+                    ],
                   ],
-                  footer:
-                      '支持兼容的 Clash 配置或带 TUN 的 sing-box 原生 JSON。'
-                      '启动失败时尝试恢复先前的 Mihomo VPN。'
-                      '节点、流量与日志可在运行管理查看；选择原生自动组后由内核重新选路。',
                 ),
               if (!widget.readOnly && _busy)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('正在处理，请勿重复切换…'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(_progress),
                 ),
               if (_result.isNotEmpty && !widget.readOnly)
                 Padding(

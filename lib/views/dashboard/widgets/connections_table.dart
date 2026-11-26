@@ -9,6 +9,7 @@ import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/app.dart';
 import 'package:fl_clash/providers/core.dart';
 import 'package:fl_clash/views/connection/requests.dart';
+import 'package:fl_clash/views/connection/topology.dart';
 import 'package:fl_clash/views/dashboard/layout.dart';
 import 'package:fl_clash/views/dashboard/style.dart';
 import 'package:fl_clash/views/dns_queries.dart';
@@ -58,7 +59,14 @@ enum DashboardFeed {
   };
 }
 
-void openDashboardFeed(BuildContext context, DashboardFeed feed) {
+void openDashboardTopology(BuildContext context) =>
+    openDashboardFeed(context, DashboardFeed.connections, topology: true);
+
+void openDashboardFeed(
+  BuildContext context,
+  DashboardFeed feed, {
+  bool topology = false,
+}) {
   showSnapSheet(
     context,
     initialScrollOffset: feed == DashboardFeed.connections
@@ -69,6 +77,7 @@ void openDashboardFeed(BuildContext context, DashboardFeed feed) {
         DashboardFeed.connections => RequestsView(
           scrollController: controller,
           initialFeed: RequestFeed.live,
+          initialTopology: topology,
         ),
         DashboardFeed.requests => RequestsView(
           scrollController: controller,
@@ -363,6 +372,16 @@ class _ConnectionsTableCardState extends ConsumerState<ConnectionsTableCard>
                   mainAxisSize: MainAxisSize.min,
                   spacing: 8,
                   children: [
+                    PressSurface(
+                      fill: DashboardColors.of(context).tone,
+                      shape: AppShape.sm,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      onPressed: () => openDashboardTopology(context),
+                      child: Text(topologyTitle(context)),
+                    ),
                     if (_feed == DashboardFeed.connections &&
                         connections.isNotEmpty &&
                         constraints.maxWidth >= _midTableWidth) ...[

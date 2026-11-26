@@ -10,8 +10,9 @@ param(
 $ErrorActionPreference = 'Stop'
 # No private URL in the diagnostic report or subprocess arguments.
 $testUri = [uri]$TestUrl
-if (-not $testUri.IsAbsoluteUri -or $testUri.Scheme -ne 'https' -or $testUri.IsLoopback) {
-    throw 'Choose a public HTTPS test URL, not loopback.'
+if (-not $testUri.IsAbsoluteUri -or $testUri.Scheme -ne 'https' -or $testUri.IsLoopback -or
+    $testUri.UserInfo -or $testUri.Query -or $testUri.Fragment) {
+    throw 'Choose a public HTTPS test URL without loopback, credentials, query or fragment.'
 }
 if ($ResolverHost -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$' -or
     $ResolverHost.Contains('..')) {

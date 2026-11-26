@@ -279,6 +279,38 @@ void main() {
     });
   });
 
+  test(
+    'unrelated DNS overrides preserve subscription resolver policies',
+    () async {
+      final dns = await _dnsOf(
+        rawConfig: {
+          'dns': {
+            'enable': true,
+            'nameserver': ['9.9.9.9'],
+            'proxy-server-nameserver': ['https://node.example/dns-query'],
+            'proxy-server-nameserver-policy': {
+              '+.node.example': ['tls://bootstrap.example:853'],
+            },
+            'nameserver-policy': {
+              '+.service.example': ['https://policy.example/dns-query'],
+            },
+          },
+        },
+        keys: {DnsOverrideKey.ipv6, DnsOverrideKey.nameserver},
+      );
+      expect(dns['nameserver'], ['1.1.1.1']);
+      expect(dns['proxy-server-nameserver'], [
+        'https://node.example/dns-query',
+      ]);
+      expect(dns['proxy-server-nameserver-policy'], {
+        '+.node.example': ['tls://bootstrap.example:853'],
+      });
+      expect(dns['nameserver-policy'], {
+        '+.service.example': ['https://policy.example/dns-query'],
+      });
+    },
+  );
+
   test('leaves an enabled profile alone without picked keys', () async {
     final dns = await _dnsOf(rawConfig: {'dns': _profileDns}, keys: {});
 

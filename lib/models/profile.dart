@@ -136,6 +136,39 @@ extension ProfilesExt on List<Profile> {
   }
 }
 
+/// Invalidates stale asynchronous writes when another edit or deletion starts.
+/// Profile IDs are snowflakes, so deleted IDs remain tombstoned for this process.
+abstract final class ProfileWriteGuard {
+  static final Map<int, int> _generations = {};
+  static final Set<int> _deleted = {};
+
+  static int begin(int profileId) {
+    if (_deleted.contains(profileId)) {
+      throw StateError('Profile has been deleted');
+    }
+    final generation = (_generations[profileId] ?? 0) + 1;
+    _generations[profileId] = generation;
+    return generation;
+  }
+
+  static bool canCommit(int profileId, int generation) =>
+      !_deleted.contains(profileId) && _generations[profileId] == generation;
+
+  static int markDeleted(int profileId) {
+    _deleted.add(profileId);
+    final generation = (_generations[profileId] ?? 0) + 1;
+    _generations[profileId] = generation;
+    return generation;
+  }
+
+  static void restoreAfterFailedDelete(int profileId, int generation) {
+    if (_generations[profileId] != generation) return;
+    if (_deleted.remove(profileId)) {
+      _generations[profileId] = generation + 1;
+    }
+  }
+}
+
 extension ProfileExtension on Profile {
   bool get realAutoUpdate => type == ProfileType.url && autoUpdate;
 
@@ -183,7 +216,11 @@ extension ProfileExtension on Profile {
     return _getFile();
   }
 
-  Future<Profile> update({required ValidateConfig validate}) async {
+  Future<Profile> update({
+    required ValidateConfig validate,
+    bool Function()? canCommit,
+  }) async {
+    final writeGeneration = ProfileWriteGuard.begin(id);
     final download = File(await appPath.tempFilePath);
     final inflated = File('${download.path}.inflated');
     try {
@@ -197,7 +234,12 @@ extension ProfileExtension on Profile {
           defaultLabel,
         ]),
         subscriptionInfo: SubscriptionInfo.formHString(userinfo),
-      )._saveValidatedFile(config, validate);
+      )._saveValidatedFile(
+        config,
+        validate,
+        canCommit: canCommit,
+        writeGeneration: writeGeneration,
+      );
     } finally {
       await inflated.safeDelete();
       await download.safeDelete();
@@ -208,7 +250,9 @@ extension ProfileExtension on Profile {
     Uint8List bytes, {
     required ValidateConfig validate,
     bool decompress = false,
+    bool Function()? canCommit,
   }) async {
+    final writeGeneration = ProfileWriteGuard.begin(id);
     final path = await appPath.tempFilePath;
     final tempFile = File(path);
     try {
@@ -217,7 +261,12 @@ extension ProfileExtension on Profile {
       } else {
         await tempFile.safeWriteAsBytes(bytes);
       }
-      return await _saveValidatedFile(tempFile, validate);
+      return await _saveValidatedFile(
+        tempFile,
+        validate,
+        canCommit: canCommit,
+        writeGeneration: writeGeneration,
+      );
     } finally {
       await tempFile.safeDelete();
     }
@@ -225,13 +274,32 @@ extension ProfileExtension on Profile {
 
   Future<Profile> _saveValidatedFile(
     File tempFile,
-    ValidateConfig validate,
-  ) async {
+    ValidateConfig validate, {
+    bool Function()? canCommit,
+    required int writeGeneration,
+  }) async {
     if (await validate(tempFile.path, ageSecretKey) case final issue?) {
       throw MessageException(issue);
     }
-    final mFile = await file;
-    await tempFile.copy(mFile.path);
-    return copyWith(lastUpdateDate: DateTime.now());
+    // Do not create the destination before the guard: a deleted profile
+    // must not be recreated by a stale download.
+    final mFile = await _getFile(false);
+    await mFile.parent.create(recursive: true);
+    final staging = await mFile.parent.createTemp('.profile-');
+    try {
+      final staged = await tempFile.copy(
+        '${staging.path}${Platform.pathSeparator}profile.yaml',
+      );
+      if (!ProfileWriteGuard.canCommit(id, writeGeneration) ||
+          (canCommit != null && !canCommit())) {
+        throw StateError('Profile changed during file validation');
+      }
+      // The copy may yield; the final guard and same-volume rename must not.
+      // Never truncate or delete the previous file to make a retry succeed.
+      staged.renameSync(mFile.path);
+      return copyWith(lastUpdateDate: DateTime.now());
+    } finally {
+      await staging.safeDelete(recursive: true);
+    }
   }
 }

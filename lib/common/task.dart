@@ -228,10 +228,10 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
     tun['dns-hijack'] = <String>[];
   }
   if (data.bypassPrivateRoute) {
-    tun['route-exclude-address'] = [
+    tun['route-exclude-address'] = <Object?>{
       if (tun['route-exclude-address'] case final List routes) ...routes,
       ...privateRouteAddress,
-    ];
+    }.toList();
   }
   rawConfig['tun'] = tun;
   rawConfig['geo-auto-update'] = realPatchConfig.geoAutoUpdate;

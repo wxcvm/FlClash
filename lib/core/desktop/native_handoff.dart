@@ -15,8 +15,10 @@ final class NativeCoreHandoff {
   final MihomoRunSetter setMihomoRunning;
   final Future<void> Function() releaseMihomoProxy;
   final bool Function() useNativeSystemProxy;
+  final bool Function() useMihomoTun;
   final Future<NativeHttpEndpoint?> Function(NativeCoreSpec) detectHttpEndpoint;
   final Future<NativeTunConfiguration?> Function(NativeCoreSpec) detectTun;
+  final Future<bool?> Function(NativeTunConfiguration) verifyTun;
   final Future<bool> Function(NativeHttpEndpoint) isHttpPortAvailable;
   final Future<bool> Function(NativeHttpEndpoint) waitForHttpEndpoint;
   final Future<bool> Function(int) activateNativeProxy;
@@ -43,8 +45,10 @@ final class NativeCoreHandoff {
     required this.setMihomoRunning,
     required this.releaseMihomoProxy,
     this.useNativeSystemProxy = _noNativeProxy,
+    this.useMihomoTun = _noNativeProxy,
     this.detectHttpEndpoint = detectNativeHttpEndpoint,
     this.detectTun = detectNativeTunConfiguration,
+    this.verifyTun = _unverifiedTun,
     this.isHttpPortAvailable = isNativeHttpPortAvailable,
     this.waitForHttpEndpoint = waitForNativeHttpEndpoint,
     this.activateNativeProxy = _noNativeProxyActivation,
@@ -91,6 +95,12 @@ final class NativeCoreHandoff {
       }
       final wantsSystemProxy = useNativeSystemProxy();
       final tun = await detectTun(spec);
+      if (isMihomoRunning() && useMihomoTun() && tun == null) {
+        throw StateError(
+          'The current Mihomo connection uses TUN. Select a sing-box '
+          'auto_route TUN configuration before switching cores.',
+        );
+      }
       // A native auto-route TUN owns system routing itself. Do not also claim
       // the OS HTTP proxy even if the original Mihomo setting was enabled.
       final endpoint = wantsSystemProxy && tun == null
@@ -122,8 +132,17 @@ final class NativeCoreHandoff {
           // A core that exits immediately cannot be trusted to have set up
           // its TUN. The core itself still owns route creation and cleanup.
           await Future<void>.delayed(const Duration(milliseconds: 250));
+          final routeEvidence = await verifyTun(tun);
           if (!runtime.isRunning) {
             throw StateError('sing-box exited while starting native TUN');
+          }
+          if (routeEvidence == false) {
+            throw StateError('Native TUN interface route was not detected');
+          }
+          if (routeEvidence == true) {
+            _emit(
+              'Native TUN interface route detected; connectivity unverified',
+            );
           }
           _nativeTunConfigured = true;
           _emit(
@@ -278,3 +297,5 @@ bool _noNativeProxy() => false;
 Future<bool> _noNativeProxyActivation(int _) async => false;
 
 Future<void> _releaseNothing() async {}
+
+Future<bool?> _unverifiedTun(NativeTunConfiguration _) async => null;

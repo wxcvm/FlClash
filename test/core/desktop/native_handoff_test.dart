@@ -327,6 +327,7 @@ void main() {
         },
         releaseMihomoProxy: () async => calls.add('release proxy'),
         useNativeSystemProxy: () => true,
+        useMihomoTun: () => true,
         detectTun: (_) async => const NativeTunConfiguration(
           interfaceName: 'sing-tun',
           dnsMode: 'hijack',
@@ -350,6 +351,55 @@ void main() {
       await tunHandoff.close();
     },
   );
+
+  test('active Mihomo TUN rejects a proxy-only native configuration', () async {
+    final tunHandoff = NativeCoreHandoff(
+      runtime: runtime,
+      isMihomoRunning: () => mihomoRunning,
+      setMihomoRunning: (running) async {
+        calls.add('mihomo:$running');
+        mihomoRunning = running;
+        return true;
+      },
+      releaseMihomoProxy: () async => calls.add('release proxy'),
+      useMihomoTun: () => true,
+      detectTun: (_) async => null,
+    );
+    try {
+      await expectLater(tunHandoff.activate(spec), throwsStateError);
+      expect(calls, isEmpty);
+      expect(mihomoRunning, isTrue);
+      expect(runtime.isRunning, isFalse);
+      expect(runtime.blocksMihomoStart, isFalse);
+    } finally {
+      await tunHandoff.close();
+    }
+  });
+
+  test('missing native TUN route evidence rolls back to Mihomo', () async {
+    final tunHandoff = NativeCoreHandoff(
+      runtime: runtime,
+      isMihomoRunning: () => mihomoRunning,
+      setMihomoRunning: (running) async {
+        calls.add('mihomo:$running');
+        mihomoRunning = running;
+        return true;
+      },
+      releaseMihomoProxy: () async => calls.add('release proxy'),
+      useMihomoTun: () => true,
+      detectTun: (_) async => const NativeTunConfiguration(),
+      verifyTun: (_) async => false,
+    );
+    try {
+      await expectLater(tunHandoff.activate(spec), throwsStateError);
+      expect(runtime.isRunning, isFalse);
+      expect(tunHandoff.nativeTunConfigured, isFalse);
+      expect(mihomoRunning, isTrue);
+      expect(calls, ['mihomo:false', 'release proxy', 'mihomo:true']);
+    } finally {
+      await tunHandoff.close();
+    }
+  });
 
   test('native TUN crash restores previously running Mihomo', () async {
     final tunHandoff = NativeCoreHandoff(
