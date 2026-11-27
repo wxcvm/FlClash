@@ -256,6 +256,8 @@ class ProxyGroupView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final proxies = group.all;
+    final names = proxies.map((proxy) => proxy.name).toSet();
+    final uniqueNames = names.length == proxies.length;
     return Scrollbar(
       controller: controller,
       thumbVisibility: true,
@@ -275,9 +277,11 @@ class ProxyGroupView extends ConsumerWidget {
         ),
         itemCount: proxies.length,
         addAutomaticKeepAlives: false,
+        findChildIndexCallback: uniqueNames ? proxyIndexFinder(proxies) : null,
         itemBuilder: (_, index) {
           final proxy = proxies[index];
           return ProxyCard(
+            key: uniqueNames ? ValueKey(proxy.name) : null,
             testUrl: group.testUrl,
             groupType: group.type,
             type: cardType,
