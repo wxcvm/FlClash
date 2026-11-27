@@ -216,7 +216,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
       for (final feed in RequestFeed.values)
         PopupMenuItem(
           label: _labelOf(feed),
-          checked: feed == _feed && !_showTopology,
+          checked: feed == _feed && !_showTopology && !_showDns,
           onPressed: () => _selectFeed(feed),
         ),
       PopupMenuItem(
