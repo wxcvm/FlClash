@@ -207,17 +207,24 @@ class ProfilesAction extends _$ProfilesAction {
     final bytes = await platformFile.readBytes();
     globalState.navigatorKey.currentState?.popUntil((route) => route.isFirst);
     ref.read(currentPageLabelProvider.notifier).toProfiles();
-    final profile = await globalState.loadingRun(
-      tag: LoadingTag.profiles,
-      () => _withAgeSecretKey(
+    final profile = await globalState.loadingRun(tag: LoadingTag.profiles, () {
+      final Uint8List importedBytes;
+      try {
+        importedBytes = convertWireGuardQuickFile(
+          bytes,
+          fileName: platformFile.name,
+        );
+      } on WireGuardQuickImportException catch (error) {
+        throw MessageException(error.message);
+      }
+      return _withAgeSecretKey(
         Profile.normal(label: platformFile.name),
         (profile) => profile.saveFile(
-          bytes,
+          importedBytes,
           validate: (path, key) => _core.validateProfile(path, key),
         ),
-      ),
-      title: currentAppLocalizations.addProfile,
-    );
+      );
+    }, title: currentAppLocalizations.addProfile);
     if (profile != null) {
       putProfile(profile);
     }
