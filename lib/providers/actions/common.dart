@@ -152,17 +152,19 @@ class CommonAction extends _$CommonAction {
       final context = globalState.navigatorKey.currentContext!;
       final tag = data['tag_name'] as String;
       final suffix = selfUpdateSuffix;
+      final canInstall =
+          suffix != null && data['asset_available'] != false;
       final res = await dialogs.showMessage(
         title: currentAppLocalizations.discoverNewVersion,
         message: _releaseSpan(context, tag, data['body'] as String?),
-        confirmText: suffix == null
-            ? currentAppLocalizations.goDownload
-            : currentAppLocalizations.update,
+        confirmText: canInstall
+            ? currentAppLocalizations.update
+            : currentAppLocalizations.goDownload,
         cancelText: isUser ? null : currentAppLocalizations.noLongerRemind,
       );
       if (res == true) {
-        if (suffix == null) {
-          _openReleasePage();
+        if (!canInstall) {
+          _openReleasePage(tag);
         } else {
           unawaited(_downloadUpdate(tag, releaseAssetName(tag, suffix)));
         }
@@ -181,8 +183,11 @@ class CommonAction extends _$CommonAction {
     }
   }
 
-  void _openReleasePage() {
-    unawaited(launchUrl(Uri.parse('https://github.com/$repository/releases')));
+  void _openReleasePage([String? tag]) {
+    final path = tag == null
+        ? 'https://github.com/$repository/releases'
+        : 'https://github.com/$repository/releases/tag/$tag';
+    unawaited(launchUrl(Uri.parse(path)));
   }
 
   /// Downloads the latest release for this build even when it is not newer.
@@ -198,6 +203,10 @@ class CommonAction extends _$CommonAction {
     );
     if (release == null) return;
     final tag = release['tag_name'] as String;
+    if (release['asset_available'] == false) {
+      _openReleasePage(tag);
+      return;
+    }
     await _downloadUpdate(tag, releaseAssetName(tag, suffix));
   }
 
