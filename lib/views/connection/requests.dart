@@ -469,19 +469,18 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
   }
 
   void _showConnections(List<TrackerInfo>? trackerInfos) {
-    final readAt = DateTime.now();
     if (!_loaded) {
       showFirstContent(() {
         setState(() => _loaded = true);
         // A failed read must not leave the controller's list from the last visit.
-        _applyConnections(trackerInfos ?? const [], readAt);
+        _applyConnections(trackerInfos ?? const []);
       });
       return;
     }
-    updateWhenRouteSettled(() => _applyConnections(trackerInfos, readAt));
+    updateWhenRouteSettled(() => _applyConnections(trackerInfos));
   }
 
-  void _applyConnections(List<TrackerInfo>? trackerInfos, DateTime readAt) {
+  void _applyConnections(List<TrackerInfo>? trackerInfos) {
     if (trackerInfos == null) {
       return;
     }
