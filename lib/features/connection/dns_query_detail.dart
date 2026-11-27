@@ -28,13 +28,11 @@ class _DnsQueryDetailView extends StatelessWidget {
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
     final initiator = dnsQuery.initiator;
-    final margin = context.listInsets.margin;
-
     return ListView(
       padding: EdgeInsets.fromLTRB(
-        margin,
+        16,
         context.contentTopPadding,
-        margin,
+        16,
         16 + context.bottomInset,
       ),
       children: [
