@@ -171,7 +171,10 @@ class Request {
       if (suffix == null) {
         return release;
       }
-      return _releaseWithAssetAvailability(release, suffix);
+      final tag = release['tag_name'] as String;
+      final assetAvailable =
+          await _hasVerifiedReleaseAsset(tag, suffix) ?? false;
+      return {...release, 'asset_available': assetAvailable};
     } on DioException catch (error) {
       final status = error.response?.statusCode;
       if (status != 403 && status != 429) rethrow;
@@ -235,7 +238,10 @@ class Request {
           }
           final candidate = platformSuffix == null
               ? release
-              : _releaseWithAssetAvailability(release, platformSuffix);
+              : await _releaseWithAssetAvailability(release, platformSuffix);
+          if (candidate == null) {
+            continue;
+          }
           if (latest == null ||
               isNewerPreviewTag(tag, latest['tag_name'] as String)) {
             latest = candidate;
@@ -285,11 +291,10 @@ class Request {
           releaseAssetUri(tag, releaseChecksumsName),
           options: Options(responseType: ResponseType.plain),
         );
-        final hasPackageChecksum =
-            releaseChecksum(sums.data ?? '', name) != null;
-        final assetAvailable = hasPackageChecksum
-            ? await _hasReleaseAsset(tag, name)
-            : false;
+        if (releaseChecksum(sums.data ?? '', name) == null) {
+          continue;
+        }
+        final assetAvailable = await _hasReleaseAsset(tag, name);
         return {'tag_name': tag, 'asset_available': assetAvailable};
       } on DioException catch (error) {
         if (error.response?.statusCode != 404) rethrow;
@@ -298,31 +303,29 @@ class Request {
     throw const FormatException('No published preview for this platform');
   }
 
-  Map<String, dynamic> _releaseWithAssetAvailability(
+  Future<Map<String, dynamic>?> _releaseWithAssetAvailability(
     Map<String, dynamic> release,
     String platformSuffix,
-  ) {
+  ) async {
     final tag = release['tag_name'];
-    final assets = release['assets'];
-    if (tag is! String || assets is! List) {
-      return {...release, 'asset_available': false};
+    if (tag is! String) {
+      return null;
     }
-    final hasChecksums = _containsReleaseAsset(assets, releaseChecksumsName);
-    final hasPackage = _containsReleaseAsset(
-      assets,
-      releaseAssetName(tag, platformSuffix),
-    );
-    return {
-      ...release,
-      'asset_available': hasChecksums && hasPackage,
-    };
+    final assetAvailable = await _hasVerifiedReleaseAsset(tag, platformSuffix);
+    if (assetAvailable == null) {
+      return null;
+    }
+    return {...release, 'asset_available': assetAvailable};
   }
 
   bool _containsReleaseAsset(List<dynamic> assets, String name) {
     return assets.any((asset) => asset is Map && asset['name'] == name);
   }
 
-  Future<bool> _hasVerifiedReleaseAsset(String tag, String platformSuffix) async {
+  Future<bool?> _hasVerifiedReleaseAsset(
+    String tag,
+    String platformSuffix,
+  ) async {
     final name = releaseAssetName(tag, platformSuffix);
     try {
       final sums = await releaseDio.getUri<String>(
@@ -330,11 +333,11 @@ class Request {
         options: Options(responseType: ResponseType.plain),
       );
       if (releaseChecksum(sums.data ?? '', name) == null) {
-        return false;
+        return null;
       }
     } on DioException catch (error) {
       if (error.response?.statusCode == 404) {
-        return false;
+        return null;
       }
       rethrow;
     }
