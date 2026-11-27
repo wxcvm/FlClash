@@ -403,7 +403,7 @@ class GeneralView extends ConsumerWidget {
             footer: appLocalizations.autoRunDesc,
           ),
           generateSection(
-            title: appLocalizations.requestsAndUpdates,
+            title: appLocalizations.requests,
             items: _requestItems(),
             footer: appLocalizations.checkCertificateDesc,
           ),
