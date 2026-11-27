@@ -430,8 +430,7 @@ class _MobileDashboard extends ConsumerWidget {
   }
 }
 
-/// Stops a card's tickers, polls and provider updates out of view, where an
-/// update still costs Impeller a frame of the whole screen.
+/// Stops a card's ticker-driven animations while it is outside the viewport.
 class _OnScreen extends StatefulWidget {
   const _OnScreen({super.key, required this.child});
 
