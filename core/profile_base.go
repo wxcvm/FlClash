@@ -113,11 +113,18 @@ func loadConfigWithBaseSnapshot(base *SetupBase, configPath string) (*config.Con
 		return nil, configDigest{}, err
 	}
 	excludeSubscriptionInfoGroups(raw, document.Content[0])
-	digest, err := writeConfigDocumentSnapshot(configPath, document)
+	// Encoding drains the YAML tree before the full core parse. Keep the
+	// encoded file private until that parse succeeds.
+	temporary, err := writeDocumentFile(filepath.Dir(configPath), ".config-*.yaml", document)
 	if err != nil {
 		return nil, configDigest{}, err
 	}
+	defer os.Remove(temporary)
 	cfg, err := config.ParseRawConfig(raw)
+	if err != nil {
+		return nil, configDigest{}, err
+	}
+	digest, err := publishConfigDocumentSnapshot(configPath, temporary)
 	if err != nil {
 		return nil, configDigest{}, err
 	}
@@ -269,6 +276,10 @@ func writeConfigDocumentSnapshot(path string, document *yaml.Node) (configDigest
 		return configDigest{}, err
 	}
 	defer os.Remove(temporary)
+	return publishConfigDocumentSnapshot(path, temporary)
+}
+
+func publishConfigDocumentSnapshot(path, temporary string) (configDigest, error) {
 	// Hash the private temporary file before publishing it. The applied
 	// snapshot never depends on a later read of the shared config.yaml.
 	digest, err := digestConfigFile(temporary)
