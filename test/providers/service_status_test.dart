@@ -240,9 +240,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1));
       expect(sweeps, hasLength(calls + 1));
       expect(
-      stateOf(scope).entryOf(ServiceTarget.youtube).phase,
-      ProbePhase.failed,
-    );
+        stateOf(scope).entryOf(ServiceTarget.youtube).phase,
+        ProbePhase.failed,
+      );
     }
 
     status = 'available';
