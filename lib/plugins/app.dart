@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dio/dio.dart' show CancelToken, ProgressCallback;
 import 'package:fl_clash/common/boot_record.dart';
@@ -59,9 +61,10 @@ class App {
     final packagesString = await methodChannel.invokeMethod<String>(
       'getPackages',
     );
-    final List<dynamic> packagesRaw =
-        (await packagesString?.decodeJson<List<dynamic>>()) ?? [];
-    return packagesRaw.map((e) => Package.fromJson(e)).toSet().toList();
+    if (packagesString == null || packagesString.isEmpty) {
+      return const [];
+    }
+    return Isolate.run(() => _parsePackages(packagesString));
   }
 
   Future<bool> isInstalledAppsPermissionGranted() async {
@@ -91,9 +94,10 @@ class App {
     final packageNamesString = await methodChannel.invokeMethod<String>(
       'getChinaPackageNames',
     );
-    final List<dynamic> packageNamesRaw =
-        await packageNamesString?.decodeJson<List<dynamic>>() ?? [];
-    return packageNamesRaw.map((e) => e.toString()).toList();
+    if (packageNamesString == null || packageNamesString.isEmpty) {
+      return const [];
+    }
+    return Isolate.run(() => _parsePackageNames(packageNamesString));
   }
 
   final Map<String, ImageProvider?> _packageIcons = {};
@@ -316,6 +320,16 @@ class App {
       return null;
     }
   }
+}
+
+List<Package> _parsePackages(String raw) {
+  final decoded = json.decode(raw) as List<dynamic>;
+  return {for (final item in decoded) Package.fromJson(item)}.toList();
+}
+
+List<String> _parsePackageNames(String raw) {
+  final decoded = json.decode(raw) as List<dynamic>;
+  return [for (final item in decoded) item.toString()];
 }
 
 final app = system.isAndroid ? App() : null;
