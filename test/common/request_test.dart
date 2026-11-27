@@ -249,6 +249,13 @@ void main() {
               ResponseBody.fromString(jsonEncode(firstPage), 200),
           '/repos/$repository/releases?page=2': () =>
               ResponseBody.fromString(jsonEncode(secondPage), 200),
+          '/$repository/releases/download/$newer/SHA256SUMS': () =>
+              ResponseBody.fromString(
+                '$digest  FlClash-0.9.3-preview.10.1-$suffix',
+                200,
+              ),
+          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix': () =>
+              ResponseBody.fromString('', 302),
         });
 
       expect(await request.latestPreviewRelease(suffix), {
@@ -275,6 +282,13 @@ void main() {
             ]),
             200,
           ),
+          '/$repository/releases/download/$newer/SHA256SUMS': () =>
+              ResponseBody.fromString(
+                '$digest  FlClash-0.9.3-preview.10.1-$suffix',
+                200,
+              ),
+          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix': () =>
+              ResponseBody.fromString('', 404),
         });
 
       final release = await request.latestPreviewRelease(suffix);
