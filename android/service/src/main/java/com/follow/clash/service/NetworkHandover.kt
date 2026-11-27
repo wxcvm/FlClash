@@ -7,7 +7,9 @@ internal fun networkSelectionPriority(
     validated: Boolean,
     hasDns: Boolean,
     losing: Boolean,
+    linkReady: Boolean = true,
 ): Int = transportPriority +
+    (if (linkReady) 0 else 200) +
     (if (validated) 0 else 40) +
     (if (hasDns) 0 else 25) +
     (if (losing) 100 else 0)
