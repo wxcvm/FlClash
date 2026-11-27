@@ -1276,10 +1276,10 @@ class AppLocalizations {
     );
   }
 
-  /// `Requests`
+  /// `Requests and updates`
   String get requestsAndUpdates {
     return Intl.message(
-      'Requests',
+      'Requests and updates',
       name: 'requestsAndUpdates',
       desc: '',
       args: [],
