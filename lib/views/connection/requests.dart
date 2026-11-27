@@ -69,15 +69,11 @@ class _RequestsViewState extends ConsumerState<RequestsView>
       if (!_showDns) {
         return;
       }
-      throttler.call(
-        FunctionTag.dnsQueries,
-        () {
-          if (mounted && _showDns) {
-            updateWhenRouteSettled(_offerDnsQueries);
-          }
-        },
-        duration: renderThrottleDuration,
-      );
+      throttler.call(FunctionTag.dnsQueries, () {
+        if (mounted && _showDns) {
+          updateWhenRouteSettled(_offerDnsQueries);
+        }
+      }, duration: renderThrottleDuration);
     });
   }
 
