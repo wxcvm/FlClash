@@ -74,7 +74,7 @@ func TestRequestTrafficReportsChangesUntilTheRequestCloses(t *testing.T) {
 	}
 	open = false
 	changed, watching := collectDelivered(&watch, isOpen)
-	if len(changed) != 1 || changed[0].Upload != 8 || watching {
+	if len(changed) != 1 || changed[0].Upload != 8 || !changed[0].Closed || watching {
 		t.Fatalf("closed request: changed %v, watching %v", changed, watching)
 	}
 	if !watch.add(tracker) {
@@ -91,8 +91,9 @@ func TestRequestTrafficKeepsARequestTheManagerHasNotStoredYet(t *testing.T) {
 	if _, watching := collectDelivered(&watch, closed); !watching {
 		t.Fatal("a request announced before it was stored was dropped on its first report")
 	}
-	if _, watching := collectDelivered(&watch, closed); watching {
-		t.Fatal("a closed request was kept past its second report")
+	changed, watching := collectDelivered(&watch, closed)
+	if watching || len(changed) != 1 || !changed[0].Closed {
+		t.Fatalf("closed request was not reported: changed %v, watching %v", changed, watching)
 	}
 }
 
@@ -113,7 +114,7 @@ func TestRequestTrafficResendsTheLastTotalsOfAClosedRequestUntilQueued(t *testin
 		t.Fatal("a closed request whose last totals were dropped was let go")
 	}
 	changed, watching := collectDelivered(&watch, isOpen)
-	if len(changed) != 1 || changed[0].Upload != 3 || watching {
+	if len(changed) != 1 || changed[0].Upload != 3 || !changed[0].Closed || watching {
 		t.Fatalf("after the dropped report: changed %v, watching %v", changed, watching)
 	}
 }

@@ -11,6 +11,11 @@ A single admitted health check per group with a five-second minimum interval
 prevents bursts of duplicate checks. Fallback and LoadBalance UDP failures
 now feed the same existing provider check. No traffic replay or direct fallback.
 
+The reviewed source extension also adds the tunnel's final-dial-failure hook
+for TCP and UDP. It reports only after retry exhaustion, without changing
+routing, retries or fallback behavior. The host can then classify and retain
+the failed connection as a closed request.
+
 The experimental branch applies the pinned patch before building the actual
 Mihomo wrapper for Windows and Android, runs the gate race tests and real
 outboundgroup package tests. It does not change the production submodule pin
