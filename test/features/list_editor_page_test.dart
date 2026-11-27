@@ -413,6 +413,54 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('a pushed page builds its rows a held frame after the rest', (
+    tester,
+  ) async {
+    var built = 0;
+    final page = ListEditorPage<String, String>(
+      title: 'Editor',
+      itemsOf: (_) => const ['a', 'b'],
+      itemBuilder:
+          (context, ref, item, index, isEditing, isSelected, onToggleSelected) {
+            built++;
+            return TestRow(title: Text(item));
+          },
+      onReorder: (oldIndex, newIndex) {},
+      onAdd: () {},
+      emptyLabel: 'Empty',
+      idOf: (item) => item,
+    );
+    await tester.pumpWidget(
+      TestApp(
+        wrapInProviderScope: true,
+        overrides: [
+          viewSizeProvider.overrideWithBuild((_, _) => const Size(400, 600)),
+        ],
+        child: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => BaseNavigator.push(context, page),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+    double pushed() =>
+        ModalRoute.of(tester.element(find.text('Editor')))!.animation!.value;
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    expect(find.text('Editor'), findsOneWidget);
+    expect(built, 0);
+
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(built, 2);
+    expect(pushed(), 0);
+
+    await tester.pumpAndSettle();
+    expect(pushed(), 1);
+    expect(find.text('b'), findsOneWidget);
+  });
+
   testWidgets('builds rows past the viewport once its route settles and '
       'keeps the rows it arrived with', (tester) async {
     final items = [for (var i = 0; i < 200; i++) 'item $i'];

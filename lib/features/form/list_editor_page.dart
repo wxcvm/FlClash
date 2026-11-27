@@ -233,23 +233,30 @@ class _ListEditorPageState<T, K> extends ConsumerState<ListEditorPage<T, K>> {
           label: widget.emptyLabel,
           illustration: NullStatusIllustration.data,
         ),
-        child: Builder(
-          builder: (context) {
-            final rowAt = _rowsOf(
-              context,
-              items,
-              selected,
-              reorderable: !isSearching,
-            );
-            return Scrollbar(
-              controller: _scrollController,
-              child: ArrivalCacheExtentBuilder(
-                builder: (cacheExtent) => isSearching
-                    ? _buildSearchResults(context, items, rowAt, cacheExtent)
-                    : _buildReorderableList(context, items, rowAt, cacheExtent),
-              ),
-            );
-          },
+        child: _RowsAfterPush(
+          child: Builder(
+            builder: (context) {
+              final rowAt = _rowsOf(
+                context,
+                items,
+                selected,
+                reorderable: !isSearching,
+              );
+              return Scrollbar(
+                controller: _scrollController,
+                child: ArrivalCacheExtentBuilder(
+                  builder: (cacheExtent) => isSearching
+                      ? _buildSearchResults(context, items, rowAt, cacheExtent)
+                      : _buildReorderableList(
+                          context,
+                          items,
+                          rowAt,
+                          cacheExtent,
+                        ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -369,4 +376,47 @@ class ListEditorAddAction extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Delays constructing list rows until the frame after the route starts.
+/// This lets the page scaffold enter before a large list lays out its rows.
+class _RowsAfterPush extends StatefulWidget {
+  const _RowsAfterPush({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_RowsAfterPush> createState() => _RowsAfterPushState();
+}
+
+class _RowsAfterPushState extends State<_RowsAfterPush> {
+  var _ready = true;
+  var _checked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_checked) {
+      return;
+    }
+    _checked = true;
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation == null ||
+        animation.status != AnimationStatus.forward ||
+        animation.value > 0) {
+      return;
+    }
+    _ready = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() => _ready = true);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => ArrivalHold(
+    ready: _ready,
+    child: _ready ? widget.child : const SizedBox.shrink(),
+  );
 }
