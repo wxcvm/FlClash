@@ -51,7 +51,7 @@ void main() {
     final l = currentAppLocalizations;
 
     expect(
-      find.widgetWithText(ListHeader, l.requestsAndUpdates),
+      find.widgetWithText(ListHeader, l.requests),
       findsOneWidget,
     );
     expect(find.text(l.userAgent), findsOneWidget);
