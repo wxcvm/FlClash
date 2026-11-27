@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'topology.dart';
+import 'connection_poller.dart';
 
 class RequestsView extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
@@ -419,7 +420,7 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
         RouteMotionHoldMixin<_LiveFeed> {
   CoreController get _core => ref.read(coreHandlerProvider);
 
-  final _speedRanker = TrackerSpeedRanker();
+  final _connectionPoller = ConnectionPoller();
   late final ScrollController _scrollController;
   var _loaded = false;
   // A sheet's one controller opens where the recent feed reads, its far end.
@@ -437,39 +438,34 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
 
   Future<void> closeAll() => _close(_core.closeConnections);
 
+  List<TrackerInfo> _openConnections() => [
+    for (final connection in ref.read(requestsProvider).list)
+      if (connection.isActive) connection,
+  ];
+
   @override
   Future<void> poll(PollGuard isCurrent) async {
-    final trackerInfos = await _readConnections();
+    await _connectionPoller.read(
+      ref,
+      reader: widget.connectionsReader,
+      mounted: () => mounted,
+    );
     if (!isCurrent()) {
       return;
     }
-    _showConnections(trackerInfos);
+    _showConnections(_openConnections());
   }
 
   Future<void> _refreshConnections() async {
-    final trackerInfos = await _readConnections();
+    await _connectionPoller.read(
+      ref,
+      reader: widget.connectionsReader,
+      mounted: () => mounted,
+    );
     if (!mounted) {
       return;
     }
-    _showConnections(trackerInfos);
-  }
-
-  Future<List<TrackerInfo>?> _readConnections() async {
-    try {
-      final connectionsReader = widget.connectionsReader;
-      if (connectionsReader != null) {
-        return await connectionsReader();
-      }
-      return ref.read(coreStatusProvider) == CoreStatus.connected
-          ? await _core.getConnections()
-          : const [];
-    } catch (error) {
-      commonPrint.log(
-        'updateConnections error: $error',
-        logLevel: coreFailureLogLevel(error),
-      );
-      return null;
-    }
+    _showConnections(_openConnections());
   }
 
   void _showConnections(List<TrackerInfo>? trackerInfos) {
@@ -489,9 +485,7 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
     if (trackerInfos == null) {
       return;
     }
-    widget.listController.setTrackerInfos(
-      _speedRanker.rank(trackerInfos, readAt),
-    );
+    widget.listController.setTrackerInfos(trackerInfos);
     widget.filters.offer(widget.listController.value.trackerInfos);
     if (_startsAtFarEnd) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
