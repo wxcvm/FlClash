@@ -129,11 +129,8 @@ class DnsQueryItem extends StatelessWidget {
           if (initiator != null)
             RecordLabel(
               label: initiator.label,
-              onPressed: () => _filter(
-                context,
-                RecordFacetKind.initiator,
-                initiator.label,
-              ),
+              onPressed: () =>
+                  _filter(context, RecordFacetKind.initiator, initiator.label),
             ),
           if (query.cached)
             RecordLabel(
@@ -148,11 +145,8 @@ class DnsQueryItem extends StatelessWidget {
             RecordLabel(
               label: query.rcode,
               tone: RecordTone.error,
-              onPressed: () => _filter(
-                context,
-                RecordFacetKind.rcode,
-                query.rcode,
-              ),
+              onPressed: () =>
+                  _filter(context, RecordFacetKind.rcode, query.rcode),
             ),
         ],
         trailing: Text(
