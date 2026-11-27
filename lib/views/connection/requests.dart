@@ -39,7 +39,12 @@ class _RequestsViewState extends ConsumerState<RequestsView>
   final _live = TrackerInfoListController();
   final _liveFeed = GlobalKey<_LiveFeedState>();
   late bool _showTopology = widget.initialTopology;
+  var _showDns = false;
+  var _query = '';
   late final _filters = trackerInfoFilterController(ref, 'requests');
+  late final _dnsFilters = RecordFilterController<DnsQuery>(
+    facets: dnsQueryFacets,
+  );
   late var _feed = widget.initialTopology
       ? RequestFeed.live
       : widget.initialFeed ?? ref.read(appSettingProvider).requestFeed;
@@ -50,11 +55,25 @@ class _RequestsViewState extends ConsumerState<RequestsView>
     if (_feed == RequestFeed.recent) {
       _showLatestRequests();
     }
+    _dnsFilters.offer(ref.read(dnsQueriesProvider).list);
     ref.listenManual(requestsProvider.select((state) => state.revision), (
       _,
       _,
     ) {
       updateRequestsThrottler();
+    });
+    ref.listenManual(dnsQueriesProvider.select((state) => state.revision), (
+      _,
+      _,
+    ) {
+      if (!_showDns) {
+        return;
+      }
+      throttler.call(FunctionTag.dnsQueries, () {
+        if (mounted && _showDns) {
+          updateWhenRouteSettled(_offerDnsQueries);
+        }
+      }, duration: renderThrottleDuration);
     });
   }
 
@@ -63,6 +82,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
     _recent.dispose();
     _live.dispose();
     _filters.dispose();
+    _dnsFilters.dispose();
     super.dispose();
   }
 
@@ -87,13 +107,32 @@ class _RequestsViewState extends ConsumerState<RequestsView>
     }, duration: renderThrottleDuration);
   }
 
+  void _offerDnsQueries() {
+    _dnsFilters.offer(ref.read(dnsQueriesProvider).list);
+  }
+
+  void _showDnsQueries() {
+    if (_showDns) {
+      return;
+    }
+    _offerDnsQueries();
+    setState(() {
+      _showDns = true;
+      _showTopology = false;
+    });
+  }
+
   void _search(String query) {
+    _query = query;
     _recent.search(query);
     _live.search(query);
+    if (_showDns) {
+      setState(() {});
+    }
   }
 
   void _selectFeed(RequestFeed feed) {
-    if (feed == _feed && !_showTopology) {
+    if (feed == _feed && !_showTopology && !_showDns) {
       return;
     }
     // Offered before the feed mounts: a build below this page can't notify it.
@@ -103,6 +142,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
     setState(() {
       _feed = feed;
       _showTopology = false;
+      _showDns = false;
     });
     if (widget.initialFeed == null) {
       ref
@@ -112,7 +152,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
   }
 
   List<IconButtonData> _buildActions() {
-    if (_feed != RequestFeed.live || _showTopology) {
+    if (_showDns || _feed != RequestFeed.live || _showTopology) {
       return const [];
     }
     return [
@@ -126,25 +166,36 @@ class _RequestsViewState extends ConsumerState<RequestsView>
 
   @override
   Widget build(BuildContext context) {
+    final activeFilters = _showDns ? _dnsFilters : _filters;
     final body = RecordFilterScope(
-      onFilter: _filters.add,
+      onFilter: activeFilters.add,
       child: ListenableBuilder(
-        listenable: _filters,
+        listenable: activeFilters,
         builder: (_, _) => _buildBody(),
       ),
     );
     return ListenableBuilder(
-      listenable: Listenable.merge([_filters, _filters.options]),
+      listenable: Listenable.merge([
+        _filters,
+        _filters.options,
+        _dnsFilters,
+        _dnsFilters.options,
+      ]),
       child: body,
       builder: (context, body) {
         final pinned = !ViewScope.isMobileOf(context);
+        final activeFilters = _showDns ? _dnsFilters : _filters;
         return Scaffold(
-          title: _showTopology ? topologyTitle(context) : _labelOf(_feed),
+          title: _showDns
+              ? context.appLocalizations.dnsQueries
+              : _showTopology
+              ? topologyTitle(context)
+              : _labelOf(_feed),
           titleMenuItems: _buildFeedMenu(),
           searchState: AppBarSearchState(onSearch: _search),
-          keywords: _filters.keywordsOf(pinned: pinned),
+          keywords: activeFilters.keywordsOf(pinned: pinned),
           iconActions: _buildActions(),
-          menuItems: _filters.menuItems(context, pinned: pinned),
+          menuItems: activeFilters.menuItems(context, pinned: pinned),
           body: body!,
         );
       },
@@ -161,9 +212,14 @@ class _RequestsViewState extends ConsumerState<RequestsView>
       for (final feed in RequestFeed.values)
         PopupMenuItem(
           label: _labelOf(feed),
-          checked: feed == _feed && !_showTopology,
+          checked: feed == _feed && !_showTopology && !_showDns,
           onPressed: () => _selectFeed(feed),
         ),
+      PopupMenuItem(
+        label: context.appLocalizations.dnsQueries,
+        checked: _showDns,
+        onPressed: _showDnsQueries,
+      ),
       PopupMenuItem(
         label: topologyTitle(context),
         checked: _showTopology,
@@ -177,6 +233,13 @@ class _RequestsViewState extends ConsumerState<RequestsView>
   }
 
   Widget _buildBody() {
+    if (_showDns) {
+      return DnsQueriesFeed(
+        query: _query,
+        filters: _dnsFilters,
+        scrollController: widget.scrollController,
+      );
+    }
     return switch (_feed) {
       RequestFeed.recent => _RecentFeed(
         listController: _recent,
