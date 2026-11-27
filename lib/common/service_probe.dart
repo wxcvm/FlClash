@@ -76,6 +76,7 @@ class ServiceCheck {
     this.delay,
     this.chains = const [],
     this.region,
+    this.ip,
     this.checkedAt,
     this.coreEpoch = 0,
     this.routeVersion = 0,
@@ -88,6 +89,7 @@ class ServiceCheck {
       delay: item.delay > 0 ? item.delay : null,
       chains: item.chains,
       region: item.region.isEmpty ? null : item.region,
+      ip: item.ip.isEmpty ? null : item.ip,
       checkedAt: item.checkedAt > 0
           ? DateTime.fromMillisecondsSinceEpoch(item.checkedAt)
           : null,
@@ -101,6 +103,10 @@ class ServiceCheck {
   final int? delay;
   final List<String> chains;
   final String? region;
+
+  /// The address the service itself saw, which a node that routes the
+  /// service out another way does not share with its other traffic.
+  final String? ip;
   final DateTime? checkedAt;
   final int coreEpoch;
   final int routeVersion;
@@ -115,6 +121,7 @@ class ServiceCheck {
       other.delay == delay &&
       listEquals(other.chains, chains) &&
       other.region == region &&
+      other.ip == ip &&
       other.checkedAt == checkedAt &&
       other.coreEpoch == coreEpoch &&
       other.routeVersion == routeVersion &&
@@ -126,6 +133,7 @@ class ServiceCheck {
     delay,
     Object.hashAll(chains),
     region,
+    ip,
     checkedAt,
     coreEpoch,
     routeVersion,
@@ -134,7 +142,8 @@ class ServiceCheck {
 
   @override
   String toString() =>
-      'ServiceCheck(${status.id}, delay: $delay, node: $node, region: $region)';
+      'ServiceCheck(${status.id}, delay: $delay, node: $node, region: $region, '
+      'ip: $ip)';
 }
 
 /// An empty [proxyName] lets the Core route by its rules; an empty [targets]
