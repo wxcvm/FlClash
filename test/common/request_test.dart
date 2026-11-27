@@ -252,12 +252,12 @@ void main() {
           '/repos/$repository/releases?page=1': () => ResponseBody.fromString(
             jsonEncode(firstPage),
             200,
-            headers: {'content-type': 'application/json'},
+            headers: {'content-type': ['application/json']},
           ),
           '/repos/$repository/releases?page=2': () => ResponseBody.fromString(
             jsonEncode(secondPage),
             200,
-            headers: {'content-type': 'application/json'},
+            headers: {'content-type': ['application/json']},
           ),
           '/$repository/releases/download/$newer/SHA256SUMS': () =>
               ResponseBody.fromString(
@@ -295,7 +295,7 @@ void main() {
                 },
               ]),
               200,
-              headers: {'content-type': 'application/json'},
+              headers: {'content-type': ['application/json']},
             ),
             '/$repository/releases/download/$newer/SHA256SUMS': () =>
                 ResponseBody.fromString(
