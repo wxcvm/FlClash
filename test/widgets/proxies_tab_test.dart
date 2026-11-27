@@ -419,15 +419,25 @@ void main() {
         (widget) => widget is ProxyCard && widget.proxy.name == name,
       ),
     );
-    globalContainer.read(_tabStateProvider.notifier).set(
-      _tabState([_group('A'), group([0, 1, 2, 3])]),
-    );
+    globalContainer
+        .read(_tabStateProvider.notifier)
+        .set(
+          _tabState([
+            _group('A'),
+            group([0, 1, 2, 3]),
+          ]),
+        );
     await pumpTabView(tester);
     final before = [for (var i = 0; i < 4; i++) card('B-$i')];
 
-    globalContainer.read(_tabStateProvider.notifier).set(
-      _tabState([_group('A'), group([2, 0, 3, 1])]),
-    );
+    globalContainer
+        .read(_tabStateProvider.notifier)
+        .set(
+          _tabState([
+            _group('A'),
+            group([2, 0, 3, 1]),
+          ]),
+        );
     await tester.pump();
 
     for (var i = 0; i < 4; i++) {
