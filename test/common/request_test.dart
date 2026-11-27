@@ -278,24 +278,26 @@ void main() {
       () async {
         final request = Request()
           ..releaseDio.httpClientAdapter = _PathAdapter({
-          '/repos/$repository/releases?page=1': () => ResponseBody.fromString(
-            jsonEncode([
-              {
-                'tag_name': newer,
-                'draft': false,
-                'assets': [{'name': releaseChecksumsName}],
-              },
-            ]),
-            200,
-          ),
-          '/$repository/releases/download/$newer/SHA256SUMS': () =>
-              ResponseBody.fromString(
-                '$digest  FlClash-0.9.3-preview.10.1-$suffix',
-                200,
-              ),
-          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix':
-              () => ResponseBody.fromString('', 404),
-        });
+            '/repos/$repository/releases?page=1': () => ResponseBody.fromString(
+              jsonEncode([
+                {
+                  'tag_name': newer,
+                  'draft': false,
+                  'assets': [
+                    {'name': releaseChecksumsName},
+                  ],
+                },
+              ]),
+              200,
+            ),
+            '/$repository/releases/download/$newer/SHA256SUMS': () =>
+                ResponseBody.fromString(
+                  '$digest  FlClash-0.9.3-preview.10.1-$suffix',
+                  200,
+                ),
+            '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix':
+                () => ResponseBody.fromString('', 404),
+          });
 
         final release = await request.latestPreviewRelease(suffix);
         expect(release['tag_name'], newer);
@@ -316,8 +318,8 @@ void main() {
                 '$digest  FlClash-0.9.3-preview.9.2-$suffix',
                 200,
               ),
-          '/$repository/releases/download/$older/FlClash-0.9.3-preview.9.2-$suffix': () =>
-              ResponseBody.fromString('', 302),
+          '/$repository/releases/download/$older/FlClash-0.9.3-preview.9.2-$suffix':
+              () => ResponseBody.fromString('', 302),
         });
 
       expect(await request.latestPreviewRelease(suffix), {
