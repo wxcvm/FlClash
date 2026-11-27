@@ -96,7 +96,14 @@ class ConnectionLog {
     final existing = _entries.byId[id];
     if (existing != null) {
       final merged = existing.copyWith(
-        info: record.info,
+        info: record.info.copyWith(
+          upload: record.info.upload > existing.info.upload
+              ? record.info.upload
+              : existing.info.upload,
+          download: record.info.download > existing.info.download
+              ? record.info.download
+              : existing.info.download,
+        ),
         closedAt: record.closedAt,
         failure: record.failure,
       );
