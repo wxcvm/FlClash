@@ -120,6 +120,9 @@ class _CoreContainerState extends ConsumerState<CoreManager>
     });
     // Every Core process starts without a log stream.
     ref.listenManual(coreStatusProvider, (prev, next) {
+      if (prev == CoreStatus.connected && next != CoreStatus.connected) {
+        ref.read(connectionLogProvider.notifier).closeAll(DateTime.now());
+      }
       if (next == CoreStatus.connected && prev != CoreStatus.connected) {
         _syncLogStream();
       }
@@ -194,9 +197,22 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   }
 
   @override
+  void onConnectionOpened(ConnectionRecord connection) {
+    ref.read(connectionLogProvider.notifier).open(connection);
+    super.onConnectionOpened(connection);
+  }
+
+  @override
   void onRequestTraffic(Map<String, RequestTraffic> traffic) {
     ref.read(requestsProvider.notifier).updateTraffic(traffic);
+    ref.read(connectionLogProvider.notifier).updateTraffic(traffic);
     super.onRequestTraffic(traffic);
+  }
+
+  @override
+  void onRequestsClosed(Set<String> ids) {
+    ref.read(connectionLogProvider.notifier).close(ids, DateTime.now());
+    super.onRequestsClosed(ids);
   }
 
   @override
