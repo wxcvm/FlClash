@@ -406,6 +406,35 @@ void main() {
     expect(tester.widget(card), same(before));
   });
 
+  testWidgets('reordering a group preserves uniquely named card elements', (
+    tester,
+  ) async {
+    Group group(List<int> order) => Group(
+      type: GroupType.Selector,
+      name: 'B',
+      all: [for (final i in order) Proxy(name: 'B-$i', type: 'ss')],
+    );
+    Element card(String name) => tester.element(
+      find.byWidgetPredicate(
+        (widget) => widget is ProxyCard && widget.proxy.name == name,
+      ),
+    );
+    globalContainer.read(_tabStateProvider.notifier).set(
+      _tabState([_group('A'), group([0, 1, 2, 3])]),
+    );
+    await pumpTabView(tester);
+    final before = [for (var i = 0; i < 4; i++) card('B-$i')];
+
+    globalContainer.read(_tabStateProvider.notifier).set(
+      _tabState([_group('A'), group([2, 0, 3, 1])]),
+    );
+    await tester.pump();
+
+    for (var i = 0; i < 4; i++) {
+      expect(card('B-$i'), same(before[i]));
+    }
+  });
+
   testWidgets('lays each tab out at the width its label takes', (tester) async {
     const names = ['A', '🚀 节点选择', 'Group with a long name'];
     globalContainer

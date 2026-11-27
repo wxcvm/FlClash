@@ -93,6 +93,20 @@ double? selectedRowOffset({
   return (index ~/ columns) * rowExtent;
 }
 
+/// Maps uniquely named proxy cards to their new index after sorting or refresh.
+ChildIndexGetter proxyIndexFinder(List<Proxy> proxies) {
+  Map<String, int>? indexes;
+  return (key) {
+    if (key case ValueKey<String>(:final value)) {
+      indexes ??= {
+        for (final (index, proxy) in proxies.indexed) proxy.name: index,
+      };
+      return indexes![value];
+    }
+    return null;
+  };
+}
+
 void animateScrollTo(ScrollController controller, double offset) {
   if (!controller.hasClients) {
     return;
