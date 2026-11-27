@@ -46,6 +46,18 @@ enum ConnectionFailureKind {
   other,
 }
 
+enum ConnectionEndReason {
+  local,
+  remote,
+  finished,
+  timeout,
+  reset,
+  core,
+  error,
+  failed,
+}
+
+
 enum GroupType {
   @JsonValue('select')
   Selector('select'),
