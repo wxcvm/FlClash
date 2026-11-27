@@ -45,7 +45,7 @@ class _DnsQueryDetailView extends StatelessWidget {
               RecordLabel(label: dnsQuery.type.toUpperCase()),
               if (initiator != null) RecordLabel(label: initiator.label),
             ],
-            trailing: Text('\${dnsQuery.delay} ms'),
+            trailing: Text('${dnsQuery.delay} ms'),
           ),
           body: Text(
             dnsQuery.domain,
