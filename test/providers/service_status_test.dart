@@ -226,7 +226,10 @@ void main() {
     final scope = container();
     notifierOf(scope).watch(ServiceTarget.youtube);
     await tester.pump();
-    expect(stateOf(scope).entryOf(ServiceTarget.youtube).phase, ProbePhase.failed);
+    expect(
+      stateOf(scope).entryOf(ServiceTarget.youtube).phase,
+      ProbePhase.failed,
+    );
 
     for (final seconds in [5, 10, 20, 40, 60, 60]) {
       final calls = sweeps.length;
@@ -236,7 +239,10 @@ void main() {
       expect(sweeps, hasLength(calls));
       await tester.pump(const Duration(milliseconds: 1));
       expect(sweeps, hasLength(calls + 1));
-      expect(stateOf(scope).entryOf(ServiceTarget.youtube).phase, ProbePhase.failed);
+      expect(
+      stateOf(scope).entryOf(ServiceTarget.youtube).phase,
+      ProbePhase.failed,
+    );
     }
 
     status = 'available';
@@ -251,27 +257,28 @@ void main() {
     scope.dispose();
   });
 
-  testWidgets('hidden service failures pause retries until the app is visible', (
-    tester,
-  ) async {
-    when(() => core.serviceCheck(any())).thenAnswer((invocation) async {
-      final params =
-          invocation.positionalArguments.single as ServiceCheckParams;
-      sweeps.add(params);
-      return [for (final name in params.names) _item(name, status: 'failed')];
-    });
-    final scope = container();
-    notifierOf(scope).watch(ServiceTarget.youtube);
-    await tester.pump();
-    scope.read(appVisibleProvider.notifier).value = false;
-    await tester.pump(const Duration(minutes: 1));
-    expect(sweeps, hasLength(1));
+  testWidgets(
+    'hidden service failures pause retries until the app is visible',
+    (tester) async {
+      when(() => core.serviceCheck(any())).thenAnswer((invocation) async {
+        final params =
+            invocation.positionalArguments.single as ServiceCheckParams;
+        sweeps.add(params);
+        return [for (final name in params.names) _item(name, status: 'failed')];
+      });
+      final scope = container();
+      notifierOf(scope).watch(ServiceTarget.youtube);
+      await tester.pump();
+      scope.read(appVisibleProvider.notifier).value = false;
+      await tester.pump(const Duration(minutes: 1));
+      expect(sweeps, hasLength(1));
 
-    scope.read(appVisibleProvider.notifier).value = true;
-    await tester.pump(const Duration(seconds: 5));
-    expect(sweeps, hasLength(2));
-    scope.dispose();
-  });
+      scope.read(appVisibleProvider.notifier).value = true;
+      await tester.pump(const Duration(seconds: 5));
+      expect(sweeps, hasLength(2));
+      scope.dispose();
+    },
+  );
 
   testWidgets(
     'a timeout is shown as a status and retried once the app resumes',

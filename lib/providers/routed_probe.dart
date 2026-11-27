@@ -556,7 +556,8 @@ mixin RoutedProbe<K, V>
       final held =
           check != null &&
           (entry.phase != ProbePhase.failed ||
-              stamp.routeVersion == max(check.routeVersion, current.routeVersion)) &&
+              stamp.routeVersion ==
+                  max(check.routeVersion, current.routeVersion)) &&
           check.coreEpoch == stamp.coreEpoch &&
           index < check.held.length &&
           check.held[index];

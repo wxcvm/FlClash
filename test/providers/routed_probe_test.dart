@@ -482,7 +482,10 @@ void main() {
         ),
       });
       await pumpEventQueue();
-      expect(container.read(_probeProvider).entryOf('a').phase, ProbePhase.failed);
+      expect(
+        container.read(_probeProvider).entryOf('a').phase,
+        ProbePhase.failed,
+      );
 
       moveRoute(container, 2);
       await pumpEventQueue();
@@ -499,7 +502,10 @@ void main() {
         ),
       });
       await pumpEventQueue();
-      expect(container.read(_probeProvider).entryOf('a').phase, ProbePhase.failed);
+      expect(
+        container.read(_probeProvider).entryOf('a').phase,
+        ProbePhase.failed,
+      );
     },
   );
 
