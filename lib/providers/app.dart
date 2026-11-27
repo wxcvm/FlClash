@@ -9,6 +9,7 @@ import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/plugins/app.dart';
 import 'package:fl_clash/providers/core.dart';
 import 'package:flutter/services.dart';
+import 'package:riverpod/riverpod.dart' show Notifier, NotifierProvider;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'generated/app.g.dart';
@@ -104,6 +105,34 @@ class Requests extends _$Requests with AutoDisposeNotifierMixin {
     if (updated.isNotEmpty) {
       value = state.replace(updated);
     }
+  }
+}
+
+
+
+final connectionLogProvider =
+    NotifierProvider<ConnectionLogNotifier, ConnectionLog>(
+      ConnectionLogNotifier.new,
+    );
+
+class ConnectionLogNotifier extends Notifier<ConnectionLog> {
+  @override
+  ConnectionLog build() => ConnectionLog(maxRequestsLength);
+
+  void open(ConnectionRecord record) {
+    state = state.open(record);
+  }
+
+  void updateTraffic(Map<String, RequestTraffic> traffic) {
+    state = state.updateTraffic(traffic);
+  }
+
+  void close(Set<String> ids, DateTime at) {
+    state = state.close(ids, at);
+  }
+
+  void closeAll(DateTime at) {
+    state = state.closeAll(at);
   }
 }
 
