@@ -51,7 +51,9 @@ class _PathAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    return byPath[options.uri.path]!();
+    final page = options.uri.queryParameters['page'];
+    final key = page == null ? options.uri.path : '${options.uri.path}?page=$page';
+    return (byPath[key] ?? byPath[options.uri.path])!();
   }
 
   @override
@@ -211,9 +213,72 @@ void main() {
                 '$digest  FlClash-0.9.3-preview.10.1-$suffix',
                 200,
               ),
+          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix': () =>
+              ResponseBody.fromString('', 302),
         });
 
-      expect(await request.latestPreviewRelease(suffix), {'tag_name': newer});
+      expect(await request.latestPreviewRelease(suffix), {
+        'tag_name': newer,
+        'asset_available': true,
+      });
+    });
+
+    test('paginates when the newest release page has no preview', () async {
+      final firstPage = List.generate(
+        30,
+        (_) => {
+          'tag_name': 'v0.9.3',
+          'draft': false,
+          'assets': [{'name': releaseChecksumsName}],
+        },
+      );
+      final secondPage = [
+        {
+          'tag_name': newer,
+          'draft': false,
+          'assets': [
+            {'name': releaseChecksumsName},
+            {'name': 'FlClash-0.9.3-preview.10.1-$suffix'},
+          ],
+        },
+      ];
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases?page=1': () =>
+              ResponseBody.fromString(jsonEncode(firstPage), 200),
+          '/repos/$repository/releases?page=2': () =>
+              ResponseBody.fromString(jsonEncode(secondPage), 200),
+        });
+
+      expect(await request.latestPreviewRelease(suffix), {
+        'tag_name': newer,
+        'draft': false,
+        'assets': [
+          {'name': releaseChecksumsName},
+          {'name': 'FlClash-0.9.3-preview.10.1-$suffix'},
+        ],
+        'asset_available': true,
+      });
+    });
+
+    test('offers the release page when the platform package is missing', () async {
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases?page=1': () => ResponseBody.fromString(
+            jsonEncode([
+              {
+                'tag_name': newer,
+                'draft': false,
+                'assets': [{'name': releaseChecksumsName}],
+              },
+            ]),
+            200,
+          ),
+        });
+
+      final release = await request.latestPreviewRelease(suffix);
+      expect(release['tag_name'], newer);
+      expect(release['asset_available'], isFalse);
     });
 
     test('skips a preview without the platform checksum', () async {
@@ -229,9 +294,14 @@ void main() {
                 '$digest  FlClash-0.9.3-preview.9.2-$suffix',
                 200,
               ),
+          '/$repository/releases/download/$older/FlClash-0.9.3-preview.9.2-$suffix': () =>
+              ResponseBody.fromString('', 302),
         });
 
-      expect(await request.latestPreviewRelease(suffix), {'tag_name': older});
+      expect(await request.latestPreviewRelease(suffix), {
+        'tag_name': older,
+        'asset_available': true,
+      });
     });
   });
 
