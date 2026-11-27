@@ -253,7 +253,6 @@ class SetupAction extends _$SetupAction {
       previousStartTime: _startTime,
     );
     _latestRunRequest = request;
-    _resumeOnRestart = false;
     _setLocalRunning(running);
     if (request.initialize) {
       globalState.needInitStatus = false;
