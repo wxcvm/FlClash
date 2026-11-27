@@ -46,6 +46,19 @@ void main() {
 
   PatchClashConfig config() => container.read(patchClashConfigProvider);
 
+  testWidgets('the requests group keeps only request settings', (tester) async {
+    await pumpGeneralView(tester);
+    final l = currentAppLocalizations;
+
+    expect(
+      find.widgetWithText(ListHeader, l.requestsAndUpdates),
+      findsOneWidget,
+    );
+    expect(find.text(l.userAgent), findsOneWidget);
+    expect(find.text(l.checkCertificate), findsOneWidget);
+    expect(find.text(l.autoCheckUpdate), findsNothing);
+  });
+
   testWidgets('lists no override until one is added', (tester) async {
     await pumpGeneralView(tester);
     final l = currentAppLocalizations;
