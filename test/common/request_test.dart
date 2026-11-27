@@ -53,7 +53,9 @@ class _PathAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     final page = options.uri.queryParameters['page'];
-    final key = page == null ? options.uri.path : '${options.uri.path}?page=$page';
+    final key = page == null
+        ? options.uri.path
+        : '${options.uri.path}?page=$page';
     return (byPath[key] ?? byPath[options.uri.path])!();
   }
 
@@ -214,8 +216,8 @@ void main() {
                 '$digest  FlClash-0.9.3-preview.10.1-$suffix',
                 200,
               ),
-          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix': () =>
-              ResponseBody.fromString('', 302),
+          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix':
+              () => ResponseBody.fromString('', 302),
         });
 
       expect(await request.latestPreviewRelease(suffix), {
@@ -230,7 +232,9 @@ void main() {
         (_) => {
           'tag_name': 'v0.9.3',
           'draft': false,
-          'assets': [{'name': releaseChecksumsName}],
+          'assets': [
+            {'name': releaseChecksumsName},
+          ],
         },
       );
       final secondPage = [
@@ -254,8 +258,8 @@ void main() {
                 '$digest  FlClash-0.9.3-preview.10.1-$suffix',
                 200,
               ),
-          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix': () =>
-              ResponseBody.fromString('', 302),
+          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix':
+              () => ResponseBody.fromString('', 302),
         });
 
       expect(await request.latestPreviewRelease(suffix), {
@@ -269,9 +273,11 @@ void main() {
       });
     });
 
-    test('offers the release page when the platform package is missing', () async {
-      final request = Request()
-        ..releaseDio.httpClientAdapter = _PathAdapter({
+    test(
+      'offers the release page when the platform package is missing',
+      () async {
+        final request = Request()
+          ..releaseDio.httpClientAdapter = _PathAdapter({
           '/repos/$repository/releases?page=1': () => ResponseBody.fromString(
             jsonEncode([
               {
@@ -287,14 +293,15 @@ void main() {
                 '$digest  FlClash-0.9.3-preview.10.1-$suffix',
                 200,
               ),
-          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix': () =>
-              ResponseBody.fromString('', 404),
+          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix':
+              () => ResponseBody.fromString('', 404),
         });
 
-      final release = await request.latestPreviewRelease(suffix);
-      expect(release['tag_name'], newer);
-      expect(release['asset_available'], isFalse);
-    });
+        final release = await request.latestPreviewRelease(suffix);
+        expect(release['tag_name'], newer);
+        expect(release['asset_available'], isFalse);
+      },
+    );
 
     test('skips a preview without the platform checksum', () async {
       final request = Request()
