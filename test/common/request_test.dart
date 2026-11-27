@@ -250,9 +250,17 @@ void main() {
       final request = Request()
         ..releaseDio.httpClientAdapter = _PathAdapter({
           '/repos/$repository/releases?page=1': () =>
-              ResponseBody.fromString(jsonEncode(firstPage), 200),
+              ResponseBody.fromString(
+                jsonEncode(firstPage),
+                200,
+                headers: {'content-type': 'application/json'},
+              ),
           '/repos/$repository/releases?page=2': () =>
-              ResponseBody.fromString(jsonEncode(secondPage), 200),
+              ResponseBody.fromString(
+                jsonEncode(secondPage),
+                200,
+                headers: {'content-type': 'application/json'},
+              ),
           '/$repository/releases/download/$newer/SHA256SUMS': () =>
               ResponseBody.fromString(
                 '$digest  FlClash-0.9.3-preview.10.1-$suffix',
@@ -289,6 +297,7 @@ void main() {
                 },
               ]),
               200,
+              headers: {'content-type': 'application/json'},
             ),
             '/$repository/releases/download/$newer/SHA256SUMS': () =>
                 ResponseBody.fromString(
