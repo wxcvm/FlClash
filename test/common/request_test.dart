@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:fl_clash/common/app_update.dart';
 import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/common/exception.dart';
 import 'package:fl_clash/common/request.dart';
