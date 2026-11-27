@@ -71,10 +71,7 @@ class _DnsQueryDetailView extends StatelessWidget {
             value: dnsQuery.rcode,
           ),
         if (dnsQuery.error.isNotEmpty)
-          DetailRow.text(
-            title: appLocalizations.error,
-            value: dnsQuery.error,
-          ),
+          DetailRow.text(title: appLocalizations.error, value: dnsQuery.error),
         if (dnsQuery.answers.isNotEmpty)
           DetailRow.text(
             title: appLocalizations.answers,
