@@ -152,8 +152,7 @@ class CommonAction extends _$CommonAction {
       final context = globalState.navigatorKey.currentContext!;
       final tag = data['tag_name'] as String;
       final suffix = selfUpdateSuffix;
-      final canInstall =
-          suffix != null && data['asset_available'] != false;
+      final canInstall = suffix != null && data['asset_available'] != false;
       final res = await dialogs.showMessage(
         title: currentAppLocalizations.discoverNewVersion,
         message: _releaseSpan(context, tag, data['body'] as String?),
