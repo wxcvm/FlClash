@@ -273,6 +273,33 @@ void main() {
     expect(tester.takeException(), null);
   });
 
+  testWidgets('about view owns the automatic update setting', (tester) async {
+    final container = _containerFor(tester, size: const Size(1400, 2000));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const TestApp(child: AboutView()),
+      ),
+    );
+    await tester.pump();
+    final l10n = AppLocalizations.current;
+
+    expect(find.widgetWithText(ListHeader, l10n.update), findsOneWidget);
+    expect(find.text(l10n.autoCheckUpdate), findsOneWidget);
+    expect(container.read(appSettingProvider).autoCheckUpdate, isTrue);
+
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(ListItem, l10n.autoCheckUpdate),
+        matching: find.byType(Switch),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(container.read(appSettingProvider).autoCheckUpdate, isFalse);
+    expect(tester.takeException(), null);
+  });
+
   testWidgets('about view shows progress while checking for updates', (
     tester,
   ) async {
