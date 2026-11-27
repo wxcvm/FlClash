@@ -684,9 +684,7 @@ List<Override> buildAppStateOverrides(AppState appState) {
     runTimeProvider.overrideWithBuild((_, _) => appState.runTime),
     providersProvider.overrideWithBuild((_, _) => appState.providers),
     localIpProvider.overrideWithBuild((_, _) => appState.localIp),
-    requestsProvider.overrideWithBuild(
-      (_, _) => ConnectionLog(maxRequestsLength).open(appState.requests.list),
-    ),
+    requestsProvider.overrideWithBuild((_, _) => appState.requests),
     versionProvider.overrideWithBuild((_, _) => appState.version),
     logsProvider.overrideWithBuild((_, _) => appState.logs),
     trafficsProvider.overrideWithBuild((_, _) => appState.traffics),
