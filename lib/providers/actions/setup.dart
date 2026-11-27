@@ -40,12 +40,12 @@ class SetupAction extends _$SetupAction {
   final _setupScheduler = SerialTaskScheduler();
   final _listenerScheduler = SerialTaskScheduler();
   _RunRequest? _latestRunRequest;
+  Future<void>? _initialRun;
+  var _restoreStatusCount = 0;
   DateTime? _startTime;
   _SetupInputs? _appliedInputs;
   var _lastPushDuration = Duration.zero;
   var _pendingForceApply = false;
-
-  bool get _isRunning => _startTime != null && _startTime!.isBeforeNow;
 
   @override
   void build() {
@@ -171,32 +171,64 @@ class SetupAction extends _$SetupAction {
   Future<DateTime?> serviceStartTime() async => service?.getRunTime();
 
   Future<void> initStatus() async {
-    if (!globalState.needInitStatus) {
-      return;
+    if (globalState.needInitStatus) {
+      await _restoreStatus();
     }
-    if (service case final android?) {
-      final status = await android.getNativeStatus();
-      if (status.ownsRuntime) {
-        globalState.needInitStatus = false;
-        adoptAndroidNativeStatus(status);
+    Future<void>? joined;
+    while (!identical(joined, _initialRun)) {
+      joined = _initialRun;
+      await joined;
+    }
+  }
+
+  Future<void> _restoreStatus() async {
+    _restoreStatusCount++;
+    try {
+      if (service case final android?) {
+        final status = await android.getNativeStatus();
+        if (_initialRun != null) {
+          return;
+        }
+        if (status.ownsRuntime) {
+          globalState.needInitStatus = false;
+          _initialRun = Future<void>.value();
+          adoptAndroidNativeStatus(status);
+          return;
+        }
+      }
+      final startTime = await serviceStartTime();
+      final running = startTime?.isBeforeNow ?? false;
+      final digest = running ? await preferences.getAppliedConfigMd5() : null;
+      if (_initialRun != null) {
         return;
       }
-    }
-    _startTime = await serviceStartTime();
-    if (_isRunning) {
-      globalState.lastConfigMd5 = await preferences.getAppliedConfigMd5();
-      await _run(true, initialize: true, resume: true);
-    } else if (ref.read(appSettingProvider).autoRun) {
-      await setRunning(true, initialize: true);
-    } else {
-      await globalState.safeRun(() => applyProfile(force: true));
+      _startTime = startTime;
+      if (running) {
+        globalState.lastConfigMd5 = digest;
+        await _run(true, initialize: true, resume: true);
+      } else if (ref.read(appSettingProvider).autoRun) {
+        await setRunning(true, initialize: true);
+      } else {
+        await globalState.safeRun(() => applyProfile(force: true));
+      }
+      globalState.needInitStatus = false;
+    } finally {
+      _restoreStatusCount--;
     }
   }
 
   Future<bool> setRunning(bool running, {bool initialize = false}) {
     if (_androidNativeOwned) {
       // Native ownership must be changed through explicit service operations.
-      return running ? Future.value(false) : service!.stopNativeCore();
+      if (running) {
+        return Future.value(false);
+      }
+      final task = service!.stopNativeCore();
+      if (_restoreStatusCount > 0) {
+        globalState.needInitStatus = false;
+        _initialRun = task.then<void>((_) {}, onError: (Object _) {});
+      }
+      return task;
     }
     if (running && nativeCoreRuntime.blocksMihomoStart) {
       return Future.error(
@@ -221,11 +253,17 @@ class SetupAction extends _$SetupAction {
       previousStartTime: _startTime,
     );
     _latestRunRequest = request;
+    _resumeOnRestart = false;
     _setLocalRunning(running);
     if (request.initialize) {
       globalState.needInitStatus = false;
     }
-    return running ? _start(request) : _stop(request);
+    final task = running ? _start(request) : _stop(request);
+    if (initialize || _initialRun != null && !ref.read(initProvider)) {
+      // The caller reports the outcome. Bootstrap waits for the transition to settle.
+      _initialRun = task.then<void>((_) {}, onError: (Object _) {});
+    }
+    return task;
   }
 
   Future<bool> _start(_RunRequest request) async {
