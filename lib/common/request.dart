@@ -236,15 +236,14 @@ class Request {
               !_containsReleaseAsset(assets, releaseChecksumsName)) {
             continue;
           }
-          final candidate = platformSuffix == null
-              ? release
-              : await _releaseWithAssetAvailability(release, platformSuffix);
-          if (candidate == null) {
-            continue;
-          }
           if (latest == null ||
               isNewerPreviewTag(tag, latest['tag_name'] as String)) {
-            latest = candidate;
+            final candidate = platformSuffix == null
+                ? release
+                : await _releaseWithAssetAvailability(release, platformSuffix);
+            if (candidate != null) {
+              latest = candidate;
+            }
           }
         }
         if (releases.length < _previewReleasePageSize) {
