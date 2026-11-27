@@ -427,7 +427,7 @@ class MitmModuleView extends ConsumerWidget {
                 ? appLocalizations.itemsCount(lines.length)
                 : appLocalizations.invalidOfCount(invalid, lines.length),
           ),
-          widget: _MitmModuleLinesView(
+          builder: (_) => _MitmModuleLinesView(
             title: title,
             lines: [for (final line in lines) (line, issues[line])],
             menuItemsOf: menuItemsOf,
@@ -667,7 +667,7 @@ class MitmModuleView extends ConsumerWidget {
                                 content.skipped.length,
                               ),
                             ),
-                            widget: _MitmModuleLinesView(
+                            builder: (_) => _MitmModuleLinesView(
                               title: appLocalizations.mitmIgnoredLines,
                               notes: true,
                               lines: [
