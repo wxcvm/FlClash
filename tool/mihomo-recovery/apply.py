@@ -179,38 +179,38 @@ func notifyDialFailure(metadata *C.Metadata, rule C.Rule, proxy C.Proxy, err err
     }
 }
 """
-tunnel_patch.write_text(text, encoding="utf-8", newline="\\n")
+tunnel_patch.write_text(text, encoding="utf-8", newline="\n")
 
 tunnel_file = root / "tunnel/tunnel.go"
 text = tunnel_file.read_text()
 for old, new in [
     (
-        """\\t\\t\\tif err != nil {
-\\t\\t\\t\\treturn nil, nil, err
-\\t\\t\\t}
-\\t\\t\\tlogMetadata(metadata, rule, rawPc)""",
-        """\\t\\t\\tif err != nil {
-\\t\\t\\t\\tnotifyDialFailure(metadata, rule, proxy, err)
-\\t\\t\\t\\treturn nil, nil, err
-\\t\\t\\t}
-\\t\\t\\tlogMetadata(metadata, rule, rawPc)""",
+        """\t\t\tif err != nil {
+\t\t\t\treturn nil, nil, err
+\t\t\t}
+\t\t\tlogMetadata(metadata, rule, rawPc)""",
+        """\t\t\tif err != nil {
+\t\t\t\tnotifyDialFailure(metadata, rule, proxy, err)
+\t\t\t\treturn nil, nil, err
+\t\t\t}
+\t\t\tlogMetadata(metadata, rule, rawPc)""",
     ),
     (
-        """\\tif err != nil {
-\\t\\treturn
-\\t}
-\\tlogMetadata(metadata, rule, remoteConn)""",
-        """\\tif err != nil {
-\\t\\tnotifyDialFailure(metadata, rule, proxy, err)
-\\t\\treturn
-\\t}
-\\tlogMetadata(metadata, rule, remoteConn)""",
+        """\tif err != nil {
+\t\treturn
+\t}
+\tlogMetadata(metadata, rule, remoteConn)""",
+        """\tif err != nil {
+\t\tnotifyDialFailure(metadata, rule, proxy, err)
+\t\treturn
+\t}
+\tlogMetadata(metadata, rule, remoteConn)""",
     ),
 ]:
     if text.count(old) != 1:
         raise SystemExit("Mihomo dial-failure source changed")
     text = text.replace(old, new, 1)
-tunnel_file.write_text(text, encoding="utf-8", newline="\\n")
+tunnel_file.write_text(text, encoding="utf-8", newline="\n")
 
 shutil.copyfile(here / "flclash_dial_failure_test.go", root / "tunnel/flclash_dial_failure_test.go")
 
