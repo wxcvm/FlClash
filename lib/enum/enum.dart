@@ -37,6 +37,27 @@ const desktopPlatforms = [
 
 enum GroupName { GLOBAL }
 
+enum ConnectionFailureKind {
+  timeout,
+  refused,
+  unreachable,
+  dns,
+  handshake,
+  other,
+}
+
+enum ConnectionEndReason {
+  local,
+  remote,
+  finished,
+  timeout,
+  reset,
+  core,
+  error,
+  failed,
+}
+
+
 enum GroupType {
   @JsonValue('select')
   Selector('select'),
@@ -119,7 +140,7 @@ enum ViewMode { mobile, laptop, desktop }
 
 enum LogLevel { debug, info, warning, error, silent }
 
-enum RecordTone { neutral, warning, error }
+enum RecordTone { neutral, success, warning, error }
 
 enum RecordFacetKind {
   network,
@@ -140,6 +161,7 @@ extension RecordToneExt on RecordTone {
   Color? accentColor(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return switch (this) {
+      RecordTone.success => colorScheme.success,
       RecordTone.warning => colorScheme.warning,
       RecordTone.error => colorScheme.error,
       RecordTone.neutral => null,
@@ -150,6 +172,7 @@ extension RecordToneExt on RecordTone {
     final colorScheme = Theme.of(context).colorScheme;
     return switch (this) {
       RecordTone.neutral => colorScheme.onSurfaceVariant,
+      RecordTone.success => colorScheme.onSuccessContainer,
       RecordTone.warning => colorScheme.onWarningContainer,
       RecordTone.error => colorScheme.onErrorContainer,
     };
@@ -159,6 +182,7 @@ extension RecordToneExt on RecordTone {
     final colorScheme = Theme.of(context).colorScheme;
     return switch (this) {
       RecordTone.neutral => context.raisedSurfaceLevel.colorOf(colorScheme),
+      RecordTone.success => colorScheme.successContainer,
       RecordTone.warning => colorScheme.warningContainer,
       RecordTone.error => colorScheme.errorContainer,
     };

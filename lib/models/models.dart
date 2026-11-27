@@ -2,6 +2,8 @@ export 'app.dart';
 export 'changelog.dart';
 export 'clash_config.dart';
 export 'common.dart';
+export 'connection_log.dart';
+export 'tracker_speed_sampler.dart';
 export 'config.dart';
 export 'core.dart';
 export 'ip_quality.dart';

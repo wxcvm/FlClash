@@ -324,12 +324,17 @@ abstract class CoreHandlerInterface {
 
   Future<void> resetTraffic() => _commandUnobserved(CoreMethod.trafficReset);
 
-  Future<List<TrackerInfo>> getConnections() {
+  /// Runs [present] where the list is decoded, possibly in another isolate.
+  Future<R> getConnectionsWith<R>(R Function(List<TrackerInfo>) present) {
     return _query(
       CoreMethod.connectionList,
-      (data) => data is List<TrackerInfo> ? data : trackerInfosOf(data),
+      (data) => data as R,
+      model: _presentConnections(present),
     );
   }
+
+  Future<List<TrackerInfo>> getConnections() =>
+      getConnectionsWith((connections) => connections);
 
   Future<int> getConnectionCount() {
     return _query(CoreMethod.connectionCount, (data) => (data as num).toInt());
@@ -511,3 +516,8 @@ Map<int, String> _issues(Object data) => {
     if (item case {'index': final num index, 'message': final String message})
       index.toInt(): message,
 };
+
+
+CoreResultModel _presentConnections<R>(R Function(List<TrackerInfo>) present) {
+  return (result) => present(trackerInfosOf(result));
+}
