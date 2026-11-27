@@ -34,20 +34,22 @@ void main() {
     List<String> answers = const ['1.1.1.1'],
     String error = '',
   }) {
-    container.read(dnsQueriesProvider.notifier).addQuery(
-      DnsQuery(
-        domain: domain,
-        type: 'A',
-        initiator: DnsQueryInitiator.app,
-        upstream: 'https://dns.example/dns-query',
-        cached: false,
-        answers: answers,
-        rcode: rcode,
-        error: error,
-        delay: 12,
-        time: DateTime.utc(2026, 11, 27, 10),
-      ),
-    );
+    container
+        .read(dnsQueriesProvider.notifier)
+        .addQuery(
+          DnsQuery(
+            domain: domain,
+            type: 'A',
+            initiator: DnsQueryInitiator.app,
+            upstream: 'https://dns.example/dns-query',
+            cached: false,
+            answers: answers,
+            rcode: rcode,
+            error: error,
+            delay: 12,
+            time: DateTime.utc(2026, 11, 27, 10),
+          ),
+        );
   }
 
   Future<void> pumpRequests(WidgetTester tester) async {
