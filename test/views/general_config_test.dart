@@ -50,10 +50,7 @@ void main() {
     await pumpGeneralView(tester);
     final l = currentAppLocalizations;
 
-    expect(
-      find.widgetWithText(ListHeader, l.requests),
-      findsOneWidget,
-    );
+    expect(find.widgetWithText(ListHeader, l.requests), findsOneWidget);
     expect(find.text(l.userAgent), findsOneWidget);
     expect(find.text(l.checkCertificate), findsOneWidget);
     expect(find.text(l.autoCheckUpdate), findsNothing);
