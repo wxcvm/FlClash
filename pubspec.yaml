@@ -4,6 +4,7 @@ publish_to: 'none'
 version: 0.9.3+2026110401
 environment:
   sdk: '>=3.12.0 <4.0.0'
+  flutter: '>=3.50.0'
 
 hooks:
   user_defines:
