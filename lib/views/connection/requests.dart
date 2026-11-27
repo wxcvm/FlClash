@@ -16,6 +16,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'topology.dart';
 import 'connection_poller.dart';
 
+enum _RequestStatus { all, active, failed }
+
 class RequestsView extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
   final RequestFeed? initialFeed;
@@ -260,7 +262,7 @@ class _RequestsViewState extends ConsumerState<RequestsView>
   }
 }
 
-class _RecentFeed extends StatefulWidget {
+class _RecentFeed extends ConsumerStatefulWidget {
   final TrackerInfoListController listController;
   final RecordFilterController<TrackerInfo> filters;
   final ScrollController? scrollController;
@@ -274,10 +276,11 @@ class _RecentFeed extends StatefulWidget {
   });
 
   @override
-  State<_RecentFeed> createState() => _RecentFeedState();
+  ConsumerState<_RecentFeed> createState() => _RecentFeedState();
 }
 
-class _RecentFeedState extends State<_RecentFeed> {
+class _RecentFeedState extends ConsumerState<_RecentFeed> {
+  var _status = _RequestStatus.all;
   late final ScrollController _scrollController;
   late final _physics = FollowEndScrollPhysics(
     isFollowing: () => widget.listController.value.autoScrollToEnd,
@@ -310,24 +313,56 @@ class _RecentFeedState extends State<_RecentFeed> {
   @override
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
-    return ValueListenableBuilder<TrackerInfosState>(
-      valueListenable: widget.listController,
-      builder: (context, state, _) {
-        final requests = widget.filters.apply(state.list);
-        return NullStatusSwitcher(
-          isEmpty: requests.isEmpty,
-          isSearching: state.isSearching || widget.filters.isFiltering,
-          nullStatus: NullStatus(
-            label: appLocalizations.nullTip(appLocalizations.requests),
-            illustration: NullStatusIllustration.requests,
+    final counts = ref.watch(
+      requestsProvider.select(
+        (log) => (
+          total: log.length,
+          active: log.activeCount,
+          failed: log.failedCount,
+        ),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: SegmentedControl<_RequestStatus>(
+            segments: [
+              (_RequestStatus.all, 'All ${counts.total}'),
+              (_RequestStatus.active, '${appLocalizations.running} ${counts.active}'),
+              (_RequestStatus.failed, 'Failed ${counts.failed}'),
+            ],
+            value: _status,
+            onChanged: (value) => setState(() => _status = value),
           ),
-          child: RecordTableFrame<TrackerInfo>(
-            tableId: 'requests',
-            items: requests,
-            reverse: true,
-            columnsOf: (width) =>
-                trackerInfoColumns(context, width: width, isLive: false),
-            builder: (context, table, requests) {
+        ),
+        Expanded(
+          child: ValueListenableBuilder<TrackerInfosState>(
+            valueListenable: widget.listController,
+            builder: (context, state, _) {
+              final candidates = switch (_status) {
+                _RequestStatus.all => state.list,
+                _RequestStatus.active =>
+                  state.list.where((request) => request.isActive).toList(),
+                _RequestStatus.failed =>
+                  state.list.where((request) => request.failure != null).toList(),
+              };
+              final requests = widget.filters.apply(candidates);
+              return NullStatusSwitcher(
+                isEmpty: requests.isEmpty,
+                isSearching: state.isSearching || widget.filters.isFiltering,
+                nullStatus: NullStatus(
+                  label: appLocalizations.nullTip(appLocalizations.requests),
+                  illustration: NullStatusIllustration.requests,
+                ),
+                child: RecordTableFrame<TrackerInfo>(
+                  tableId: 'requests',
+                  items: requests,
+                  reverse: true,
+                  columnsOf: (width) =>
+                      trackerInfoColumns(context, width: width, isLive: false),
+                  builder: (context, table, requests) {
               final padding = EdgeInsets.only(
                 top: context.contentTopPadding,
                 bottom: 16 + context.bottomInset,
@@ -385,9 +420,12 @@ class _RecentFeedState extends State<_RecentFeed> {
                 ),
               );
             },
+                  ),
+                );
+            },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 }
