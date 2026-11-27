@@ -166,7 +166,7 @@ class CommonAction extends _$CommonAction {
         if (!canInstall) {
           _openReleasePage(tag);
         } else {
-          unawaited(_downloadUpdate(tag, releaseAssetName(tag, suffix)));
+          unawaited(_downloadUpdate(tag, releaseAssetName(tag, suffix!)));
         }
       } else if (!isUser && res == false) {
         ref
