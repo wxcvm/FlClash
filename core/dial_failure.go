@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/netip"
 	"os"
 	"time"
 
@@ -37,8 +36,6 @@ type FailedRequest struct {
 	Chains      []string       `json:"chains"`
 	Rule        string         `json:"rule"`
 	RulePayload string         `json:"rulePayload"`
-	RuleIndex   *int           `json:"ruleIndex,omitempty"`
-	DnsQueries  []uint64       `json:"dnsQueries,omitempty"`
 	ClosedAt    time.Time      `json:"closedAt"`
 	Failure     RequestFailure `json:"failure"`
 }
@@ -51,13 +48,10 @@ func newFailedRequest(metadata *C.Metadata, rule C.Rule, proxy C.Proxy, err erro
 		Chains:   chainsOf(proxy, metadata),
 		ClosedAt: at,
 		Failure:  RequestFailure{Kind: failureKindOf(err), Message: err.Error()},
-		// A failed dial names no address it dialed, so a DIRECT lookup is not linked.
-		DnsQueries: currentDnsTrail.linkedQueries(metadata, at, netip.Addr{}),
 	}
 	if rule != nil {
 		request.Rule = rule.RuleType().String()
 		request.RulePayload = rule.Payload()
-		request.RuleIndex = currentRuleTable.indexOfRule(rule, metadata)
 	}
 	return request
 }
