@@ -149,10 +149,7 @@ class DnsQueryItem extends StatelessWidget {
                   _filter(context, RecordFacetKind.rcode, query.rcode),
             ),
         ],
-        trailing: Text(
-          '\${query.delay} ms',
-          style: styles.secondary.toTabular,
-        ),
+        trailing: Text('${query.delay} ms', style: styles.secondary.toTabular),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
