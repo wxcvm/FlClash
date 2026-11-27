@@ -219,10 +219,7 @@ class Request {
       for (var page = 1; page <= _previewReleasePageLimit; page++) {
         final response = await releaseDio.get<List<dynamic>>(
           'https://api.github.com/repos/$repository/releases',
-          queryParameters: {
-            'per_page': _previewReleasePageSize,
-            'page': page,
-          },
+          queryParameters: {'per_page': _previewReleasePageSize, 'page': page},
           options: Options(responseType: ResponseType.json),
         );
         final releases = response.data ?? const [];
