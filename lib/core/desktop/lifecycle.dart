@@ -140,6 +140,8 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
   late final StreamSubscription<DesktopTransportEvent> _transportSubscription;
   DesktopCoreState _state = const DesktopCoreIdle();
   DesktopCoreSession? _session;
+  int _sessionLaunchRevision = 0;
+  bool _bindTimedOut = false;
   _SessionDisconnect? _sessionDisconnect;
   Future<void>? _worker;
   Future<void>? _unexpectedDisconnectOperation;
@@ -264,7 +266,9 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
       try {
         final achievement = await _reconcile(intent);
         final settled = _desired;
-        if (!_satisfies(achievement, settled.target)) {
+        if (!_satisfies(achievement, settled.target) ||
+            (settled.target == _LifecycleTarget.restarted &&
+                _sessionLaunchRevision < settled.revision)) {
           continue;
         }
         _completeCommands(settled);
@@ -399,6 +403,7 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
       if (!await _ensureTransportReady()) {
         return false;
       }
+      final launchRevision = _revision;
       final launcher = await launcherResolver.resolve();
       if (!_wantsRunning) {
         return false;
@@ -450,6 +455,7 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
         connectionGeneration: connected.generation,
       );
       _session = session;
+      _sessionLaunchRevision = launchRevision;
       _sessionDisconnect = _SessionDisconnect(session);
       leaseReleased = true;
       _publish(DesktopCoreRunning(session));
@@ -479,17 +485,25 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
   }
 
   Future<bool> _ensureTransportReady() async {
-    if (_transport.state == DesktopTransportState.failed ||
+    if (_bindTimedOut ||
+        _transport.state == DesktopTransportState.failed ||
         _transport.state == DesktopTransportState.closed ||
         (_transport.state == DesktopTransportState.connected &&
             _session == null)) {
       await _transport.replace(transportFactory());
+      _bindTimedOut = false;
     }
     if (_transport.state == DesktopTransportState.ready ||
         _transport.state == DesktopTransportState.connected) {
       return true;
     }
-    final opening = _transport.open().timeout(timeouts.ready);
+    final opening = _transport.open().timeout(
+      timeouts.ready,
+      onTimeout: () {
+        _bindTimedOut = _transport.state == DesktopTransportState.starting;
+        throw TimeoutException('Core transport bind timed out', timeouts.ready);
+      },
+    );
     while (_wantsRunning) {
       final changed = _intentChanged.future;
       final result = await Future.any<Object?>([
