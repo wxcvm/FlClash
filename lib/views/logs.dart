@@ -114,6 +114,9 @@ class _LogsViewState extends ConsumerState<LogsView>
 
   @override
   Widget build(BuildContext context) {
+    final logLevel = ref.watch(
+      patchClashConfigProvider.select((state) => state.logLevel),
+    );
     final body = RecordFilterScope(
       onFilter: _filters.add,
       child: _buildBody(context),
@@ -126,7 +129,24 @@ class _LogsViewState extends ConsumerState<LogsView>
         return Scaffold(
           iconActions: _buildActions(),
           keywords: _filters.keywordsOf(pinned: pinned),
-          menuItems: _filters.menuItems(context, pinned: pinned),
+          menuItems: [
+            ..._filters.menuItems(context, pinned: pinned),
+            PopupMenuItem(
+              glyph: AppGlyphs.sliders,
+              label: context.appLocalizations.logLevel,
+              subtitle: logLevel.name,
+              subItems: [
+                for (final option in LogLevel.values)
+                  PopupMenuItem(
+                    label: option.name,
+                    checked: option == logLevel,
+                    onPressed: () => ref
+                        .read(patchClashConfigProvider.notifier)
+                        .update((state) => state.copyWith(logLevel: option)),
+                  ),
+              ],
+            ),
+          ],
           searchState: AppBarSearchState(onSearch: _listController.search),
           title: context.appLocalizations.logs,
           body: body!,

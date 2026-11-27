@@ -2,18 +2,21 @@ import 'dart:math';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
+import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/views/views.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/glyph_finders.dart';
+import '../helpers/host_scaffold.dart';
 import '../helpers/scrollbar.dart';
 import '../helpers/test_app.dart';
-import '../helpers/host_scaffold.dart';
 
 void main() {
   const logCount = 200;
@@ -143,6 +146,31 @@ void main() {
     final body = tester.getRect(find.byType(SelectableText));
     expect(header.top - item.top, 10);
     expect(item.bottom - body.bottom, 12);
+  });
+
+  testWidgets('logs menu can change the core log level', (tester) async {
+    await pumpLogsView(tester);
+    final initial = container.read(patchClashConfigProvider).logLevel;
+    final next = LogLevel.values.firstWhere((value) => value != initial);
+    final l10n = AppLocalizations.current;
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byGlyph(AppGlyphs.more),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Finder inMenu(Finder finder) =>
+        find.descendant(of: find.byType(PopupMenu), matching: finder);
+    await tester.tap(inMenu(find.text(l10n.logLevel)));
+    await tester.pumpAndSettle();
+    await tester.tap(inMenu(find.text(next.name)));
+    await tester.pumpAndSettle();
+
+    expect(container.read(patchClashConfigProvider).logLevel, next);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('tapping the level reports it for filtering', (tester) async {
