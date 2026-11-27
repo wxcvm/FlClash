@@ -73,6 +73,9 @@ class _DnsQueriesFeedState extends ConsumerState<DnsQueriesFeed> {
       child: FloatingScrollbar(
         controller: _scrollController,
         hintBuilder: (fraction) {
+          if (newestFirst.isEmpty) {
+            return '';
+          }
           final index = (fraction * (newestFirst.length - 1)).round();
           return newestFirst[index].time.showFull;
         },
