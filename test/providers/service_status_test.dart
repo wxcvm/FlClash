@@ -308,6 +308,7 @@ void main() {
       await tester.pump(probeThrottleDuration);
       expect(sweeps, hasLength(2));
       await tester.pump(probeThrottleDuration);
+      notifierOf(scope).unwatch(ServiceTarget.youtube);
     },
   );
 
