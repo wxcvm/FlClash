@@ -465,6 +465,50 @@ void main() {
     expect(probe.calls, hasLength(3));
   });
 
+  test(
+    'a failed probe is rechecked when the route version changes behind the same exit',
+    () async {
+      final container = build();
+      final probe = container.read(_probeProvider.notifier)
+        ..settle = Duration.zero;
+      probe.watch('a');
+      await pumpEventQueue();
+      probe.answer({
+        'a': const ProbeAnswer(
+          value: 'down',
+          coreEpoch: 1,
+          routeVersion: 1,
+          hits: [RouteHit(host: 'a.example:443', exit: 'a.example:443')],
+        ),
+      });
+      await pumpEventQueue();
+      expect(
+        container.read(_probeProvider).entryOf('a').phase,
+        ProbePhase.failed,
+      );
+
+      moveRoute(container, 2);
+      await pumpEventQueue();
+      expect(probe.checks, hasLength(1));
+      expect(probe.calls, ['a', 'a']);
+      expect(container.read(_probeProvider).isLoading('a'), isTrue);
+
+      probe.answer({
+        'a': const ProbeAnswer(
+          value: 'down',
+          coreEpoch: 1,
+          routeVersion: 2,
+          hits: [RouteHit(host: 'a.example:443', exit: 'a.example:443')],
+        ),
+      });
+      await pumpEventQueue();
+      expect(
+        container.read(_probeProvider).entryOf('a').phase,
+        ProbePhase.failed,
+      );
+    },
+  );
+
   test('coming back to a failed target asks again', () async {
     final container = build();
     final probe = container.read(_probeProvider.notifier);

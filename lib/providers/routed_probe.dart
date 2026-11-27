@@ -88,6 +88,8 @@ mixin RoutedProbe<K, V>
   final Set<K> _unverified = {};
   final Map<K, ProbeEntry<V>> _landed = {};
   final Map<K, Timer> _cooling = {};
+  final Map<K, int> _failureFactors = {};
+  final Map<K, Timer> _failureRetries = {};
   bool _scheduled = false;
   bool _verifying = false;
   bool _reverify = false;
@@ -102,6 +104,10 @@ mixin RoutedProbe<K, V>
 
   @protected
   bool isFailure(V value) => false;
+
+  /// Whether watched failures should be rechecked with capped backoff.
+  @protected
+  bool get recheckFailures => false;
 
   @protected
   Duration get settleDuration => probeSettleDuration;
@@ -122,14 +128,28 @@ mixin RoutedProbe<K, V>
     ref.onDispose(() {
       _settle?.cancel();
       _settle = null;
-      for (final timer in _cooling.values) {
+      for (final timer in [..._cooling.values, ..._failureRetries.values]) {
         timer.cancel();
       }
       _cooling.clear();
+      _failureRetries.clear();
+      _failureFactors.clear();
     });
     _route = ref.read(routeTrackerProvider);
     ref.listen(routeTrackerProvider, _onRoute);
     ref.listen(appVisibleProvider, (_, visible) {
+      if (recheckFailures) {
+        for (final target in _failureFactors.keys.toList()) {
+          if (!visible) {
+            _failureRetries.remove(target)?.cancel();
+          } else if (!_inFlight.containsKey(target) &&
+              !_due.containsKey(target) &&
+              !_landed.containsKey(target) &&
+              _entryOf(target).phase == ProbePhase.failed) {
+            _armFailureRetry(target, _failureFactors[target]!);
+          }
+        }
+      }
       if (!visible) {
         return;
       }
@@ -168,6 +188,7 @@ mixin RoutedProbe<K, V>
       return;
     }
     _watchers.remove(target);
+    _clearFailureRetry(target);
     final due = _due[target];
     if (due != null && !due.forced) {
       _due.remove(target);
@@ -189,6 +210,7 @@ mixin RoutedProbe<K, V>
         !_entryOf(target).isLoading) {
       return;
     }
+    _clearFailureRetry(target);
     state = RoutedProbeState(Map.of(state.entries)..remove(target));
   }
 
@@ -197,6 +219,7 @@ mixin RoutedProbe<K, V>
   /// the answer lands in the cache and stays until the route moves.
   void refresh(Iterable<K> targets) {
     for (final target in targets) {
+      _clearFailureRetry(target);
       _mark(target, keepValue: true, forced: true);
     }
   }
@@ -340,8 +363,17 @@ mixin RoutedProbe<K, V>
         value: value,
         stamp: stamp,
       );
+      _clearFailureRetry(other);
     }
     state = RoutedProbeState(entries);
+    final targetEntry = entries[target];
+    if (targetEntry?.phase == ProbePhase.failed &&
+        targetEntry?.stamp != null &&
+        current.isFresh(targetEntry!.stamp!)) {
+      _recordFailure(target);
+    } else if (targetEntry?.phase == ProbePhase.fresh) {
+      _clearFailureRetry(target);
+    }
     if (current.isBehind(stamp)) {
       ref.read(routeTrackerProvider.notifier).resync();
     }
@@ -351,6 +383,43 @@ mixin RoutedProbe<K, V>
     if (_landed.isNotEmpty) {
       unawaited(_verify());
     }
+  }
+
+  void _recordFailure(K target) {
+    if (!recheckFailures || !_watchers.containsKey(target)) {
+      return;
+    }
+    final previous = _failureFactors[target] ?? 0;
+    final factor = previous == 0 ? 1 : min(12, previous * 2);
+    _failureFactors[target] = factor;
+    _armFailureRetry(target, factor);
+  }
+
+  void _armFailureRetry(K target, int factor) {
+    _failureRetries.remove(target)?.cancel();
+    if (!ref.mounted ||
+        !recheckFailures ||
+        !_watchers.containsKey(target) ||
+        !ref.read(appVisibleProvider) ||
+        _inFlight.containsKey(target) ||
+        _due.containsKey(target) ||
+        _entryOf(target).phase != ProbePhase.failed) {
+      return;
+    }
+    _failureRetries[target] = Timer(throttleDuration * factor, () {
+      _failureRetries.remove(target);
+      if (!ref.mounted ||
+          !_watchers.containsKey(target) ||
+          _entryOf(target).phase != ProbePhase.failed) {
+        return;
+      }
+      _mark(target, keepValue: true);
+    });
+  }
+
+  void _clearFailureRetry(K target) {
+    _failureRetries.remove(target)?.cancel();
+    _failureFactors.remove(target);
   }
 
   ProbeEntry<V> _settledEntry(V? value, RouteStamp stamp) {
@@ -400,6 +469,7 @@ mixin RoutedProbe<K, V>
       } else if (resumed &&
           entry.phase == ProbePhase.failed &&
           _watchers.containsKey(target)) {
+        _failureRetries.remove(target)?.cancel();
         _due[target] = (
           keepValue: false,
           forced: false,
@@ -407,6 +477,7 @@ mixin RoutedProbe<K, V>
           settle: false,
         );
       } else if (stamp.routeVersion != next.routeVersion) {
+        _failureRetries.remove(target)?.cancel();
         _unverified.add(target);
       }
     }
@@ -484,6 +555,9 @@ mixin RoutedProbe<K, V>
       }
       final held =
           check != null &&
+          (entry.phase != ProbePhase.failed ||
+              stamp.routeVersion ==
+                  max(check.routeVersion, current.routeVersion)) &&
           check.coreEpoch == stamp.coreEpoch &&
           index < check.held.length &&
           check.held[index];
@@ -507,6 +581,16 @@ mixin RoutedProbe<K, V>
     if (!mapEquals(entries, state.entries)) {
       state = RoutedProbeState(entries);
     }
+    for (final target in stamps.keys) {
+      final entry = entries[target];
+      if (entry?.phase == ProbePhase.failed &&
+          entry?.stamp != null &&
+          current.isFresh(entry!.stamp!)) {
+        _recordFailure(target);
+      } else if (entry?.phase == ProbePhase.fresh) {
+        _clearFailureRetry(target);
+      }
+    }
     if (check != null &&
         (check.coreEpoch > current.coreEpoch ||
             check.routeVersion > current.routeVersion)) {
@@ -525,6 +609,7 @@ mixin RoutedProbe<K, V>
   /// Nothing made before a move stands, so the question waits for the
   /// route to settle and then overtakes any probe still out.
   void _invalidate(K target, Map<K, ProbeEntry<V>> entries) {
+    _clearFailureRetry(target);
     _landed.remove(target);
     _unverified.remove(target);
     if (_watchers.containsKey(target)) {
@@ -543,6 +628,7 @@ mixin RoutedProbe<K, V>
   }
 
   void _reprobe(K target, Map<K, ProbeEntry<V>> entries) {
+    _clearFailureRetry(target);
     if (_watchers.containsKey(target)) {
       entries[target] = ProbeEntry(phase: ProbePhase.probing);
       _due[target] = (
