@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-files-path name="download_updates" path="Download/update/" />
+    <!-- path_provider returns the app-specific lowercase downloads directory. -->
+    <external-files-path name="flutter_download_updates" path="downloads/update/" />
     <files-path name="internal_updates" path="update/" />
 </paths>

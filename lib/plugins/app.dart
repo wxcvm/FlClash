@@ -232,8 +232,19 @@ class App {
       false;
 
   /// An accepted update ends this process before its status can arrive.
-  Future<int?> installPackage(String path) {
-    return methodChannel.invokeMethod<int>('installPackage', {'path': path});
+  Future<int?> installPackage(String path) async {
+    final outcome = await methodChannel.invokeMapMethod<String, dynamic>(
+      'installPackage',
+      {'path': path},
+    );
+    final status = outcome?['status'] as int?;
+    if (status != null && packageInstallFailed(status)) {
+      throw PlatformException(
+        code: 'PACKAGE_INSTALL_$status',
+        message: outcome?['message'] as String?,
+      );
+    }
+    return status;
   }
 
   Future<bool?> openAppSettings() async {

@@ -4,6 +4,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:yaml/yaml.dart';
 
 void main() {
+  test(
+    'Android FileProvider exposes only the supported update directories',
+    () {
+      final config = File(
+        'android/app/src/main/res/xml/update_file_paths.xml',
+      ).readAsStringSync();
+      final paths = RegExp(
+        r'<(?:external-files-path|files-path) name="[^"]+" path="([^"]+)"',
+      ).allMatches(config).map((match) => match[1]).toList();
+
+      expect(
+        paths,
+        unorderedEquals(['Download/update/', 'downloads/update/', 'update/']),
+      );
+    },
+  );
+
   group('Linux packaging teardown', () {
     for (final format in ['deb', 'rpm']) {
       test('$format removes the Helper unit only on a real uninstall', () {

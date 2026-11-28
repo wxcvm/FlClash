@@ -29,6 +29,45 @@ void main() {
     expect(calls.single.arguments, {'path': '/updates/FlClash.apk'});
   });
 
+  test('APK session failure preserves Android status and message', () async {
+    final plugin = App();
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(plugin.methodChannel, (_) async {
+      return {'status': 5, 'message': 'INSTALL_FAILED_CONFLICTING_PROVIDER'};
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(plugin.methodChannel, null),
+    );
+
+    await expectLater(
+      plugin.installPackage('/updates/FlClash.apk'),
+      throwsA(
+        isA<PlatformException>()
+            .having((e) => e.code, 'code', 'PACKAGE_INSTALL_5')
+            .having(
+              (e) => e.message,
+              'message',
+              'INSTALL_FAILED_CONFLICTING_PROVIDER',
+            ),
+      ),
+    );
+  });
+
+  test('APK session cancellation is not an installation error', () async {
+    final plugin = App();
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(plugin.methodChannel, (_) async {
+      return {'status': 3, 'message': 'User cancelled'};
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(plugin.methodChannel, null),
+    );
+
+    expect(await plugin.installPackage('/updates/FlClash.apk'), 3);
+  });
+
   group('selfUpdateAssetSuffix', () {
     test('names the APK built for the running ABI', () {
       expect(

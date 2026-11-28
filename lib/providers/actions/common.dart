@@ -5,9 +5,21 @@ class CommonAction extends _$CommonAction {
   CoreController get _core => ref.read(coreHandlerProvider);
   bool _isUpdatingTraffic = false;
   CancelToken? _updateCancelToken;
+  bool _installingUpdate = false;
+  bool _awaitingExternalInstaller = false;
 
   @override
-  void build() {}
+  void build() {
+    final observer = _UpdateInstallerLifecycleObserver(() {
+      if (!_awaitingExternalInstaller) {
+        return;
+      }
+      _awaitingExternalInstaller = false;
+      commonPrint.log('Update installer: returned to FlClash');
+    });
+    WidgetsBinding.instance.addObserver(observer);
+    ref.onDispose(() => WidgetsBinding.instance.removeObserver(observer));
+  }
 
   void toggleRunning() {
     final running = !ref.read(isStartProvider);
@@ -266,7 +278,11 @@ class CommonAction extends _$CommonAction {
   }
 
   Future<void> discardUpdate() async {
-    if (ref.read(updateDownloadStateProvider) is! UpdateReady) return;
+    if (_installingUpdate ||
+        _awaitingExternalInstaller ||
+        ref.read(updateDownloadStateProvider) is! UpdateReady) {
+      return;
+    }
     ref.read(updateDownloadStateProvider.notifier).value = null;
     await clearUpdateDownloads();
   }
@@ -276,28 +292,51 @@ class CommonAction extends _$CommonAction {
     if (download is! UpdateReady) return;
     if (system.isAndroid) {
       final installer = app;
-      if (installer == null) return;
+      if (installer == null ||
+          _installingUpdate ||
+          _awaitingExternalInstaller) {
+        return;
+      }
+      _installingUpdate = true;
       try {
+        commonPrint.log('Update installer: opening ${download.tag}');
+        // Keep the verified APK protected until Android's installer activity
+        // returns control to FlClash.
+        _awaitingExternalInstaller = true;
         if (await installer.openPackageInstaller(download.path)) {
+          commonPrint.log('Update installer: handed off to Android activity');
           // The external activity owns the install flow and may read the
           // content URI later. Keep the verified APK and the retry entry.
           return;
         }
-        ref.read(updateDownloadStateProvider.notifier).value = null;
+        _awaitingExternalInstaller = false;
+        commonPrint.log('Update installer: using Android package session');
         final status = await installer.installPackage(download.path);
-        await clearUpdateDownloads();
-        if (status != null && packageInstallFailed(status)) {
-          await _showUpdateFailure(currentAppLocalizations.updateInstallFailed);
+        commonPrint.log('Update installer: session status $status');
+        // Cancellation or failure must leave the verified APK available.
+        if (status == 0) {
+          await clearUpdateDownloads();
+          if (ref.mounted) {
+            ref.read(updateDownloadStateProvider.notifier).value = null;
+          }
         }
       } on PlatformException catch (error) {
+        _awaitingExternalInstaller = false;
+        final detail = compactError(error);
         commonPrint.log(
-          'Update installer failed: ${compactError(error)}',
+          'Update installer failed: $detail',
           logLevel: LogLevel.warning,
         );
         if (ref.mounted) {
-          ref.read(updateDownloadStateProvider.notifier).value = download;
-          await _showUpdateFailure(currentAppLocalizations.updateInstallFailed);
+          await _showUpdateFailure(
+            '${currentAppLocalizations.updateInstallFailed}\n\n$detail',
+          );
         }
+      } catch (_) {
+        _awaitingExternalInstaller = false;
+        rethrow;
+      } finally {
+        _installingUpdate = false;
       }
       return;
     }
@@ -317,6 +356,19 @@ class CommonAction extends _$CommonAction {
     );
     if (res == true) {
       _openReleasePage();
+    }
+  }
+}
+
+class _UpdateInstallerLifecycleObserver extends WidgetsBindingObserver {
+  _UpdateInstallerLifecycleObserver(this.onResumed);
+
+  final VoidCallback onResumed;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResumed();
     }
   }
 }

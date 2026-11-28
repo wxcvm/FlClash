@@ -90,7 +90,7 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
 
     private val requestLocalNetworkCallback = PendingCallback<Boolean>()
 
-    private val installPackageCallback = PendingCallback<Int>()
+    private val installPackageCallback = PendingCallback<Pair<Int, String?>>()
 
     private var isRequestingNotificationPermission = false
 
@@ -137,11 +137,11 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
                 confirmInstall(intent)
                 return
             }
+            val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
             if (status != PackageInstaller.STATUS_SUCCESS) {
-                val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
                 GlobalState.log("Package install ended with $status: $message")
             }
-            installPackageCallback.resolve(status)
+            installPackageCallback.resolve(status to message)
         }
     }
 
@@ -327,7 +327,9 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
                 if (path == null) {
                     result.error("INVALID_ARGUMENT", "installPackage needs a path", null)
                 } else {
-                    installPackage(File(path)) { status -> result.success(status) }
+                    installPackage(File(path)) { (status, message) ->
+                        result.success(mapOf("status" to status, "message" to message))
+                    }
                 }
             }
 
@@ -490,17 +492,17 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
         }
     }
 
-    private fun installPackage(apk: File, callback: (Int) -> Unit) {
+    private fun installPackage(apk: File, callback: (Pair<Int, String?>) -> Unit) {
         installPackageCallback.replace(
             callback,
-            supersededValue = PackageInstaller.STATUS_FAILURE_ABORTED,
+            supersededValue = PackageInstaller.STATUS_FAILURE_ABORTED to null,
         )
         scope.launch(Dispatchers.IO) {
             try {
                 commitInstallSession(apk)
             } catch (error: Exception) {
                 GlobalState.log("Package install failed: $error")
-                installPackageCallback.resolve(PackageInstaller.STATUS_FAILURE)
+                installPackageCallback.resolve(PackageInstaller.STATUS_FAILURE to error.toString())
             }
         }
     }
@@ -552,16 +554,20 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
             Intent::class.java,
         )
         if (confirmation == null) {
-            installPackageCallback.resolve(PackageInstaller.STATUS_FAILURE)
+            installPackageCallback.resolve(PackageInstaller.STATUS_FAILURE to "Missing installer confirmation intent")
             return@onMainThread
         }
-        val activity = activity
-        if (activity != null) {
-            activity.startActivity(confirmation)
-        } else {
-            GlobalState.application.startActivity(
-                confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+        try {
+            val activity = activity
+            if (activity != null) {
+                activity.startActivity(confirmation)
+            } else {
+                GlobalState.application.startActivity(
+                    confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        } catch (error: Exception) {
+            installPackageCallback.resolve(PackageInstaller.STATUS_FAILURE to error.toString())
         }
     }
 
@@ -796,7 +802,7 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
         invokeRequestNotificationCallback(false)
         invokeRequestLocalNetworkCallback(false)
         invokeRequestInstalledAppsCallback(false)
-        installPackageCallback.resolve(PackageInstaller.STATUS_FAILURE_ABORTED)
+        installPackageCallback.resolve(PackageInstaller.STATUS_FAILURE_ABORTED to null)
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
