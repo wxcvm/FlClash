@@ -1085,7 +1085,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-
   for (final animation in TabAnimation.values) {
     testWidgets(
       'system reduced motion skips the ${animation.name} tab animation',
