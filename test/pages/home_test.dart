@@ -304,9 +304,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     tester.platformDispatcher.accessibilityFeaturesTestValue =
         const FakeAccessibilityFeatures(disableAnimations: true);
-    addTearDown(
-      tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
-    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
 
     final container = ProviderContainer(
       overrides: [
