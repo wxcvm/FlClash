@@ -1085,6 +1085,72 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+
+  for (final animation in TabAnimation.values) {
+    testWidgets(
+      'system reduced motion skips the ${animation.name} tab animation',
+      (tester) async {
+        tester.view.physicalSize = const Size(500, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(disableAnimations: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            navigationItemsStateProvider.overrideWithValue(
+              NavigationItemsState(
+                value: [
+                  NavigationItem(
+                    glyph: AppGlyphs.dashboard,
+                    label: PageLabel.dashboard,
+                    builder: (_) => const Text('page:dashboard'),
+                  ),
+                  NavigationItem(
+                    glyph: AppGlyphs.tools,
+                    label: PageLabel.tools,
+                    builder: (_) => const Text('page:tools'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        globalState.container = container;
+        container.read(viewSizeProvider.notifier).value = const Size(500, 800);
+        container
+            .read(appSettingProvider.notifier)
+            .update((state) => state.copyWith(tabAnimation: animation));
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const TestApp(includeNavigatorKey: false, child: HomePage()),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final start = tester.getTopLeft(find.text('page:dashboard')).dx;
+        container
+            .read(currentPageLabelProvider.notifier)
+            .toPage(PageLabel.tools);
+        await tester.pump();
+
+        expect(find.text('page:tools'), findsOneWidget);
+        expect(find.text('page:dashboard'), findsNothing);
+        expect(tester.getTopLeft(find.text('page:tools')).dx, start);
+        expect(tester.hasRunningAnimations, isFalse);
+        expect(container.read(appSettingProvider).tabAnimation, animation);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final animation in TabAnimation.values) {
     testWidgets('a ${animation.name} tab switch draws moving pages from '
         'snapshots and resting ones live', (tester) async {
