@@ -21,6 +21,15 @@ class NetworkHandoverTest {
     }
 
     @Test
+    fun `incomplete preferred network does not block a ready fallback`() {
+        val readyCell = networkSelectionPriority(4, false, true, false)
+        val waitingWifi = networkSelectionPriority(0, true, false, false, linkReady = false)
+        assertTrue(readyCell < waitingWifi)
+        assertTrue(networkSelectionPriority(0, true, true, false) < readyCell)
+        assertTrue(networkSelectionPriority(4, true, true, true) < waitingWifi)
+    }
+
+    @Test
     fun `initial connect and repeated callbacks do not reset`() {
         val tracker = NetworkHandoverTracker<String>()
         assertFalse(tracker.update(null))

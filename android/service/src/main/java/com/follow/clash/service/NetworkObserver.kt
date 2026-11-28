@@ -129,6 +129,7 @@ object NetworkObserver {
             validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
             hasDns = link?.dnsServers?.isNotEmpty() == true,
             losing = info.losingUntilMillis > SystemClock.elapsedRealtime(),
+            linkReady = link?.interfaceName != null,
         )
     }
 
