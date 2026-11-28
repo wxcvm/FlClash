@@ -296,6 +296,79 @@ void main() {
   });
 
   testWidgets(
+    'system reduced motion settles desktop sidebar changes immediately',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          navigationItemsStateProvider.overrideWithValue(
+            NavigationItemsState(
+              value: [
+                NavigationItem(
+                  glyph: AppGlyphs.dashboard,
+                  label: PageLabel.dashboard,
+                  builder: (_) => const SizedBox.shrink(),
+                ),
+                NavigationItem(
+                  glyph: AppGlyphs.tools,
+                  label: PageLabel.tools,
+                  builder: (_) => const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      globalState.container = container;
+      container.read(viewSizeProvider.notifier).value = const Size(1200, 800);
+      container.read(appSettingProvider.notifier).update(
+        (state) => state.copyWith(sidebarExpanded: true),
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const TestApp(includeNavigatorKey: false, child: HomePage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final sidebar = find.byType(NavigationSidebar);
+      expect(tester.getSize(sidebar).width, 220);
+
+      await tester.tap(find.byTooltip('Collapse'));
+      await tester.pump();
+      expect(container.read(appSettingProvider).sidebarExpanded, isFalse);
+      expect(tester.getSize(sidebar).width, 48);
+      expect(tester.hasRunningAnimations, isFalse);
+
+      await tester.tap(find.byTooltip('Expand'));
+      await tester.pump();
+      expect(container.read(appSettingProvider).sidebarExpanded, isTrue);
+      expect(tester.getSize(sidebar).width, 220);
+      expect(tester.hasRunningAnimations, isFalse);
+
+      await tester.tap(
+        find.descendant(of: sidebar, matching: _glyph(AppGlyphs.tools)),
+      );
+      await tester.pump();
+      expect(container.read(currentPageLabelProvider), PageLabel.tools);
+      expect(tester.hasRunningAnimations, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'list content stays valid while resizing through the breakpoint',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 800);
