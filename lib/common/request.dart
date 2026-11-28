@@ -166,8 +166,22 @@ class Request {
     UpdateChannel channel = UpdateChannel.stable,
   ]) async {
     if (channel == UpdateChannel.pre) {
-      return latestPreviewRelease(selfUpdateSuffix);
+      final stable = await _latestStableRelease();
+      try {
+        final preview = await latestPreviewRelease(selfUpdateSuffix);
+        final stableTag = stable['tag_name'] as String;
+        final previewTag = preview['tag_name'] as String;
+        return compareReleaseTags(stableTag, previewTag) >= 0
+            ? stable
+            : preview;
+      } on FormatException {
+        return stable;
+      }
     }
+    return _latestStableRelease();
+  }
+
+  Future<Map<String, dynamic>> _latestStableRelease() async {
     try {
       final response = await releaseDio.get<Map<String, dynamic>>(
         'https://api.github.com/repos/$repository/releases/latest',

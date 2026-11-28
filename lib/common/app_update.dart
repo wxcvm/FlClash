@@ -37,13 +37,33 @@ String? _releaseBaseVersion(String tag) {
   ).firstMatch(tag)?.group(1);
 }
 
+int compareReleaseTags(String left, String right) {
+  final leftVersion = _releaseBaseVersion(left);
+  final rightVersion = _releaseBaseVersion(right);
+  if (leftVersion == null || rightVersion == null) {
+    throw FormatException('Invalid release tags: $left, $right');
+  }
+  final baseComparison = compareVersions(leftVersion, rightVersion);
+  if (baseComparison != 0) return baseComparison;
+  final leftIsPreview = isPreviewReleaseTag(left);
+  final rightIsPreview = isPreviewReleaseTag(right);
+  if (leftIsPreview != rightIsPreview) return leftIsPreview ? -1 : 1;
+  if (leftIsPreview) {
+    if (isNewerPreviewTag(left, right)) return 1;
+    if (isNewerPreviewTag(right, left)) return -1;
+  }
+  return 0;
+}
+
 bool isNewerReleaseForChannel(
   String candidate, {
   required String installedVersion,
   required String installedPreviewTag,
   required UpdateChannel channel,
 }) {
-  if (channel == UpdateChannel.pre && installedPreviewTag.isNotEmpty) {
+  if (channel == UpdateChannel.pre &&
+      installedPreviewTag.isNotEmpty &&
+      isPreviewReleaseTag(candidate)) {
     return isNewerPreviewTag(candidate, installedPreviewTag);
   }
   final candidateVersion = _releaseBaseVersion(candidate);
@@ -53,9 +73,7 @@ bool isNewerReleaseForChannel(
   if (candidateVersion == null || installedComparable == null) return false;
   final comparison = compareVersions(candidateVersion, installedComparable);
   if (comparison != 0) return comparison > 0;
-  return channel == UpdateChannel.stable &&
-      installedPreviewTag.isNotEmpty &&
-      !isPreviewReleaseTag(candidate);
+  return installedPreviewTag.isNotEmpty && !isPreviewReleaseTag(candidate);
 }
 
 sealed class UpdateDownload {
