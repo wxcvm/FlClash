@@ -317,7 +317,7 @@ class _HomePageViewState extends ConsumerState<_HomePageView> {
       setState(() => _order = null);
       _pageController.jumpToPage(current);
     }
-    if (!isMobile || ignoreAnimateTo) {
+    if (!isMobile || ignoreAnimateTo || context.disableAnimations) {
       _pageController.jumpToPage(index);
       return;
     }
