@@ -107,6 +107,8 @@ class _HomeShell extends ConsumerWidget {
                     visible: isMobile && floating,
                     child: BarItemPresence.held(
                       child: _NavigationPadding(
+                        // The dock's private springs would freeze mid-motion;
+                        // remount it at the selected item when tickers are muted.
                         child: TickerMode(
                           enabled: !disableAnimations,
                           child: NavigationDock(
@@ -114,13 +116,13 @@ class _HomeShell extends ConsumerWidget {
                                 ? ValueKey(state.currentIndex)
                                 : null,
                             destinations: [
-                            for (final item in navigationItems)
-                              NavigationDockDestination(
-                                glyph: item.glyph,
-                                label: item.label.label,
-                              ),
-                          ],
-                          selectedIndex: state.currentIndex,
+                              for (final item in navigationItems)
+                                NavigationDockDestination(
+                                  glyph: item.glyph,
+                                  label: item.label.label,
+                                ),
+                            ],
+                            selectedIndex: state.currentIndex,
                             onSelected: (index) {
                               _handleToPage(navigationItems[index].label, ref);
                             },
