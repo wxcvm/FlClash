@@ -2208,6 +2208,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "unnamed": MessageLookupByLibrary.simpleMessage("Без названия"),
     "unpinWindow": MessageLookupByLibrary.simpleMessage("Открепить окно"),
     "update": MessageLookupByLibrary.simpleMessage("Обновить"),
+    "updateChannel": MessageLookupByLibrary.simpleMessage("Канал обновлений"),
+    "updateChannelPre": MessageLookupByLibrary.simpleMessage("Предварительный"),
+    "updateChannelStable": MessageLookupByLibrary.simpleMessage("Стабильный"),
     "updateDownloadFailed": MessageLookupByLibrary.simpleMessage(
       "Не удалось загрузить обновление.",
     ),

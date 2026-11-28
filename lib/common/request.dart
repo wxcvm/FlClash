@@ -142,14 +142,19 @@ class Request {
   }
 
   /// Null when this build is current; throws when GitHub cannot be asked.
-  Future<Map<String, dynamic>?> checkForUpdate() async {
+  Future<Map<String, dynamic>?> checkForUpdate([
+    UpdateChannel channel = UpdateChannel.stable,
+  ]) async {
     try {
-      final release = await latestRelease();
+      final release = await latestRelease(channel);
       final remoteVersion = release['tag_name'] as String;
       final version = globalState.packageInfo.version;
-      final hasUpdate = previewTag.isNotEmpty
-          ? isNewerPreviewTag(remoteVersion, previewTag)
-          : compareVersions(remoteVersion.replaceAll('v', ''), version) > 0;
+      final hasUpdate = isNewerReleaseForChannel(
+        remoteVersion,
+        installedVersion: version,
+        installedPreviewTag: previewTag,
+        channel: channel,
+      );
       return hasUpdate ? release : null;
     } catch (error) {
       throw ReleaseUpdateStageException(ReleaseUpdateStage.metadata, error);
@@ -157,16 +162,40 @@ class Request {
   }
 
   /// The release page redirect still answers once the hourly API quota is spent.
-  Future<Map<String, dynamic>> latestRelease() async {
-    if (previewTag.isNotEmpty) {
-      return latestPreviewRelease(selfUpdateSuffix);
+  Future<Map<String, dynamic>> latestRelease([
+    UpdateChannel channel = UpdateChannel.stable,
+  ]) async {
+    if (channel == UpdateChannel.pre) {
+      final stable = await _latestStableRelease();
+      try {
+        final preview = await latestPreviewRelease(selfUpdateSuffix);
+        final stableTag = stable['tag_name'] as String;
+        final previewTag = preview['tag_name'] as String;
+        return compareReleaseTags(stableTag, previewTag) >= 0
+            ? stable
+            : preview;
+      } on FormatException {
+        return stable;
+      }
     }
+    return _latestStableRelease();
+  }
+
+  Future<Map<String, dynamic>> _latestStableRelease() async {
     try {
       final response = await releaseDio.get<Map<String, dynamic>>(
         'https://api.github.com/repos/$repository/releases/latest',
         options: Options(responseType: ResponseType.json),
       );
-      return response.data!;
+      final release = response.data!;
+      final suffix = selfUpdateSuffix;
+      if (suffix == null) {
+        return release;
+      }
+      final tag = release['tag_name'] as String;
+      final assetAvailable =
+          await _hasVerifiedReleaseAsset(tag, suffix) ?? false;
+      return {...release, 'asset_available': assetAvailable};
     } on DioException catch (error) {
       final status = error.response?.statusCode;
       if (status != 403 && status != 429) rethrow;
@@ -188,49 +217,84 @@ class Request {
     if (tagIndex == 0 || tagIndex >= segments.length) {
       throw FormatException('No release tag in the redirect', location);
     }
-    return {'tag_name': segments[tagIndex]};
+    final tag = segments[tagIndex];
+    final suffix = selfUpdateSuffix;
+    if (suffix == null) {
+      return {'tag_name': tag};
+    }
+    return {
+      'tag_name': tag,
+      'asset_available': await _hasVerifiedReleaseAsset(tag, suffix),
+    };
   }
+
+  static const _previewReleasePageSize = 30;
+  static const _previewReleasePageLimit = 3;
 
   @visibleForTesting
   Future<Map<String, dynamic>> latestPreviewRelease(
     String? platformSuffix,
   ) async {
+    Map<String, dynamic>? latest;
     try {
-      final response = await releaseDio.get<List<dynamic>>(
-        'https://api.github.com/repos/$repository/releases?per_page=30',
-      );
-      final releases = response.data ?? const [];
-      Map<String, dynamic>? latest;
-      for (final release in releases.whereType<Map<String, dynamic>>()) {
-        final tag = release['tag_name'];
-        if (release['draft'] == true ||
-            tag is! String ||
-            !isPreviewReleaseTag(tag)) {
-          continue;
-        }
-        final suffix = platformSuffix;
-        if (suffix != null) {
+      for (var page = 1; page <= _previewReleasePageLimit; page++) {
+        final response = await releaseDio.get<List<dynamic>>(
+          'https://api.github.com/repos/$repository/releases',
+          queryParameters: {'per_page': _previewReleasePageSize, 'page': page},
+          options: Options(responseType: ResponseType.json),
+        );
+        final releases = response.data ?? const [];
+        for (final release in releases.whereType<Map<String, dynamic>>()) {
+          final tag = release['tag_name'];
           final assets = release['assets'];
-          final name = releaseAssetName(tag, suffix);
-          if (assets is! List ||
-              !assets.any((asset) => asset is Map && asset['name'] == name)) {
+          if (release['draft'] == true ||
+              tag is! String ||
+              !isPreviewReleaseTag(tag) ||
+              assets is! List ||
+              !_containsReleaseAsset(assets, releaseChecksumsName)) {
             continue;
           }
+          if (latest == null ||
+              isNewerPreviewTag(tag, latest['tag_name'] as String)) {
+            final candidate = platformSuffix == null
+                ? release
+                : await _releaseWithAssetAvailability(release, platformSuffix);
+            if (candidate != null) {
+              latest = candidate;
+            }
+          }
         }
-        if (latest == null ||
-            isNewerPreviewTag(tag, latest['tag_name'] as String)) {
-          latest = release;
+        if (releases.length < _previewReleasePageSize) {
+          break;
         }
       }
-      if (latest == null) {
-        throw const FormatException('No published preview for this platform');
+      if (latest != null) {
+        return latest;
       }
-      return latest;
     } on DioException catch (error) {
       final status = error.response?.statusCode;
       if (status != 403 && status != 429) rethrow;
       commonPrint.log(
         'preview release API denied: ${compactError(error)}',
+        logLevel: LogLevel.warning,
+      );
+      if (latest != null) {
+        return latest;
+      }
+    }
+
+    // GitHub's Atom feed is a lightweight fallback when the REST API is
+    // rate-limited. Treat it only as a candidate index: verify each tag's
+    // checksum manifest (and the platform asset when applicable), because the
+    // feed can also contain tag-only entries.
+    try {
+      final atomRelease = await _latestPreviewReleaseFromAtom(platformSuffix);
+      if (atomRelease != null) {
+        return atomRelease;
+      }
+    } on DioException catch (error) {
+      commonPrint.log(
+        'preview release Atom fallback failed: ${compactError(error)}',
         logLevel: LogLevel.warning,
       );
     }
@@ -251,21 +315,131 @@ class Request {
             .toList()
           ..sort((a, b) => a == b ? 0 : (isNewerPreviewTag(a, b) ? -1 : 1));
     for (final tag in tags) {
-      if (platformSuffix == null) return {'tag_name': tag};
+      if (platformSuffix == null) {
+        return {'tag_name': tag};
+      }
       final name = releaseAssetName(tag, platformSuffix);
       try {
         final sums = await releaseDio.getUri<String>(
           releaseAssetUri(tag, releaseChecksumsName),
           options: Options(responseType: ResponseType.plain),
         );
-        if (releaseChecksum(sums.data ?? '', name) != null) {
-          return {'tag_name': tag};
+        if (releaseChecksum(sums.data ?? '', name) == null) {
+          continue;
         }
+        final assetAvailable = await _hasReleaseAsset(tag, name);
+        return {'tag_name': tag, 'asset_available': assetAvailable};
       } on DioException catch (error) {
         if (error.response?.statusCode != 404) rethrow;
       }
     }
     throw const FormatException('No published preview for this platform');
+  }
+
+  Future<Map<String, dynamic>?> _latestPreviewReleaseFromAtom(
+    String? platformSuffix,
+  ) async {
+    final response = await releaseDio.get<String>(
+      'https://github.com/$repository/releases.atom',
+      options: Options(responseType: ResponseType.plain),
+    );
+    final pattern = RegExp(r'<id>\s*[^<]*?/releases/tag/([^<\s]+)\s*</id>');
+    final tags =
+        pattern
+            .allMatches(response.data ?? '')
+            .map((match) => match[1]!)
+            .where(isPreviewReleaseTag)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a == b ? 0 : (isNewerPreviewTag(a, b) ? -1 : 1));
+
+    for (final tag in tags) {
+      if (platformSuffix != null) {
+        final candidate = await _releaseWithAssetAvailability({
+          'tag_name': tag,
+        }, platformSuffix);
+        if (candidate != null) {
+          return candidate;
+        }
+      } else if (await _hasReleaseChecksums(tag)) {
+        return {'tag_name': tag};
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _hasReleaseChecksums(String tag) async {
+    try {
+      final sums = await releaseDio.getUri<String>(
+        releaseAssetUri(tag, releaseChecksumsName),
+        options: Options(responseType: ResponseType.plain),
+      );
+      return (sums.data ?? '').trim().isNotEmpty;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return false;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _releaseWithAssetAvailability(
+    Map<String, dynamic> release,
+    String platformSuffix,
+  ) async {
+    final tag = release['tag_name'];
+    if (tag is! String) {
+      return null;
+    }
+    final assetAvailable = await _hasVerifiedReleaseAsset(tag, platformSuffix);
+    if (assetAvailable == null) {
+      return null;
+    }
+    return {...release, 'asset_available': assetAvailable};
+  }
+
+  bool _containsReleaseAsset(List<dynamic> assets, String name) {
+    return assets.any((asset) => asset is Map && asset['name'] == name);
+  }
+
+  Future<bool?> _hasVerifiedReleaseAsset(
+    String tag,
+    String platformSuffix,
+  ) async {
+    final name = releaseAssetName(tag, platformSuffix);
+    try {
+      final sums = await releaseDio.getUri<String>(
+        releaseAssetUri(tag, releaseChecksumsName),
+        options: Options(responseType: ResponseType.plain),
+      );
+      if (releaseChecksum(sums.data ?? '', name) == null) {
+        return null;
+      }
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return null;
+      }
+      rethrow;
+    }
+    return _hasReleaseAsset(tag, name);
+  }
+
+  Future<bool> _hasReleaseAsset(String tag, String name) async {
+    try {
+      await releaseDio.headUri<void>(
+        releaseAssetUri(tag, name),
+        options: Options(
+          followRedirects: false,
+          validateStatus: (status) => status != null && status < 400,
+        ),
+      );
+      return true;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return false;
+      }
+      rethrow;
+    }
   }
 
   Future<String> downloadVerifiedRelease({

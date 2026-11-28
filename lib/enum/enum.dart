@@ -827,6 +827,8 @@ enum RestoreStrategy { compatible, override }
 
 enum TabAnimation { slide, fade }
 
+enum UpdateChannel { stable, pre }
+
 enum LiquidGlassMode { none, standard, ultra }
 
 enum Language { yaml, javaScript, json, ini, xml, text }

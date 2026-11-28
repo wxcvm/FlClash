@@ -2269,6 +2269,11 @@ class MessageLookup extends MessageLookupByLibrary {
       "Désépingler la fenêtre",
     ),
     "update": MessageLookupByLibrary.simpleMessage("Mettre à jour"),
+    "updateChannel": MessageLookupByLibrary.simpleMessage(
+      "Canal de mise à jour",
+    ),
+    "updateChannelPre": MessageLookupByLibrary.simpleMessage("Préversion"),
+    "updateChannelStable": MessageLookupByLibrary.simpleMessage("Stable"),
     "updateDownloadFailed": MessageLookupByLibrary.simpleMessage(
       "Impossible de télécharger la mise à jour.",
     ),

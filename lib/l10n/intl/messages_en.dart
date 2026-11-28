@@ -2098,6 +2098,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "unnamed": MessageLookupByLibrary.simpleMessage("Unnamed"),
     "unpinWindow": MessageLookupByLibrary.simpleMessage("Unpin window"),
     "update": MessageLookupByLibrary.simpleMessage("Update"),
+    "updateChannel": MessageLookupByLibrary.simpleMessage("Update channel"),
+    "updateChannelPre": MessageLookupByLibrary.simpleMessage("Prerelease"),
+    "updateChannelStable": MessageLookupByLibrary.simpleMessage("Stable"),
     "updateDownloadFailed": MessageLookupByLibrary.simpleMessage(
       "The update could not be downloaded.",
     ),

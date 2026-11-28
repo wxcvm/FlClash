@@ -145,11 +145,22 @@ void main() {
       expect(restored.closeConnections, true);
       expect(restored.tabAnimation, TabAnimation.fade);
       expect(restored.autoCheckUpdate, true);
+      expect(restored.updateChannel, UpdateChannel.stable);
       expect(restored.sidebarExpanded, true);
       expect(restored.minimizeOnExit, true);
       expect(restored.restoreStrategy, RestoreStrategy.compatible);
       expect(restored.userAgents, defaultUserAgents);
       expect(restored.filters, defaultFilters);
+    });
+
+    test('persists the selected update channel', () {
+      const props = AppSettingProps(updateChannel: UpdateChannel.pre);
+      final restored = roundTrip(
+        () => props.toJson(),
+        AppSettingProps.fromJson,
+      );
+
+      expect(restored.updateChannel, UpdateChannel.pre);
     });
 
     test('a saved outboundModeV2 card folds into outboundMode', () {

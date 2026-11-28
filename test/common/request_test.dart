@@ -5,8 +5,10 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:fl_clash/common/app_update.dart';
 import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/common/exception.dart';
+import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/common/request.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -51,7 +53,11 @@ class _PathAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    return byPath[options.uri.path]!();
+    final page = options.uri.queryParameters['page'];
+    final key = page == null
+        ? options.uri.path
+        : '${options.uri.path}?page=$page';
+    return (byPath[key] ?? byPath[options.uri.path])!();
   }
 
   @override
@@ -200,6 +206,49 @@ void main() {
         '<a href="/$repository/releases/tag/$newer">new</a>'
         '<a href="/$repository/releases/tag/v1.0.0">stable</a>';
 
+    Request requestWithCandidates(String stableTag, String previewTag) {
+      final feed =
+          '<feed><entry><id>tag:github.com,2008:Repository/123/releases/tag/$previewTag</id></entry></feed>';
+      return Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases/latest': () => ResponseBody.fromString(
+            jsonEncode({'tag_name': stableTag}),
+            200,
+            headers: {
+              Headers.contentTypeHeader: [Headers.jsonContentType],
+            },
+          ),
+          '/repos/$repository/releases': () =>
+              ResponseBody.fromString('{}', 403),
+          '/$repository/releases.atom': () =>
+              ResponseBody.fromString(feed, 200),
+          '/$repository/releases/download/$previewTag/SHA256SUMS': () =>
+              ResponseBody.fromString('verified manifest', 200),
+        });
+    }
+
+    test('selects a newer prerelease when that channel is chosen', () async {
+      final previousResolver = resolveSelfUpdateSuffix;
+      resolveSelfUpdateSuffix = () => null;
+      addTearDown(() => resolveSelfUpdateSuffix = previousResolver);
+      final request = requestWithCandidates('v0.9.2', newer);
+
+      expect(await request.latestRelease(UpdateChannel.pre), {
+        'tag_name': newer,
+      });
+    });
+
+    test('prefers a stable release over a same-version prerelease', () async {
+      final previousResolver = resolveSelfUpdateSuffix;
+      resolveSelfUpdateSuffix = () => null;
+      addTearDown(() => resolveSelfUpdateSuffix = previousResolver);
+      final request = requestWithCandidates('v0.9.3', newer);
+
+      expect(await request.latestRelease(UpdateChannel.pre), {
+        'tag_name': 'v0.9.3',
+      });
+    });
+
     test('falls back from API 403 to the newest matching preview', () async {
       final request = Request()
         ..releaseDio.httpClientAdapter = _PathAdapter({
@@ -211,10 +260,141 @@ void main() {
                 '$digest  FlClash-0.9.3-preview.10.1-$suffix',
                 200,
               ),
+          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix':
+              () => ResponseBody.fromString('', 302),
         });
 
-      expect(await request.latestPreviewRelease(suffix), {'tag_name': newer});
+      expect(await request.latestPreviewRelease(suffix), {
+        'tag_name': newer,
+        'asset_available': true,
+      });
     });
+
+    test(
+      'uses Atom after API rate limiting and verifies release candidates',
+      () async {
+        final feed =
+            '''
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry><id>tag:github.com,2008:Repository/123/releases/tag/$newer</id></entry>
+  <entry><id>tag:github.com,2008:Repository/123/releases/tag/$older</id></entry>
+</feed>
+''';
+        final request = Request()
+          ..releaseDio.httpClientAdapter = _PathAdapter({
+            '/repos/$repository/releases': () =>
+                ResponseBody.fromString('{}', 403),
+            '/$repository/releases.atom': () =>
+                ResponseBody.fromString(feed, 200),
+            '/$repository/releases/download/$newer/SHA256SUMS': () =>
+                ResponseBody.fromString('', 404),
+            '/$repository/releases/download/$older/SHA256SUMS': () =>
+                ResponseBody.fromString(
+                  '$digest  FlClash-0.9.3-preview.9.2-$suffix',
+                  200,
+                ),
+            '/$repository/releases/download/$older/FlClash-0.9.3-preview.9.2-$suffix':
+                () => ResponseBody.fromString('', 302),
+          });
+
+        expect(await request.latestPreviewRelease(suffix), {
+          'tag_name': older,
+          'asset_available': true,
+        });
+      },
+    );
+
+    test('paginates when the newest release page has no preview', () async {
+      final firstPage = List.generate(
+        30,
+        (_) => {
+          'tag_name': 'v0.9.3',
+          'draft': false,
+          'assets': [
+            {'name': releaseChecksumsName},
+          ],
+        },
+      );
+      final secondPage = [
+        {
+          'tag_name': newer,
+          'draft': false,
+          'assets': [
+            {'name': releaseChecksumsName},
+            {'name': 'FlClash-0.9.3-preview.10.1-$suffix'},
+          ],
+        },
+      ];
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases?page=1': () => ResponseBody.fromString(
+            jsonEncode(firstPage),
+            200,
+            headers: {
+              'content-type': ['application/json'],
+            },
+          ),
+          '/repos/$repository/releases?page=2': () => ResponseBody.fromString(
+            jsonEncode(secondPage),
+            200,
+            headers: {
+              'content-type': ['application/json'],
+            },
+          ),
+          '/$repository/releases/download/$newer/SHA256SUMS': () =>
+              ResponseBody.fromString(
+                '$digest  FlClash-0.9.3-preview.10.1-$suffix',
+                200,
+              ),
+          '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix':
+              () => ResponseBody.fromString('', 302),
+        });
+
+      expect(await request.latestPreviewRelease(suffix), {
+        'tag_name': newer,
+        'draft': false,
+        'assets': [
+          {'name': releaseChecksumsName},
+          {'name': 'FlClash-0.9.3-preview.10.1-$suffix'},
+        ],
+        'asset_available': true,
+      });
+    });
+
+    test(
+      'offers the release page when the platform package is missing',
+      () async {
+        final request = Request()
+          ..releaseDio.httpClientAdapter = _PathAdapter({
+            '/repos/$repository/releases?page=1': () => ResponseBody.fromString(
+              jsonEncode([
+                {
+                  'tag_name': newer,
+                  'draft': false,
+                  'assets': [
+                    {'name': releaseChecksumsName},
+                  ],
+                },
+              ]),
+              200,
+              headers: {
+                'content-type': ['application/json'],
+              },
+            ),
+            '/$repository/releases/download/$newer/SHA256SUMS': () =>
+                ResponseBody.fromString(
+                  '$digest  FlClash-0.9.3-preview.10.1-$suffix',
+                  200,
+                ),
+            '/$repository/releases/download/$newer/FlClash-0.9.3-preview.10.1-$suffix':
+                () => ResponseBody.fromString('', 404),
+          });
+
+        final release = await request.latestPreviewRelease(suffix);
+        expect(release['tag_name'], newer);
+        expect(release['asset_available'], isFalse);
+      },
+    );
 
     test('skips a preview without the platform checksum', () async {
       final request = Request()
@@ -229,9 +409,14 @@ void main() {
                 '$digest  FlClash-0.9.3-preview.9.2-$suffix',
                 200,
               ),
+          '/$repository/releases/download/$older/FlClash-0.9.3-preview.9.2-$suffix':
+              () => ResponseBody.fromString('', 302),
         });
 
-      expect(await request.latestPreviewRelease(suffix), {'tag_name': older});
+      expect(await request.latestPreviewRelease(suffix), {
+        'tag_name': older,
+        'asset_available': true,
+      });
     });
   });
 

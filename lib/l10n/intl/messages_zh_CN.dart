@@ -1628,6 +1628,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "unnamed": MessageLookupByLibrary.simpleMessage("未命名"),
     "unpinWindow": MessageLookupByLibrary.simpleMessage("取消置顶"),
     "update": MessageLookupByLibrary.simpleMessage("更新"),
+    "updateChannel": MessageLookupByLibrary.simpleMessage("更新渠道"),
+    "updateChannelPre": MessageLookupByLibrary.simpleMessage("预览版"),
+    "updateChannelStable": MessageLookupByLibrary.simpleMessage("正式版"),
     "updateDownloadFailed": MessageLookupByLibrary.simpleMessage("无法下载更新。"),
     "updateDownloadStarted": MessageLookupByLibrary.simpleMessage(
       "已开始下载更新，可在首页查看进度",

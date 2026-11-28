@@ -1772,6 +1772,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "unnamed": MessageLookupByLibrary.simpleMessage("이름 없음"),
     "unpinWindow": MessageLookupByLibrary.simpleMessage("창 고정 해제"),
     "update": MessageLookupByLibrary.simpleMessage("업데이트"),
+    "updateChannel": MessageLookupByLibrary.simpleMessage("업데이트 채널"),
+    "updateChannelPre": MessageLookupByLibrary.simpleMessage("프리릴리스"),
+    "updateChannelStable": MessageLookupByLibrary.simpleMessage("정식 버전"),
     "updateDownloadFailed": MessageLookupByLibrary.simpleMessage(
       "업데이트를 다운로드할 수 없습니다.",
     ),
