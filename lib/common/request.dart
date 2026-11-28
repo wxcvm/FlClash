@@ -142,14 +142,19 @@ class Request {
   }
 
   /// Null when this build is current; throws when GitHub cannot be asked.
-  Future<Map<String, dynamic>?> checkForUpdate() async {
+  Future<Map<String, dynamic>?> checkForUpdate([
+    UpdateChannel channel = UpdateChannel.stable,
+  ]) async {
     try {
-      final release = await latestRelease();
+      final release = await latestRelease(channel);
       final remoteVersion = release['tag_name'] as String;
       final version = globalState.packageInfo.version;
-      final hasUpdate = previewTag.isNotEmpty
-          ? isNewerPreviewTag(remoteVersion, previewTag)
-          : compareVersions(remoteVersion.replaceAll('v', ''), version) > 0;
+      final hasUpdate = isNewerReleaseForChannel(
+        remoteVersion,
+        installedVersion: version,
+        installedPreviewTag: previewTag,
+        channel: channel,
+      );
       return hasUpdate ? release : null;
     } catch (error) {
       throw ReleaseUpdateStageException(ReleaseUpdateStage.metadata, error);
@@ -157,8 +162,10 @@ class Request {
   }
 
   /// The release page redirect still answers once the hourly API quota is spent.
-  Future<Map<String, dynamic>> latestRelease() async {
-    if (previewTag.isNotEmpty) {
+  Future<Map<String, dynamic>> latestRelease([
+    UpdateChannel channel = UpdateChannel.stable,
+  ]) async {
+    if (channel == UpdateChannel.pre) {
       return latestPreviewRelease(selfUpdateSuffix);
     }
     try {

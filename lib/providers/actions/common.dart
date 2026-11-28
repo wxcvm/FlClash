@@ -85,10 +85,11 @@ class CommonAction extends _$CommonAction {
   }
 
   Future<bool> autoCheckUpdate() async {
-    if (!ref.read(appSettingProvider).autoCheckUpdate) return false;
+    final setting = ref.read(appSettingProvider);
+    if (!setting.autoCheckUpdate) return false;
     final Map<String, dynamic>? res;
     try {
-      res = await request.checkForUpdate();
+      res = await request.checkForUpdate(setting.updateChannel);
     } catch (error) {
       commonPrint.log(
         'checkForUpdate failed: ${compactError(error)}',
@@ -195,8 +196,9 @@ class CommonAction extends _$CommonAction {
     if (suffix == null || ref.read(updateDownloadStateProvider) != null) {
       return;
     }
+    final channel = ref.read(appSettingProvider).updateChannel;
     final release = await globalState.loadingRun(
-      request.latestRelease,
+      () => request.latestRelease(channel),
       title: currentAppLocalizations.updateDownloadTest,
       tag: LoadingTag.checkUpdate,
     );

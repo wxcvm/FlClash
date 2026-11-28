@@ -29,7 +29,9 @@ class AboutView extends ConsumerWidget {
     if (ref.read(loadingProvider(LoadingTag.checkUpdate))) return;
     final commonAction = ref.read(commonActionProvider.notifier);
     final result = await globalState.loadingRun(
-      () async => (release: await request.checkForUpdate()),
+      () async => (release: await request.checkForUpdate(
+        ref.read(appSettingProvider).updateChannel,
+      )),
       title: context.appLocalizations.checkUpdate,
       tag: LoadingTag.checkUpdate,
     );
@@ -96,6 +98,17 @@ class AboutView extends ConsumerWidget {
                 onChanged: (ref, value) => ref
                     .read(appSettingProvider.notifier)
                     .update((state) => state.copyWith(autoCheckUpdate: value)),
+              ),
+              ConfigOptionsItem<UpdateChannel>(
+                title: (l) => l.updateChannel,
+                options: UpdateChannel.values,
+                textBuilder: (channel) => channel.label,
+                selector: appSettingProvider.select(
+                  (state) => state.updateChannel,
+                ),
+                onChanged: (ref, value) => ref
+                    .read(appSettingProvider.notifier)
+                    .update((state) => state.copyWith(updateChannel: value)),
               ),
             ],
           ),
