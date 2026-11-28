@@ -1949,7 +1949,7 @@ extension RuleExt on Rule {
     ].join(',');
   }
 
-  List<String> get searchFields => [ruleAction.name, rawValue];
+  List<String> get searchFields => [ruleAction.value, rawValue];
 }
 
 final class RuleLineException implements Exception {
