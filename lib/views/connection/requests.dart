@@ -330,7 +330,10 @@ class _RecentFeedState extends ConsumerState<_RecentFeed> {
           child: SegmentedControl<_RequestStatus>(
             segments: [
               (_RequestStatus.all, 'All ${counts.total}'),
-              (_RequestStatus.active, '${appLocalizations.running} ${counts.active}'),
+              (
+                _RequestStatus.active,
+                '${appLocalizations.running} ${counts.active}',
+              ),
               (_RequestStatus.failed, 'Failed ${counts.failed}'),
             ],
             value: _status,
@@ -346,7 +349,9 @@ class _RecentFeedState extends ConsumerState<_RecentFeed> {
                 _RequestStatus.active =>
                   state.list.where((request) => request.isActive).toList(),
                 _RequestStatus.failed =>
-                  state.list.where((request) => request.failure != null).toList(),
+                  state.list
+                      .where((request) => request.failure != null)
+                      .toList(),
               };
               final requests = widget.filters.apply(candidates);
               return NullStatusSwitcher(
@@ -363,65 +368,70 @@ class _RecentFeedState extends ConsumerState<_RecentFeed> {
                   columnsOf: (width) =>
                       trackerInfoColumns(context, width: width, isLive: false),
                   builder: (context, table, requests) {
-              final padding = EdgeInsets.only(
-                top: context.contentTopPadding,
-                bottom: 16 + context.bottomInset,
-              );
-              final detailTitle = appLocalizations.details(
-                appLocalizations.request,
-              );
-              final groups = widget.filters.groupsOf(requests, reverse: true);
-              if (groups != null) {
-                return FloatingScrollbar(
-                  controller: _scrollController,
-                  hintBuilder: (fraction) {
-                    final index = (fraction * (groups.length - 1)).round();
-                    return groups[index].items.first.start.showFull;
-                  },
-                  child: TrackerInfoGroupedList(
-                    groups: groups,
-                    grouping: widget.filters.value.grouping!,
-                    isLive: false,
-                    controller: _scrollController,
-                    padding: padding,
-                    table: table,
-                    detailTitle: detailTitle,
-                  ),
-                );
-              }
-              return Align(
-                alignment: Alignment.topCenter,
-                child: FloatingScrollbar(
-                  controller: _scrollController,
-                  hintBuilder: (fraction) {
-                    final index = (fraction * (requests.length - 1)).round();
-                    return requests[index].start.showFull;
-                  },
-                  child: ScrollToEndBox(
-                    controller: _scrollController,
-                    enable: state.autoScrollToEnd,
-                    onCancelToEnd: () {
-                      widget.listController.setAutoScrollToEnd(false);
-                    },
-                    onResumeToEnd: () {
-                      widget.onResumeToEnd();
-                    },
-                    child: TrackerInfoList(
+                    final padding = EdgeInsets.only(
+                      top: context.contentTopPadding,
+                      bottom: 16 + context.bottomInset,
+                    );
+                    final detailTitle = appLocalizations.details(
+                      appLocalizations.request,
+                    );
+                    final groups = widget.filters.groupsOf(
+                      requests,
                       reverse: true,
-                      shrinkWrap: true,
-                      physics: _physics,
-                      controller: _scrollController,
-                      padding: padding,
-                      trackerInfos: requests,
-                      table: table,
-                      detailTitle: detailTitle,
-                    ),
-                  ),
+                    );
+                    if (groups != null) {
+                      return FloatingScrollbar(
+                        controller: _scrollController,
+                        hintBuilder: (fraction) {
+                          final index = (fraction * (groups.length - 1))
+                              .round();
+                          return groups[index].items.first.start.showFull;
+                        },
+                        child: TrackerInfoGroupedList(
+                          groups: groups,
+                          grouping: widget.filters.value.grouping!,
+                          isLive: false,
+                          controller: _scrollController,
+                          padding: padding,
+                          table: table,
+                          detailTitle: detailTitle,
+                        ),
+                      );
+                    }
+                    return Align(
+                      alignment: Alignment.topCenter,
+                      child: FloatingScrollbar(
+                        controller: _scrollController,
+                        hintBuilder: (fraction) {
+                          final index = (fraction * (requests.length - 1))
+                              .round();
+                          return requests[index].start.showFull;
+                        },
+                        child: ScrollToEndBox(
+                          controller: _scrollController,
+                          enable: state.autoScrollToEnd,
+                          onCancelToEnd: () {
+                            widget.listController.setAutoScrollToEnd(false);
+                          },
+                          onResumeToEnd: () {
+                            widget.onResumeToEnd();
+                          },
+                          child: TrackerInfoList(
+                            reverse: true,
+                            shrinkWrap: true,
+                            physics: _physics,
+                            controller: _scrollController,
+                            padding: padding,
+                            trackerInfos: requests,
+                            table: table,
+                            detailTitle: detailTitle,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               );
-            },
-                  ),
-                );
             },
           ),
         ),

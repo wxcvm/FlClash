@@ -283,8 +283,7 @@ abstract class _$Requests extends $Notifier<ConnectionLog> {
   @$mustCallSuper
   @override
   WhenComplete runBuild() {
-    final ref =
-        this.ref as $Ref<ConnectionLog, ConnectionLog>;
+    final ref = this.ref as $Ref<ConnectionLog, ConnectionLog>;
     final element =
         ref.element
             as $ClassProviderElement<

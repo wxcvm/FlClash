@@ -57,7 +57,6 @@ enum ConnectionEndReason {
   failed,
 }
 
-
 enum GroupType {
   @JsonValue('select')
   Selector('select'),

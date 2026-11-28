@@ -478,10 +478,14 @@ class TrackerInfoDetailView extends ConsumerWidget {
       for (final event in events)
         DetailRow.text(
           title: event.title,
-          value: '${event.at.showFull}${event.value.isEmpty ? '' : ' · ${event.value}'}',
+          value:
+              '${event.at.showFull}${event.value.isEmpty ? '' : ' · ${event.value}'}',
         ),
       if (trackerInfo.isActive)
-        DetailRow.text(title: appLocalizations.status, value: appLocalizations.running),
+        DetailRow.text(
+          title: appLocalizations.status,
+          value: appLocalizations.running,
+        ),
       if (trackerInfo.dnsQueries.isNotEmpty)
         DetailRow.text(
           title: appLocalizations.dnsQueries,

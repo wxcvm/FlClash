@@ -517,7 +517,6 @@ Map<int, String> _issues(Object data) => {
       index.toInt(): message,
 };
 
-
 CoreResultModel _presentConnections<R>(R Function(List<TrackerInfo>) present) {
   return (result) => present(trackerInfosOf(result));
 }
