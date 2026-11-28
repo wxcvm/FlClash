@@ -323,7 +323,7 @@ class Request {
       options: Options(responseType: ResponseType.plain),
     );
     final pattern = RegExp(
-      r'<id>\\s*[^<]*?/releases/tag/([^<\\s]+)\\s*</id>',
+      r'<id>\s*[^<]*?/releases/tag/([^<\s]+)\s*</id>',
     );
     final tags =
         pattern
