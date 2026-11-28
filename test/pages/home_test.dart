@@ -1266,10 +1266,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final start = tester.getTopLeft(find.text('page:dashboard')).dx;
       container.read(currentPageLabelProvider.notifier).toPage(PageLabel.tools);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 60));
-      final start = tester.getTopLeft(find.text('page:dashboard')).dx;
 
       tester.platformDispatcher.accessibilityFeaturesTestValue =
           const FakeAccessibilityFeatures(disableAnimations: true);
