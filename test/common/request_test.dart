@@ -300,8 +300,8 @@ void main() {
               ]),
               200,
               headers: {
-              'content-type': ['application/json'],
-            },
+                'content-type': ['application/json'],
+              },
             ),
             '/$repository/releases/download/$newer/SHA256SUMS': () =>
                 ResponseBody.fromString(
