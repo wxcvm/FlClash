@@ -1199,15 +1199,10 @@ void main() {
       );
       addTearDown(container.dispose);
       globalState.container = container;
-      container.read(viewSizeProvider.notifier).value = const Size(
-        500,
-        800,
-      );
+      container.read(viewSizeProvider.notifier).value = const Size(500, 800);
       container
           .read(appSettingProvider.notifier)
-          .update(
-            (state) => state.copyWith(tabAnimation: TabAnimation.slide),
-          );
+          .update((state) => state.copyWith(tabAnimation: TabAnimation.slide));
 
       await tester.pumpWidget(
         UncontrolledProviderScope(
@@ -1217,9 +1212,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      container
-          .read(currentPageLabelProvider.notifier)
-          .toPage(PageLabel.tools);
+      container.read(currentPageLabelProvider.notifier).toPage(PageLabel.tools);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 60));
       expect(tester.hasRunningAnimations, isTrue);
