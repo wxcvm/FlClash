@@ -70,40 +70,48 @@ class Logs extends _$Logs with AutoDisposeNotifierMixin {
 @Riverpod(keepAlive: true)
 class Requests extends _$Requests with AutoDisposeNotifierMixin {
   @override
-  FixedList<TrackerInfo> build() {
-    return FixedList(maxRequestsLength);
-  }
+  ConnectionLog build() => ConnectionLog(maxRequestsLength);
 
-  void addRequest(TrackerInfo value) {
+  void _apply(ConnectionLog Function(ConnectionLog log) change) {
     if (!ref.mounted) {
       return;
     }
-    this.value = state.append(value);
+    value = change(state);
   }
 
-  void updateTraffic(Map<String, RequestTraffic> traffic) {
-    if (!ref.mounted) {
-      return;
+  void addRequest(TrackerInfo value) => _apply((log) => log.open([value]));
+
+  void updateTraffic(Map<String, RequestTraffic> traffic) =>
+      _apply((log) => log.updateTraffic(traffic));
+
+  void close(Iterable<String> ids, {DateTime? at}) =>
+      _apply((log) => log.close(ids, at ?? DateTime.now()));
+
+  void closeAll({DateTime? at}) =>
+      _apply((log) => log.closeAll(at ?? DateTime.now()));
+
+  /// False, writing nothing, once a new log has replaced [lineage].
+  bool sync(
+    List<TrackerInfo> open, {
+    required DateTime requestedAt,
+    required Object lineage,
+  }) => _applyWithin(lineage, (log) => log.sync(open, requestedAt));
+
+  bool poll(
+    ConnectionPoll poll, {
+    required DateTime requestedAt,
+    required Object lineage,
+  }) => _applyWithin(lineage, (log) => log.poll(poll, requestedAt));
+
+  bool _applyWithin(
+    Object lineage,
+    ConnectionLog Function(ConnectionLog log) change,
+  ) {
+    if (!ref.mounted || !identical(state.lineage, lineage)) {
+      return false;
     }
-    final pending = Map.of(traffic);
-    final updated = <int, TrackerInfo>{};
-    for (
-      var index = state.length - 1;
-      index >= 0 && pending.isNotEmpty;
-      index--
-    ) {
-      final request = state[index];
-      final item = pending.remove(request.id);
-      if (item != null) {
-        updated[index] = request.copyWith(
-          upload: item.upload,
-          download: item.download,
-        );
-      }
-    }
-    if (updated.isNotEmpty) {
-      value = state.replace(updated);
-    }
+    value = change(state);
+    return true;
   }
 }
 

@@ -64,7 +64,7 @@ void main() {
 
   void seedRequests(List<TrackerInfo> requests) {
     final notifier = container.read(requestsProvider.notifier);
-    notifier.value = FixedList<TrackerInfo>(500);
+    notifier.value = ConnectionLog(500);
     for (final request in requests) {
       notifier.addRequest(request);
     }
@@ -255,14 +255,7 @@ void main() {
     const hintKey = ValueKey('scrollbarHintPill');
     expect(find.byKey(hintKey), findsNothing);
 
-    final thumb = await revealScrollbarThumb(
-      tester,
-      scrollable: find.byWidgetPredicate(
-        (widget) =>
-            widget is Scrollable &&
-            axisDirectionToAxis(widget.axisDirection) == Axis.vertical,
-      ),
-    );
+    final thumb = await revealScrollbarThumb(tester);
     final gesture = await tester.startGesture(thumb);
     await gesture.moveBy(const Offset(0, -1));
     await tester.pump();
@@ -275,10 +268,7 @@ void main() {
     // The hint is pinned to the thumb: at the newest end the thumb center
     // rests 24 dp (half the 48 dp minimum thumb) below the track's top edge,
     // which the list running under the bar leaves at the bar's foot.
-    expect(
-      tester.getCenter(find.byKey(hintKey)).dy,
-      closeTo(tester.getRect(find.byType(AppBar)).bottom + 24, 6),
-    );
+    expect(tester.getCenter(find.byKey(hintKey)).dy, closeTo(thumb.dy, 6));
 
     await gesture.up();
     await tester.pump(const Duration(milliseconds: 100));

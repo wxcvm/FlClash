@@ -131,6 +131,18 @@ class TrackerInfoItem extends ConsumerWidget {
           RecordTimestamp(trackerInfo.start.showFull),
           network,
           if (mitm) const RecordLabel(label: 'MITM'),
+          if (trackerInfo.failure != null)
+            TonalChip(
+              label: 'FAILED',
+              color: context.colorScheme.errorContainer,
+              foregroundColor: context.colorScheme.onErrorContainer,
+            )
+          else if (!trackerInfo.isActive)
+            TonalChip(
+              label: 'CLOSED',
+              color: context.raisedSurfaceLevel.colorOf(context.colorScheme),
+              foregroundColor: context.colorScheme.onSurfaceVariant,
+            ),
         ],
       );
     }
@@ -412,6 +424,89 @@ class TrackerInfoDetailView extends ConsumerWidget {
     );
   }
 
+  Widget _buildTimeline(BuildContext context) {
+    final appLocalizations = context.appLocalizations;
+    final events = <({DateTime at, String title, String value})>[];
+
+    void add(DateTime? at, String title, [String value = '']) {
+      if (at != null) {
+        events.add((at: at, title: title, value: value));
+      }
+    }
+
+    final timing = trackerInfo.timing;
+    if (timing != null) {
+      add(timing.accepted, 'Accepted');
+      void offset(int? micros, String label) {
+        if (micros == null) return;
+        add(
+          timing.accepted.add(Duration(microseconds: micros)),
+          label,
+          '${(micros / 1000).toStringAsFixed(1)} ms',
+        );
+      }
+
+      offset(timing.dnsStart, 'DNS started');
+      offset(timing.dnsEnd, 'DNS completed');
+      offset(timing.routed, 'Rule selected');
+      offset(timing.dialStart, 'Dial started');
+      offset(timing.connected, 'Connected');
+      offset(timing.tls, 'TLS completed');
+      offset(timing.dialEnd, 'Dial completed');
+      offset(timing.decrypted, 'Traffic decrypted');
+    }
+
+    add(trackerInfo.start, appLocalizations.creationTime);
+    if (trackerInfo.failure case final failure?) {
+      add(
+        trackerInfo.closedAt,
+        'Failed · ${failure.kind.name}',
+        failure.message,
+      );
+    } else if (!trackerInfo.isActive) {
+      add(
+        trackerInfo.endedAt,
+        'Closed',
+        trackerInfo.end?.message.isNotEmpty == true
+            ? trackerInfo.end!.message
+            : trackerInfo.end?.reason.name ?? '',
+      );
+    }
+    events.sort((a, b) => a.at.compareTo(b.at));
+
+    final rows = <Widget>[
+      for (final event in events)
+        DetailRow.text(
+          title: event.title,
+          value:
+              '${event.at.showFull}${event.value.isEmpty ? '' : ' · ${event.value}'}',
+        ),
+      if (trackerInfo.isActive)
+        DetailRow.text(
+          title: appLocalizations.status,
+          value: appLocalizations.running,
+        ),
+      if (trackerInfo.dnsQueries.isNotEmpty)
+        DetailRow.text(
+          title: appLocalizations.dnsQueries,
+          value: trackerInfo.dnsQueries.join(', '),
+        ),
+      if (trackerInfo.ruleIndex != null)
+        DetailRow.text(
+          title: 'Rule index',
+          value: trackerInfo.ruleIndex.toString(),
+        ),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(
+        bottom: 20 + context.bottomInset,
+        top: context.sectionsTopPadding,
+      ),
+      children: [generateSection(title: 'Timeline', items: rows)],
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appLocalizations = context.appLocalizations;
@@ -425,6 +520,7 @@ class TrackerInfoDetailView extends ConsumerWidget {
     return DetailTabs(
       tabs: [
         (appLocalizations.overview, _buildOverview),
+        ('Timeline', _buildTimeline),
         if (capturing)
           (
             appLocalizations.httpRequests,

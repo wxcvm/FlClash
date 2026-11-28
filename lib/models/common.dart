@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/l10n/l10n.dart';
 import 'package:flutter/widgets.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:prism_ui/icons/glyph.dart';
@@ -114,6 +115,51 @@ abstract class Metadata with _$Metadata {
 }
 
 @freezed
+abstract class ConnectionFailure with _$ConnectionFailure {
+  const factory ConnectionFailure({
+    @JsonKey(unknownEnumValue: ConnectionFailureKind.other)
+    required ConnectionFailureKind kind,
+    @Default('') String message,
+  }) = _ConnectionFailure;
+
+  factory ConnectionFailure.fromJson(Map<String, Object?> json) =>
+      _$ConnectionFailureFromJson(json);
+}
+
+/// Each step's time in microseconds after [accepted], null for a step not taken.
+@freezed
+abstract class ConnectionTiming with _$ConnectionTiming {
+  const factory ConnectionTiming({
+    required DateTime accepted,
+    int? dnsStart,
+    int? dnsEnd,
+    int? routed,
+    int? dialStart,
+    int? connected,
+    int? tls,
+    int? dialEnd,
+    int? decrypted,
+  }) = _ConnectionTiming;
+
+  factory ConnectionTiming.fromJson(Map<String, Object?> json) =>
+      _$ConnectionTimingFromJson(json);
+}
+
+@freezed
+abstract class ConnectionEnd with _$ConnectionEnd {
+  const factory ConnectionEnd({
+    @JsonKey(unknownEnumValue: ConnectionEndReason.error)
+    required ConnectionEndReason reason,
+    required DateTime endedAt,
+    @Default('') String message,
+  }) = _ConnectionEnd;
+
+  factory ConnectionEnd.fromJson(Map<String, Object?> json) =>
+      _$ConnectionEndFromJson(json);
+}
+
+/// A connection whose dial failed carries [failure] and arrives closed.
+@freezed
 abstract class TrackerInfo with _$TrackerInfo {
   const factory TrackerInfo({
     required String id,
@@ -126,6 +172,14 @@ abstract class TrackerInfo with _$TrackerInfo {
     required String rulePayload,
     int? downloadSpeed,
     int? uploadSpeed,
+    DateTime? closedAt,
+    ConnectionFailure? failure,
+    ConnectionTiming? timing,
+    int? ruleIndex,
+
+    /// [DnsQuery.id]s of the queries that gave its address.
+    @Default([]) List<int> dnsQueries,
+    ConnectionEnd? end,
   }) = _TrackerInfo;
 
   factory TrackerInfo.fromJson(Map<String, Object?> json) =>
@@ -166,6 +220,18 @@ extension TrackerInfoExt on TrackerInfo {
 
   String get ruleText => rulePayload.isNotEmpty ? '$rule($rulePayload)' : rule;
 
+  bool get isActive => closedAt == null;
+
+  /// When a closed connection ended: the Core's time where it gave one, else
+  /// when the app saw it go.
+  DateTime? get endedAt => closedAt == null ? null : end?.endedAt ?? closedAt;
+
+  /// Of the routes the core names no rule for, only the Global mode shows.
+  bool get isGlobalRouted =>
+      rule.isEmpty &&
+      metadata.specialProxy.isEmpty &&
+      chains.lastOrNull == GroupName.GLOBAL.name;
+
   List<String> get searchFields => [
     metadata.network,
     metadata.host,
@@ -182,8 +248,16 @@ extension TrackerInfoExt on TrackerInfo {
     metadata.specialRules,
     rule,
     rulePayload,
+    if (rule.isEmpty) trackerRuleText(currentAppLocalizations, this),
     ...chains,
   ];
+}
+
+String trackerRuleText(AppLocalizations l, TrackerInfo trackerInfo) {
+  if (trackerInfo.rule.isNotEmpty) {
+    return trackerInfo.ruleText;
+  }
+  return trackerInfo.isGlobalRouted ? l.global : l.none;
 }
 
 String _logDateTime(dynamic _) {

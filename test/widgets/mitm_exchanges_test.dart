@@ -295,11 +295,12 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('with capture off a decrypted connection shows its overview '
-      'alone', (tester) async {
+  testWidgets('with capture off a decrypted connection keeps its lifecycle '
+      'overview without HTTP requests', (tester) async {
     await _pumpDetail(tester, list: const MitmExchangeList(), capture: false);
 
-    expect(find.byType(SegmentedControl<int>), findsNothing);
+    expect(find.byType(SegmentedControl<int>), findsOneWidget);
+    expect(find.text('Timeline'), findsOneWidget);
     expect(find.text(currentAppLocalizations.basicInfo), findsOneWidget);
     expect(find.text(currentAppLocalizations.httpRequests), findsNothing);
 

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/core/interface.dart';
 import 'package:fl_clash/features/features.dart';
@@ -395,7 +394,7 @@ void main() {
   testWidgets('one page switches between recent requests and what is open, '
       'polling only for the latter', (tester) async {
     final requests = container.read(requestsProvider.notifier);
-    requests.value = FixedList<TrackerInfo>(500);
+    requests.value = ConnectionLog(500);
     requests.addRequest(_tracker(id: 'old', host: 'finished.test'));
     when(
       core.getConnections,
