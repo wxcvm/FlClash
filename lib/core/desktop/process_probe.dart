@@ -1,8 +1,6 @@
 import 'dart:ffi';
 import 'dart:io';
 
-import 'package:ffi/ffi.dart';
-
 typedef ProcessLivenessProbe = Future<bool> Function(int pid);
 
 /// A recycled pid reads as alive, which delays a confirmation but never fakes one.
@@ -33,8 +31,14 @@ Future<bool> _isLinuxProcessAlive(int pid) async {
 }
 
 const _processQueryLimitedInformation = 0x1000;
+const _synchronize = 0x00100000;
 const _errorInvalidParameter = 87;
-const _stillActive = 259;
+const _waitObject0 = 0;
+
+// GetExitCodeProcess can report STILL_ACTIVE (259) for a process that
+// actually exited with code 259. A zero-time wait checks the handle's
+// signaled state instead, without confusing an exit code with liveness.
+bool windowsWaitResultIndicatesAlive(int result) => result != _waitObject0;
 
 // A Helper-spawned Core belongs to SYSTEM; OpenProcess fails with
 // ERROR_INVALID_PARAMETER only when no such process exists.
@@ -47,29 +51,31 @@ bool _isWindowsProcessAlive(int pid) {
       >('OpenProcess');
   final getLastError = kernel32
       .lookupFunction<Uint32 Function(), int Function()>('GetLastError');
-  final getExitCodeProcess = kernel32
+  final waitForSingleObject = kernel32
       .lookupFunction<
-        Int32 Function(Pointer<Void>, Pointer<Uint32>),
-        int Function(Pointer<Void>, Pointer<Uint32>)
-      >('GetExitCodeProcess');
+        Uint32 Function(Pointer<Void>, Uint32),
+        int Function(Pointer<Void>, int)
+      >('WaitForSingleObject');
   final closeHandle = kernel32
       .lookupFunction<
         Int32 Function(Pointer<Void>),
         int Function(Pointer<Void>)
       >('CloseHandle');
 
-  final handle = openProcess(_processQueryLimitedInformation, 0, pid);
+  // WaitForSingleObject requires SYNCHRONIZE access, not just query rights.
+  final handle = openProcess(
+    _processQueryLimitedInformation | _synchronize,
+    0,
+    pid,
+  );
   if (handle == nullptr) {
     return getLastError() != _errorInvalidParameter;
   }
-  final exitCode = calloc<Uint32>();
   try {
-    if (getExitCodeProcess(handle, exitCode) == 0) {
-      return true;
-    }
-    return exitCode.value == _stillActive;
+    // WAIT_OBJECT_0 proves exit; WAIT_TIMEOUT means still running.
+    // WAIT_FAILED/unknown results are inconclusive and retain ownership.
+    return windowsWaitResultIndicatesAlive(waitForSingleObject(handle, 0));
   } finally {
-    calloc.free(exitCode);
     closeHandle(handle);
   }
 }
