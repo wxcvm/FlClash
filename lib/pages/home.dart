@@ -80,6 +80,7 @@ class _HomeShell extends ConsumerWidget {
     final floating = ref.watch(
       appSettingProvider.select((state) => state.floatingNavigationBar),
     );
+    final disableAnimations = context.disableAnimations;
     return Surface(
       color: SurfaceLevel.page.colorOf(context.colorScheme),
       child: Column(
@@ -106,8 +107,13 @@ class _HomeShell extends ConsumerWidget {
                     visible: isMobile && floating,
                     child: BarItemPresence.held(
                       child: _NavigationPadding(
-                        child: NavigationDock(
-                          destinations: [
+                        child: TickerMode(
+                          enabled: !disableAnimations,
+                          child: NavigationDock(
+                            key: disableAnimations
+                                ? ValueKey(state.currentIndex)
+                                : null,
+                            destinations: [
                             for (final item in navigationItems)
                               NavigationDockDestination(
                                 glyph: item.glyph,
@@ -115,9 +121,10 @@ class _HomeShell extends ConsumerWidget {
                               ),
                           ],
                           selectedIndex: state.currentIndex,
-                          onSelected: (index) {
-                            _handleToPage(navigationItems[index].label, ref);
-                          },
+                            onSelected: (index) {
+                              _handleToPage(navigationItems[index].label, ref);
+                            },
+                          ),
                         ),
                       ),
                     ),
