@@ -255,14 +255,7 @@ void main() {
     const hintKey = ValueKey('scrollbarHintPill');
     expect(find.byKey(hintKey), findsNothing);
 
-    final scrollable = find
-        .byWidgetPredicate(
-          (widget) =>
-              widget is Scrollable &&
-              axisDirectionToAxis(widget.axisDirection) == Axis.vertical,
-        )
-        .first;
-    final thumb = await revealScrollbarThumb(tester, scrollable: scrollable);
+    final thumb = await revealScrollbarThumb(tester);
     final gesture = await tester.startGesture(thumb);
     await gesture.moveBy(const Offset(0, -1));
     await tester.pump();
@@ -277,7 +270,7 @@ void main() {
     // which the list running under the bar leaves at the bar's foot.
     expect(
       tester.getCenter(find.byKey(hintKey)).dy,
-      closeTo(tester.getRect(scrollable).top + 24, 6),
+      closeTo(thumb.dy, 6),
     );
 
     await gesture.up();
