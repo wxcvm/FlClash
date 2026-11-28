@@ -106,7 +106,9 @@ void main() {
   });
 
   group('release channel comparison', () {
-    test('compares stable and prerelease lines without losing preview order', () {
+    test(
+      'compares stable and prerelease lines without losing preview order',
+      () {
       expect(
         isNewerReleaseForChannel(
           'v0.9.4',
@@ -151,8 +153,9 @@ void main() {
           channel: UpdateChannel.pre,
         ),
         isTrue,
-      );
-    });
+        );
+      },
+    );
   });
 
   group('releaseChecksum', () {

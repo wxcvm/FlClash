@@ -206,7 +206,9 @@ void main() {
         '<a href="/$repository/releases/tag/$newer">new</a>'
         '<a href="/$repository/releases/tag/v1.0.0">stable</a>';
 
-    test('selects preview discovery when the prerelease channel is chosen', () async {
+    test(
+      'selects preview discovery when the prerelease channel is chosen',
+      () async {
       final previousResolver = resolveSelfUpdateSuffix;
       resolveSelfUpdateSuffix = () => null;
       addTearDown(() => resolveSelfUpdateSuffix = previousResolver);
@@ -222,10 +224,11 @@ void main() {
               ResponseBody.fromString('verified manifest', 200),
         });
 
-      expect(await request.latestRelease(UpdateChannel.pre), {
-        'tag_name': newer,
-      });
-    });
+        expect(await request.latestRelease(UpdateChannel.pre), {
+          'tag_name': newer,
+        });
+      },
+    );
 
     test('falls back from API 403 to the newest matching preview', () async {
       final request = Request()
