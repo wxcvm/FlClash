@@ -63,6 +63,26 @@ void main() {
     expect(log.activeCount, 2);
   });
 
+  test('a late opening event cannot resurrect a trimmed connection', () {
+    final closedAt = _t0.add(const Duration(minutes: 1));
+    var log = ConnectionLog(1).open([
+      _connection('a'),
+      _connection('b', second: 1),
+    ]);
+    log = log.close(['a'], closedAt).close(['b'], closedAt);
+
+    expect(log['a'], isNull);
+    expect(log.lastOf('a')?.closedAt, closedAt);
+    final revision = log.revision;
+
+    log = log.open([_connection('a')]);
+
+    expect(log.revision, revision);
+    expect(log['a'], isNull);
+    expect(log.lastOf('a')?.closedAt, closedAt);
+    expect(_ids(log), ['b']);
+  });
+
   test('a change that changes nothing keeps the revision', () {
     final log = ConnectionLog(10).open([_connection('a')]);
 

@@ -193,6 +193,9 @@ class ConnectionLog {
         changed = _takeQueries(entry, trackerInfo.dnsQueries) || changed;
         continue;
       }
+      if (_entries.trimmed.containsKey(trackerInfo.id)) {
+        continue;
+      }
       late = _appendWasLate(trackerInfo) || late;
       changed = true;
     }
