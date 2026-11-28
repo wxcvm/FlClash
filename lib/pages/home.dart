@@ -99,6 +99,8 @@ class _HomeShell extends ConsumerWidget {
                     ),
                   ),
                 ),
+                // Both bars own tickers. Key them to the destination so a
+                // muted animation lands there instead of freezing mid-motion.
                 PositionedDirectional(
                   start: 0,
                   end: 0,
