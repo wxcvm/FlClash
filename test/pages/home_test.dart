@@ -331,9 +331,9 @@ void main() {
       addTearDown(container.dispose);
       globalState.container = container;
       container.read(viewSizeProvider.notifier).value = const Size(1200, 800);
-      container.read(appSettingProvider.notifier).update(
-        (state) => state.copyWith(sidebarExpanded: true),
-      );
+      container
+          .read(appSettingProvider.notifier)
+          .update((state) => state.copyWith(sidebarExpanded: true));
 
       await tester.pumpWidget(
         UncontrolledProviderScope(
