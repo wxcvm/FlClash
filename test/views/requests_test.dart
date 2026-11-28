@@ -268,10 +268,7 @@ void main() {
     // The hint is pinned to the thumb: at the newest end the thumb center
     // rests 24 dp (half the 48 dp minimum thumb) below the track's top edge,
     // which the list running under the bar leaves at the bar's foot.
-    expect(
-      tester.getCenter(find.byKey(hintKey)).dy,
-      closeTo(thumb.dy, 6),
-    );
+    expect(tester.getCenter(find.byKey(hintKey)).dy, closeTo(thumb.dy, 6));
 
     await gesture.up();
     await tester.pump(const Duration(milliseconds: 100));
