@@ -1798,6 +1798,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "unnamed": MessageLookupByLibrary.simpleMessage("名称未設定"),
     "unpinWindow": MessageLookupByLibrary.simpleMessage("固定を解除"),
     "update": MessageLookupByLibrary.simpleMessage("更新"),
+    "updateChannel": MessageLookupByLibrary.simpleMessage("アップデートチャンネル"),
+    "updateChannelPre": MessageLookupByLibrary.simpleMessage("プレリリース版"),
+    "updateChannelStable": MessageLookupByLibrary.simpleMessage("安定版"),
     "updateDownloadFailed": MessageLookupByLibrary.simpleMessage(
       "更新をダウンロードできませんでした。",
     ),
