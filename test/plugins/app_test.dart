@@ -200,6 +200,52 @@ void main() {
     },
   );
 
+  group('package installer', () {
+    test('opens the external installer for the verified APK', () async {
+      MethodCall? receivedCall;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            receivedCall = call;
+            return true;
+          });
+
+      expect(await App().openPackageInstaller('/files/update.apk'), isTrue);
+      expect(receivedCall?.method, 'openPackageInstaller');
+      expect(receivedCall?.arguments, {'path': '/files/update.apk'});
+    });
+
+    test('keeps user cancellation distinct from installer failure', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            channel,
+            (_) async => {'status': 3, 'message': 'user cancelled'},
+          );
+
+      expect(await App().installPackage('/files/update.apk'), 3);
+    });
+
+    test('reports installer failure status and message', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            channel,
+            (_) async => {'status': 5, 'message': 'storage unavailable'},
+          );
+
+      await expectLater(
+        App().installPackage('/files/update.apk'),
+        throwsA(
+          isA<PlatformException>()
+              .having((error) => error.code, 'code', 'PACKAGE_INSTALL_5')
+              .having(
+                (error) => error.message,
+                'message',
+                'storage unavailable',
+              ),
+        ),
+      );
+    });
+  });
+
   group('downloadFile', () {
     final uri = Uri.https('github.com', '/a.apk');
     late List<MethodCall> calls;
