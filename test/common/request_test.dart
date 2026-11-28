@@ -206,29 +206,49 @@ void main() {
         '<a href="/$repository/releases/tag/$newer">new</a>'
         '<a href="/$repository/releases/tag/v1.0.0">stable</a>';
 
-    test(
-      'selects preview discovery when the prerelease channel is chosen',
-      () async {
-      final previousResolver = resolveSelfUpdateSuffix;
-      resolveSelfUpdateSuffix = () => null;
-      addTearDown(() => resolveSelfUpdateSuffix = previousResolver);
+    Request requestWithCandidates(String stableTag, String previewTag) {
       final feed =
-          '<feed><entry><id>tag:github.com,2008:Repository/123/releases/tag/$newer</id></entry></feed>';
-      final request = Request()
+          '<feed><entry><id>tag:github.com,2008:Repository/123/releases/tag/$previewTag</id></entry></feed>';
+      return Request()
         ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases/latest': () =>
+              ResponseBody.fromString(
+                jsonEncode({'tag_name': stableTag}),
+                200,
+                headers: {
+                  Headers.contentTypeHeader: [Headers.jsonContentType],
+                },
+              ),
           '/repos/$repository/releases': () =>
               ResponseBody.fromString('{}', 403),
           '/$repository/releases.atom': () =>
               ResponseBody.fromString(feed, 200),
-          '/$repository/releases/download/$newer/SHA256SUMS': () =>
+          '/$repository/releases/download/$previewTag/SHA256SUMS': () =>
               ResponseBody.fromString('verified manifest', 200),
         });
+    }
 
-        expect(await request.latestRelease(UpdateChannel.pre), {
-          'tag_name': newer,
-        });
-      },
-    );
+    test('selects a newer prerelease when that channel is chosen', () async {
+      final previousResolver = resolveSelfUpdateSuffix;
+      resolveSelfUpdateSuffix = () => null;
+      addTearDown(() => resolveSelfUpdateSuffix = previousResolver);
+      final request = requestWithCandidates('v0.9.2', newer);
+
+      expect(await request.latestRelease(UpdateChannel.pre), {
+        'tag_name': newer,
+      });
+    });
+
+    test('prefers a stable release over a same-version prerelease', () async {
+      final previousResolver = resolveSelfUpdateSuffix;
+      resolveSelfUpdateSuffix = () => null;
+      addTearDown(() => resolveSelfUpdateSuffix = previousResolver);
+      final request = requestWithCandidates('v0.9.3', newer);
+
+      expect(await request.latestRelease(UpdateChannel.pre), {
+        'tag_name': 'v0.9.3',
+      });
+    });
 
     test('falls back from API 403 to the newest matching preview', () async {
       final request = Request()

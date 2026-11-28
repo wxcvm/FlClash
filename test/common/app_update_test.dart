@@ -109,50 +109,62 @@ void main() {
     test(
       'compares stable and prerelease lines without losing preview order',
       () {
-      expect(
-        isNewerReleaseForChannel(
-          'v0.9.4',
-          installedVersion: '0.9.3',
-          installedPreviewTag: '',
-          channel: UpdateChannel.stable,
-        ),
-        isTrue,
-      );
-      expect(
-        isNewerReleaseForChannel(
-          'v0.9.3-preview.10.1',
-          installedVersion: '0.9.3',
-          installedPreviewTag: '',
-          channel: UpdateChannel.pre,
-        ),
-        isFalse,
-      );
-      expect(
-        isNewerReleaseForChannel(
-          'v0.9.4-preview.1.1',
-          installedVersion: '0.9.3',
-          installedPreviewTag: '',
-          channel: UpdateChannel.pre,
-        ),
-        isTrue,
-      );
-      expect(
-        isNewerReleaseForChannel(
-          'v0.9.3',
-          installedVersion: '0.9.3',
-          installedPreviewTag: 'v0.9.3-preview.16.1',
-          channel: UpdateChannel.stable,
-        ),
-        isTrue,
-      );
-      expect(
-        isNewerReleaseForChannel(
-          'v0.9.3-preview.16.2',
-          installedVersion: '0.9.3',
-          installedPreviewTag: 'v0.9.3-preview.16.1',
-          channel: UpdateChannel.pre,
-        ),
-        isTrue,
+        expect(
+          isNewerReleaseForChannel(
+            'v0.9.4',
+            installedVersion: '0.9.3',
+            installedPreviewTag: '',
+            channel: UpdateChannel.stable,
+          ),
+          isTrue,
+        );
+        expect(
+          isNewerReleaseForChannel(
+            'v0.9.3-preview.10.1',
+            installedVersion: '0.9.3',
+            installedPreviewTag: '',
+            channel: UpdateChannel.pre,
+          ),
+          isFalse,
+        );
+        expect(
+          isNewerReleaseForChannel(
+            'v0.9.4-preview.1.1',
+            installedVersion: '0.9.3',
+            installedPreviewTag: '',
+            channel: UpdateChannel.pre,
+          ),
+          isTrue,
+        );
+        expect(
+          isNewerReleaseForChannel(
+            'v0.9.3',
+            installedVersion: '0.9.3',
+            installedPreviewTag: 'v0.9.3-preview.16.1',
+            channel: UpdateChannel.pre,
+          ),
+          isTrue,
+        );
+        expect(
+          isNewerReleaseForChannel(
+            'v0.9.3-preview.16.2',
+            installedVersion: '0.9.3',
+            installedPreviewTag: 'v0.9.3-preview.16.1',
+            channel: UpdateChannel.pre,
+          ),
+          isTrue,
+        );
+        expect(
+          compareReleaseTags('v0.9.4', 'v0.9.3-preview.99.1'),
+          greaterThan(0),
+        );
+        expect(
+          compareReleaseTags('v0.9.3', 'v0.9.3-preview.16.1'),
+          greaterThan(0),
+        );
+        expect(
+          compareReleaseTags('v0.9.3-preview.10.1', 'v0.9.3-preview.9.2'),
+          greaterThan(0),
         );
       },
     );
