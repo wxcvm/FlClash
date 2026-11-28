@@ -59,7 +59,7 @@ void main() {
     globalState.container = container;
     container.listen(appSettingProvider, (_, _) {});
     final requests = container.read(requestsProvider.notifier);
-    requests.value = FixedList<TrackerInfo>(500);
+    requests.value = ConnectionLog(500);
     requests.addRequest(_request('gamma.test', 10));
     requests.addRequest(_request('alpha.test', 30));
     requests.addRequest(_request('beta.test', 20));

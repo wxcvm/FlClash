@@ -258,8 +258,8 @@ String trackerRuleText(AppLocalizations l, TrackerInfo trackerInfo) {
     return trackerInfo.ruleText;
   }
   return trackerInfo.isGlobalRouted
-      ? l.connectionRuleGlobal
-      : l.connectionRuleNone;
+      ? l.global
+      : l.none;
 }
 
 String _logDateTime(dynamic _) {

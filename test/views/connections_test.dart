@@ -395,7 +395,7 @@ void main() {
   testWidgets('one page switches between recent requests and what is open, '
       'polling only for the latter', (tester) async {
     final requests = container.read(requestsProvider.notifier);
-    requests.value = FixedList<TrackerInfo>(500);
+    requests.value = ConnectionLog(500);
     requests.addRequest(_tracker(id: 'old', host: 'finished.test'));
     when(
       core.getConnections,
