@@ -211,14 +211,13 @@ void main() {
           '<feed><entry><id>tag:github.com,2008:Repository/123/releases/tag/$previewTag</id></entry></feed>';
       return Request()
         ..releaseDio.httpClientAdapter = _PathAdapter({
-          '/repos/$repository/releases/latest': () =>
-              ResponseBody.fromString(
-                jsonEncode({'tag_name': stableTag}),
-                200,
-                headers: {
-                  Headers.contentTypeHeader: [Headers.jsonContentType],
-                },
-              ),
+          '/repos/$repository/releases/latest': () => ResponseBody.fromString(
+            jsonEncode({'tag_name': stableTag}),
+            200,
+            headers: {
+              Headers.contentTypeHeader: [Headers.jsonContentType],
+            },
+          ),
           '/repos/$repository/releases': () =>
               ResponseBody.fromString('{}', 403),
           '/$repository/releases.atom': () =>
