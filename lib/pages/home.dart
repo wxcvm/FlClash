@@ -80,7 +80,6 @@ class _HomeShell extends ConsumerWidget {
     final floating = ref.watch(
       appSettingProvider.select((state) => state.floatingNavigationBar),
     );
-    final disableAnimations = context.disableAnimations;
     return Surface(
       color: SurfaceLevel.page.colorOf(context.colorScheme),
       child: Column(
@@ -99,39 +98,26 @@ class _HomeShell extends ConsumerWidget {
                     ),
                   ),
                 ),
-                // Both bars own tickers. Key them to the destination so a
-                // muted animation lands there instead of freezing mid-motion.
                 PositionedDirectional(
                   start: 0,
                   end: 0,
                   bottom: 0,
-                  child: TickerMode(
-                    enabled: !disableAnimations,
-                    child: KeyedSubtree(
-                      key: disableAnimations
-                          ? ValueKey((isMobile && floating, state.currentIndex))
-                          : null,
-                      child: AnimatedVisibility.bottomNavigation(
-                        visible: isMobile && floating,
-                        child: BarItemPresence.held(
-                          child: _NavigationPadding(
-                            child: NavigationDock(
-                              destinations: [
-                                for (final item in navigationItems)
-                                  NavigationDockDestination(
-                                    glyph: item.glyph,
-                                    label: item.label.label,
-                                  ),
-                              ],
-                              selectedIndex: state.currentIndex,
-                              onSelected: (index) {
-                                _handleToPage(
-                                  navigationItems[index].label,
-                                  ref,
-                                );
-                              },
-                            ),
-                          ),
+                  child: AnimatedVisibility.bottomNavigation(
+                    visible: isMobile && floating,
+                    child: BarItemPresence.held(
+                      child: _NavigationPadding(
+                        child: NavigationDock(
+                          destinations: [
+                            for (final item in navigationItems)
+                              NavigationDockDestination(
+                                glyph: item.glyph,
+                                label: item.label.label,
+                              ),
+                          ],
+                          selectedIndex: state.currentIndex,
+                          onSelected: (index) {
+                            _handleToPage(navigationItems[index].label, ref);
+                          },
                         ),
                       ),
                     ),
@@ -140,32 +126,24 @@ class _HomeShell extends ConsumerWidget {
               ],
             ),
           ),
-          TickerMode(
-            enabled: !disableAnimations,
-            child: KeyedSubtree(
-              key: disableAnimations
-                  ? ValueKey((isMobile && !floating, state.currentIndex))
-                  : null,
-              child: AnimatedVisibility.bottomNavigation(
-                visible: isMobile && !floating,
-                child: _NavigationPadding(
-                  child: NavigationBar(
-                    destinations: [
-                      for (final (index, item) in navigationItems.indexed)
-                        NavigationDestination(
-                          icon: AnimatedGlyph(
-                            glyph: item.glyph,
-                            filled: index == state.currentIndex,
-                          ),
-                          label: item.label.label,
-                        ),
-                    ],
-                    selectedIndex: state.currentIndex,
-                    onDestinationSelected: (index) {
-                      _handleToPage(navigationItems[index].label, ref);
-                    },
-                  ),
-                ),
+          AnimatedVisibility.bottomNavigation(
+            visible: isMobile && !floating,
+            child: _NavigationPadding(
+              child: NavigationBar(
+                destinations: [
+                  for (final (index, item) in navigationItems.indexed)
+                    NavigationDestination(
+                      icon: AnimatedGlyph(
+                        glyph: item.glyph,
+                        filled: index == state.currentIndex,
+                      ),
+                      label: item.label.label,
+                    ),
+                ],
+                selectedIndex: state.currentIndex,
+                onDestinationSelected: (index) {
+                  _handleToPage(navigationItems[index].label, ref);
+                },
               ),
             ),
           ),
