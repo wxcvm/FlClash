@@ -262,10 +262,7 @@ void main() {
               axisDirectionToAxis(widget.axisDirection) == Axis.vertical,
         )
         .first;
-    final thumb = await revealScrollbarThumb(
-      tester,
-      scrollable: scrollable,
-    );
+    final thumb = await revealScrollbarThumb(tester, scrollable: scrollable);
     final gesture = await tester.startGesture(thumb);
     await gesture.moveBy(const Offset(0, -1));
     await tester.pump();
