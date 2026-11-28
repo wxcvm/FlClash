@@ -262,6 +262,22 @@ class Request {
       }
     }
 
+    // GitHub's Atom feed is a lightweight fallback when the REST API is
+    // rate-limited. Treat it only as a candidate index: verify each tag's
+    // checksum manifest (and the platform asset when applicable), because the
+    // feed can also contain tag-only entries.
+    try {
+      final atomRelease = await _latestPreviewReleaseFromAtom(platformSuffix);
+      if (atomRelease != null) {
+        return atomRelease;
+      }
+    } on DioException catch (error) {
+      commonPrint.log(
+        'preview release Atom fallback failed: ${compactError(error)}',
+        logLevel: LogLevel.warning,
+      );
+    }
+
     // GitHub's public release page does not consume the REST API quota.
     // Unlike /releases/latest, it includes prereleases.
     final page = await releaseDio.get<String>(
@@ -297,6 +313,56 @@ class Request {
       }
     }
     throw const FormatException('No published preview for this platform');
+  }
+
+  Future<Map<String, dynamic>?> _latestPreviewReleaseFromAtom(
+    String? platformSuffix,
+  ) async {
+    final response = await releaseDio.get<String>(
+      'https://github.com/$repository/releases.atom',
+      options: Options(responseType: ResponseType.plain),
+    );
+    final pattern = RegExp(
+      r'<id>\\s*[^<]*?/releases/tag/([^<\\s]+)\\s*</id>',
+    );
+    final tags =
+        pattern
+            .allMatches(response.data ?? '')
+            .map((match) => match[1]!)
+            .where(isPreviewReleaseTag)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a == b ? 0 : (isNewerPreviewTag(a, b) ? -1 : 1));
+
+    for (final tag in tags) {
+      if (platformSuffix != null) {
+        final candidate = await _releaseWithAssetAvailability(
+          {'tag_name': tag},
+          platformSuffix,
+        );
+        if (candidate != null) {
+          return candidate;
+        }
+      } else if (await _hasReleaseChecksums(tag)) {
+        return {'tag_name': tag};
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _hasReleaseChecksums(String tag) async {
+    try {
+      final sums = await releaseDio.getUri<String>(
+        releaseAssetUri(tag, releaseChecksumsName),
+        options: Options(responseType: ResponseType.plain),
+      );
+      return (sums.data ?? '').trim().isNotEmpty;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return false;
+      }
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>?> _releaseWithAssetAvailability(
