@@ -322,9 +322,7 @@ class Request {
       'https://github.com/$repository/releases.atom',
       options: Options(responseType: ResponseType.plain),
     );
-    final pattern = RegExp(
-      r'<id>\s*[^<]*?/releases/tag/([^<\s]+)\s*</id>',
-    );
+    final pattern = RegExp(r'<id>\s*[^<]*?/releases/tag/([^<\s]+)\s*</id>');
     final tags =
         pattern
             .allMatches(response.data ?? '')
@@ -336,10 +334,9 @@ class Request {
 
     for (final tag in tags) {
       if (platformSuffix != null) {
-        final candidate = await _releaseWithAssetAvailability(
-          {'tag_name': tag},
-          platformSuffix,
-        );
+        final candidate = await _releaseWithAssetAvailability({
+          'tag_name': tag,
+        }, platformSuffix);
         if (candidate != null) {
           return candidate;
         }

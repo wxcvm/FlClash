@@ -226,35 +226,39 @@ void main() {
       });
     });
 
-    test('uses Atom after API rate limiting and verifies release candidates', () async {
-      final feed = '''
+    test(
+      'uses Atom after API rate limiting and verifies release candidates',
+      () async {
+        final feed =
+            '''
 <feed xmlns="http://www.w3.org/2005/Atom">
   <entry><id>tag:github.com,2008:Repository/123/releases/tag/$newer</id></entry>
   <entry><id>tag:github.com,2008:Repository/123/releases/tag/$older</id></entry>
 </feed>
 ''';
-      final request = Request()
-        ..releaseDio.httpClientAdapter = _PathAdapter({
-          '/repos/$repository/releases': () =>
-              ResponseBody.fromString('{}', 403),
-          '/$repository/releases.atom': () =>
-              ResponseBody.fromString(feed, 200),
-          '/$repository/releases/download/$newer/SHA256SUMS': () =>
-              ResponseBody.fromString('', 404),
-          '/$repository/releases/download/$older/SHA256SUMS': () =>
-              ResponseBody.fromString(
-                '$digest  FlClash-0.9.3-preview.9.2-$suffix',
-                200,
-              ),
-          '/$repository/releases/download/$older/FlClash-0.9.3-preview.9.2-$suffix':
-              () => ResponseBody.fromString('', 302),
-        });
+        final request = Request()
+          ..releaseDio.httpClientAdapter = _PathAdapter({
+            '/repos/$repository/releases': () =>
+                ResponseBody.fromString('{}', 403),
+            '/$repository/releases.atom': () =>
+                ResponseBody.fromString(feed, 200),
+            '/$repository/releases/download/$newer/SHA256SUMS': () =>
+                ResponseBody.fromString('', 404),
+            '/$repository/releases/download/$older/SHA256SUMS': () =>
+                ResponseBody.fromString(
+                  '$digest  FlClash-0.9.3-preview.9.2-$suffix',
+                  200,
+                ),
+            '/$repository/releases/download/$older/FlClash-0.9.3-preview.9.2-$suffix':
+                () => ResponseBody.fromString('', 302),
+          });
 
-      expect(await request.latestPreviewRelease(suffix), {
-        'tag_name': older,
-        'asset_available': true,
-      });
-    });
+        expect(await request.latestPreviewRelease(suffix), {
+          'tag_name': older,
+          'asset_available': true,
+        });
+      },
+    );
 
     test('paginates when the newest release page has no preview', () async {
       final firstPage = List.generate(
