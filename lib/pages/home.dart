@@ -103,29 +103,32 @@ class _HomeShell extends ConsumerWidget {
                   start: 0,
                   end: 0,
                   bottom: 0,
-                  child: AnimatedVisibility.bottomNavigation(
-                    visible: isMobile && floating,
-                    child: BarItemPresence.held(
-                      child: _NavigationPadding(
-                        // The dock's private springs would freeze mid-motion;
-                        // remount it at the selected item when tickers are muted.
-                        child: TickerMode(
-                          enabled: !disableAnimations,
-                          child: NavigationDock(
-                            key: disableAnimations
-                                ? ValueKey(state.currentIndex)
-                                : null,
-                            destinations: [
-                              for (final item in navigationItems)
-                                NavigationDockDestination(
-                                  glyph: item.glyph,
-                                  label: item.label.label,
-                                ),
-                            ],
-                            selectedIndex: state.currentIndex,
-                            onSelected: (index) {
-                              _handleToPage(navigationItems[index].label, ref);
-                            },
+                  child: TickerMode(
+                    enabled: !disableAnimations,
+                    child: KeyedSubtree(
+                      key: disableAnimations
+                          ? ValueKey((isMobile && floating, state.currentIndex))
+                          : null,
+                      child: AnimatedVisibility.bottomNavigation(
+                        visible: isMobile && floating,
+                        child: BarItemPresence.held(
+                          child: _NavigationPadding(
+                            child: NavigationDock(
+                              destinations: [
+                                for (final item in navigationItems)
+                                  NavigationDockDestination(
+                                    glyph: item.glyph,
+                                    label: item.label.label,
+                                  ),
+                              ],
+                              selectedIndex: state.currentIndex,
+                              onSelected: (index) {
+                                _handleToPage(
+                                  navigationItems[index].label,
+                                  ref,
+                                );
+                              },
+                            ),
                           ),
                         ),
                       ),
@@ -135,24 +138,32 @@ class _HomeShell extends ConsumerWidget {
               ],
             ),
           ),
-          AnimatedVisibility.bottomNavigation(
-            visible: isMobile && !floating,
-            child: _NavigationPadding(
-              child: NavigationBar(
-                destinations: [
-                  for (final (index, item) in navigationItems.indexed)
-                    NavigationDestination(
-                      icon: AnimatedGlyph(
-                        glyph: item.glyph,
-                        filled: index == state.currentIndex,
-                      ),
-                      label: item.label.label,
-                    ),
-                ],
-                selectedIndex: state.currentIndex,
-                onDestinationSelected: (index) {
-                  _handleToPage(navigationItems[index].label, ref);
-                },
+          TickerMode(
+            enabled: !disableAnimations,
+            child: KeyedSubtree(
+              key: disableAnimations
+                  ? ValueKey((isMobile && !floating, state.currentIndex))
+                  : null,
+              child: AnimatedVisibility.bottomNavigation(
+                visible: isMobile && !floating,
+                child: _NavigationPadding(
+                  child: NavigationBar(
+                    destinations: [
+                      for (final (index, item) in navigationItems.indexed)
+                        NavigationDestination(
+                          icon: AnimatedGlyph(
+                            glyph: item.glyph,
+                            filled: index == state.currentIndex,
+                          ),
+                          label: item.label.label,
+                        ),
+                    ],
+                    selectedIndex: state.currentIndex,
+                    onDestinationSelected: (index) {
+                      _handleToPage(navigationItems[index].label, ref);
+                    },
+                  ),
+                ),
               ),
             ),
           ),
