@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:fl_clash/common/app_update.dart';
+import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/plugins/app.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -102,6 +103,56 @@ void main() {
       isNewerPreviewTag('v0.9.3-preview.99.1', 'v0.9.4-preview.1.1'),
       isFalse,
     );
+  });
+
+  group('release channel comparison', () {
+    test('compares stable and prerelease lines without losing preview order', () {
+      expect(
+        isNewerReleaseForChannel(
+          'v0.9.4',
+          installedVersion: '0.9.3',
+          installedPreviewTag: '',
+          channel: UpdateChannel.stable,
+        ),
+        isTrue,
+      );
+      expect(
+        isNewerReleaseForChannel(
+          'v0.9.3-preview.10.1',
+          installedVersion: '0.9.3',
+          installedPreviewTag: '',
+          channel: UpdateChannel.pre,
+        ),
+        isFalse,
+      );
+      expect(
+        isNewerReleaseForChannel(
+          'v0.9.4-preview.1.1',
+          installedVersion: '0.9.3',
+          installedPreviewTag: '',
+          channel: UpdateChannel.pre,
+        ),
+        isTrue,
+      );
+      expect(
+        isNewerReleaseForChannel(
+          'v0.9.3',
+          installedVersion: '0.9.3',
+          installedPreviewTag: 'v0.9.3-preview.16.1',
+          channel: UpdateChannel.stable,
+        ),
+        isTrue,
+      );
+      expect(
+        isNewerReleaseForChannel(
+          'v0.9.3-preview.16.2',
+          installedVersion: '0.9.3',
+          installedPreviewTag: 'v0.9.3-preview.16.1',
+          channel: UpdateChannel.pre,
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('releaseChecksum', () {

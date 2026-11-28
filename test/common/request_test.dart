@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:fl_clash/common/app_update.dart';
 import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/common/exception.dart';
+import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/common/request.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -204,6 +205,27 @@ void main() {
         '<a href="/$repository/releases/tag/$older">old</a>'
         '<a href="/$repository/releases/tag/$newer">new</a>'
         '<a href="/$repository/releases/tag/v1.0.0">stable</a>';
+
+    test('selects preview discovery when the prerelease channel is chosen', () async {
+      final previousResolver = resolveSelfUpdateSuffix;
+      resolveSelfUpdateSuffix = () => null;
+      addTearDown(() => resolveSelfUpdateSuffix = previousResolver);
+      final feed =
+          '<feed><entry><id>tag:github.com,2008:Repository/123/releases/tag/$newer</id></entry></feed>';
+      final request = Request()
+        ..releaseDio.httpClientAdapter = _PathAdapter({
+          '/repos/$repository/releases': () =>
+              ResponseBody.fromString('{}', 403),
+          '/$repository/releases.atom': () =>
+              ResponseBody.fromString(feed, 200),
+          '/$repository/releases/download/$newer/SHA256SUMS': () =>
+              ResponseBody.fromString('verified manifest', 200),
+        });
+
+      expect(await request.latestRelease(UpdateChannel.pre), {
+        'tag_name': newer,
+      });
+    });
 
     test('falls back from API 403 to the newest matching preview', () async {
       final request = Request()
