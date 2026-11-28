@@ -1124,13 +1124,18 @@ void main() {
           );
           addTearDown(container.dispose);
           globalState.container = container;
-          container.read(viewSizeProvider.notifier).value = const Size(500, 800);
-          container.read(appSettingProvider.notifier).update(
-            (state) => state.copyWith(
-              tabAnimation: animation,
-              floatingNavigationBar: floating,
-            ),
+          container.read(viewSizeProvider.notifier).value = const Size(
+            500,
+            800,
           );
+          container
+              .read(appSettingProvider.notifier)
+              .update(
+                (state) => state.copyWith(
+                  tabAnimation: animation,
+                  floatingNavigationBar: floating,
+                ),
+              );
 
           await tester.pumpWidget(
             UncontrolledProviderScope(
