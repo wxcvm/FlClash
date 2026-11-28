@@ -212,6 +212,10 @@ class AppSidebarContainer extends ConsumerWidget {
     final navigationItems = navigationState.navigationItems;
     final viewMode = navigationState.viewMode;
     final currentIndex = navigationState.currentIndex;
+    final disableAnimations = context.disableAnimations;
+    final sidebarExpanded = ref.watch(
+      appSettingProvider.select((state) => state.sidebarExpanded),
+    );
     final backdropOpacity = ref.watch(windowBlurProvider);
     final page = SurfaceLevel.page.colorOf(context.colorScheme);
     final chrome = context.colorScheme.chromeSurface;
@@ -225,22 +229,32 @@ class AppSidebarContainer extends ConsumerWidget {
       color: backdropOpacity != null ? Colors.transparent : page,
       child: Row(
         children: [
-          AnimatedVisibility.sidebar(
-            visible: hasSidebar,
-            child: Surface(
-              color: backdropOpacity != null
-                  ? chrome.withValues(alpha: backdropOpacity)
-                  : chrome,
-              shape: BorderDirectional(end: Divider.createBorderSide(context)),
-              child: MediaQuery.removePadding(
-                context: context,
-                removeLeft: !isLtr,
-                removeRight: isLtr,
-                child: _Sidebar(
-                  items: navigationItems,
-                  currentIndex: currentIndex,
-                  viewMode: viewMode,
-                  onSelected: onSelected,
+          TickerMode(
+            enabled: !disableAnimations,
+            child: KeyedSubtree(
+              key: disableAnimations
+                  ? ValueKey((viewMode, currentIndex, sidebarExpanded))
+                  : null,
+              child: AnimatedVisibility.sidebar(
+                visible: hasSidebar,
+                child: Surface(
+                  color: backdropOpacity != null
+                      ? chrome.withValues(alpha: backdropOpacity)
+                      : chrome,
+                  shape: BorderDirectional(
+                    end: Divider.createBorderSide(context),
+                  ),
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeLeft: !isLtr,
+                    removeRight: isLtr,
+                    child: _Sidebar(
+                      items: navigationItems,
+                      currentIndex: currentIndex,
+                      viewMode: viewMode,
+                      onSelected: onSelected,
+                    ),
+                  ),
                 ),
               ),
             ),
