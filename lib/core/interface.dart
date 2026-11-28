@@ -324,18 +324,12 @@ abstract class CoreHandlerInterface {
 
   Future<void> resetTraffic() => _commandUnobserved(CoreMethod.trafficReset);
 
-  /// Applies [present] to the decoded Core connection list.
-  Future<R> getConnectionsWith<R>(R Function(List<TrackerInfo>) present) {
+  Future<List<TrackerInfo>> getConnections() {
     return _query(
       CoreMethod.connectionList,
-      (data) => present(
-        data is List<TrackerInfo> ? data : trackerInfosOf(data),
-      ),
+      (data) => data is List<TrackerInfo> ? data : trackerInfosOf(data),
     );
   }
-
-  Future<List<TrackerInfo>> getConnections() =>
-      getConnectionsWith((connections) => connections);
 
   Future<int> getConnectionCount() {
     return _query(CoreMethod.connectionCount, (data) => (data as num).toInt());

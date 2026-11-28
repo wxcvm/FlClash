@@ -30,7 +30,7 @@ class ConnectionPoller {
       final polled = reader != null
           ? poll(await reader())
           : ref.read(coreStatusProvider) == CoreStatus.connected
-          ? await ref.read(coreHandlerProvider).getConnectionsWith(poll)
+          ? poll(await ref.read(coreHandlerProvider).getConnections())
           : poll(const []);
       // A refresh after closing a connection can overlap a poll.
       if (read < _shownRead ||
