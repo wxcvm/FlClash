@@ -295,78 +295,77 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'system reduced motion shortens desktop sidebar transitions',
-    (tester) async {
-      tester.view.physicalSize = const Size(1200, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      tester.platformDispatcher.accessibilityFeaturesTestValue =
-          const FakeAccessibilityFeatures(disableAnimations: true);
-      addTearDown(
-        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
-      );
+  testWidgets('system reduced motion shortens desktop sidebar transitions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(
+      tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+    );
 
-      final container = ProviderContainer(
-        overrides: [
-          navigationItemsStateProvider.overrideWithValue(
-            NavigationItemsState(
-              value: [
-                NavigationItem(
-                  glyph: AppGlyphs.dashboard,
-                  label: PageLabel.dashboard,
-                  builder: (_) => const SizedBox.shrink(),
-                ),
-                NavigationItem(
-                  glyph: AppGlyphs.tools,
-                  label: PageLabel.tools,
-                  builder: (_) => const SizedBox.shrink(),
-                ),
-              ],
-            ),
+    final container = ProviderContainer(
+      overrides: [
+        navigationItemsStateProvider.overrideWithValue(
+          NavigationItemsState(
+            value: [
+              NavigationItem(
+                glyph: AppGlyphs.dashboard,
+                label: PageLabel.dashboard,
+                builder: (_) => const SizedBox.shrink(),
+              ),
+              NavigationItem(
+                glyph: AppGlyphs.tools,
+                label: PageLabel.tools,
+                builder: (_) => const SizedBox.shrink(),
+              ),
+            ],
           ),
-        ],
-      );
-      addTearDown(container.dispose);
-      globalState.container = container;
-      container.read(viewSizeProvider.notifier).value = const Size(1200, 800);
-      container
-          .read(appSettingProvider.notifier)
-          .update((state) => state.copyWith(sidebarExpanded: true));
-
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: const TestApp(includeNavigatorKey: false, child: HomePage()),
         ),
-      );
-      await tester.pumpAndSettle();
+      ],
+    );
+    addTearDown(container.dispose);
+    globalState.container = container;
+    container.read(viewSizeProvider.notifier).value = const Size(1200, 800);
+    container
+        .read(appSettingProvider.notifier)
+        .update((state) => state.copyWith(sidebarExpanded: true));
 
-      final sidebar = find.byType(NavigationSidebar);
-      expect(tester.getSize(sidebar).width, 220);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const TestApp(includeNavigatorKey: false, child: HomePage()),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Collapse'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 20));
-      expect(container.read(appSettingProvider).sidebarExpanded, isFalse);
-      expect(tester.getSize(sidebar).width, 48);
+    final sidebar = find.byType(NavigationSidebar);
+    expect(tester.getSize(sidebar).width, 220);
 
-      await tester.tap(find.byTooltip('Expand'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 20));
-      expect(container.read(appSettingProvider).sidebarExpanded, isTrue);
-      expect(tester.getSize(sidebar).width, 220);
+    await tester.tap(find.byTooltip('Collapse'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(container.read(appSettingProvider).sidebarExpanded, isFalse);
+    expect(tester.getSize(sidebar).width, 48);
 
-      await tester.tap(
-        find.descendant(of: sidebar, matching: _glyph(AppGlyphs.tools)),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 20));
-      expect(container.read(currentPageLabelProvider), PageLabel.tools);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    await tester.tap(find.byTooltip('Expand'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(container.read(appSettingProvider).sidebarExpanded, isTrue);
+    expect(tester.getSize(sidebar).width, 220);
+
+    await tester.tap(
+      find.descendant(of: sidebar, matching: _glyph(AppGlyphs.tools)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(container.read(currentPageLabelProvider), PageLabel.tools);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'list content stays valid while resizing through the breakpoint',
@@ -1202,16 +1201,15 @@ void main() {
         await tester.pumpWidget(
           UncontrolledProviderScope(
             container: container,
-            child: const TestApp(
-              includeNavigatorKey: false,
-              child: HomePage(),
-            ),
+            child: const TestApp(includeNavigatorKey: false, child: HomePage()),
           ),
         );
         await tester.pumpAndSettle();
 
         final start = tester.getTopLeft(find.text('page:dashboard')).dx;
-        container.read(currentPageLabelProvider.notifier).toPage(PageLabel.tools);
+        container
+            .read(currentPageLabelProvider.notifier)
+            .toPage(PageLabel.tools);
         await tester.pump();
 
         expect(find.text('page:tools'), findsOneWidget);
