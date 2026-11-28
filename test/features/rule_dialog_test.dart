@@ -109,7 +109,7 @@ void main() {
     );
 
     expect(
-      tester.getCenter(find.text(RuleAction.MATCH.name)).dy,
+      tester.getCenter(find.text(RuleAction.MATCH.value)).dy,
       moreOrLessEquals(tester.getCenter(find.byType(RuleItem)).dy, epsilon: 1),
     );
 
@@ -143,7 +143,7 @@ void main() {
     );
 
     final action = tester.renderObject<RenderParagraph>(
-      find.text(RuleAction.DOMAIN_KEYWORD.name),
+      find.text(RuleAction.DOMAIN_KEYWORD.value),
     );
     expect(action.didExceedMaxLines, isFalse);
     expect(action.size.height, action.getMinIntrinsicHeight(double.infinity));

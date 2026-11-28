@@ -130,6 +130,13 @@ void main() {
     });
   });
 
+  test('rule search uses the canonical profile rule type', () {
+    final rule = Rule.parse('DOMAIN-KEYWORD,ads,REJECT');
+
+    expect(rule.searchFields, contains('DOMAIN-KEYWORD'));
+    expect(rule.searchFields, isNot(contains('DOMAIN_KEYWORD')));
+  });
+
   group('Rule.rawValue', () {
     test('serializes MATCH without an empty content field', () {
       const rule = Rule(ruleAction: RuleAction.MATCH, ruleTarget: 'DIRECT');
