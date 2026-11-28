@@ -485,6 +485,36 @@ class AppLocalizations {
     );
   }
 
+  /// `Update channel`
+  String get updateChannel {
+    return Intl.message(
+      'Update channel',
+      name: 'updateChannel',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Stable`
+  String get updateChannelStable {
+    return Intl.message(
+      'Stable',
+      name: 'updateChannelStable',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Prerelease`
+  String get updateChannelPre {
+    return Intl.message(
+      'Prerelease',
+      name: 'updateChannelPre',
+      desc: '',
+      args: [],
+    );
+  }
+
   /// `Verify TLS certificates`
   String get checkCertificate {
     return Intl.message(
