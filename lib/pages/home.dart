@@ -279,6 +279,7 @@ class _HomePageView extends ConsumerStatefulWidget {
 
 class _HomePageViewState extends ConsumerState<_HomePageView> {
   late PageController _pageController;
+  bool _disableAnimations = false;
 
   List<int>? _order;
   int _slide = 0;
@@ -292,6 +293,21 @@ class _HomePageViewState extends ConsumerState<_HomePageView> {
         _toPage(next);
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations = context.disableAnimations;
+    // If the OS setting changes mid-transition, settle on the selected page.
+    if (disableAnimations && !_disableAnimations && _pageController.hasClients) {
+      final index = _pageIndex;
+      if (index != -1) {
+        _order = null;
+        _pageController.jumpToPage(index);
+      }
+    }
+    _disableAnimations = disableAnimations;
   }
 
   @override
@@ -339,7 +355,7 @@ class _HomePageViewState extends ConsumerState<_HomePageView> {
       setState(() => _order = null);
       _pageController.jumpToPage(current);
     }
-    if (!isMobile || ignoreAnimateTo || context.disableAnimations) {
+    if (!isMobile || ignoreAnimateTo || _disableAnimations) {
       _pageController.jumpToPage(index);
       return;
     }
