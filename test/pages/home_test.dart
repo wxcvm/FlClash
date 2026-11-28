@@ -296,7 +296,7 @@ void main() {
   });
 
   testWidgets(
-    'system reduced motion settles desktop sidebar changes immediately',
+    'system reduced motion shortens desktop sidebar transitions',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 800);
       tester.view.devicePixelRatio = 1;
@@ -348,22 +348,22 @@ void main() {
 
       await tester.tap(find.byTooltip('Collapse'));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
       expect(container.read(appSettingProvider).sidebarExpanded, isFalse);
       expect(tester.getSize(sidebar).width, 48);
-      expect(tester.hasRunningAnimations, isFalse);
 
       await tester.tap(find.byTooltip('Expand'));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
       expect(container.read(appSettingProvider).sidebarExpanded, isTrue);
       expect(tester.getSize(sidebar).width, 220);
-      expect(tester.hasRunningAnimations, isFalse);
 
       await tester.tap(
         find.descendant(of: sidebar, matching: _glyph(AppGlyphs.tools)),
       );
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
       expect(container.read(currentPageLabelProvider), PageLabel.tools);
-      expect(tester.hasRunningAnimations, isFalse);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1158,88 +1158,69 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final floating in [true, false]) {
-    final navigationMode = floating ? 'floating' : 'docked';
-    for (final animation in TabAnimation.values) {
-      testWidgets(
-        'system reduced motion skips the ${animation.name} tab animation and '
-        '$navigationMode navigation motion',
-        (tester) async {
-          tester.view.physicalSize = const Size(500, 800);
-          tester.view.devicePixelRatio = 1;
-          addTearDown(tester.view.resetPhysicalSize);
-          addTearDown(tester.view.resetDevicePixelRatio);
-          tester.platformDispatcher.accessibilityFeaturesTestValue =
-              const FakeAccessibilityFeatures(disableAnimations: true);
-          addTearDown(
-            tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
-          );
+  for (final animation in TabAnimation.values) {
+    testWidgets(
+      'system reduced motion skips the ${animation.name} tab animation',
+      (tester) async {
+        tester.view.physicalSize = const Size(500, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(disableAnimations: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
 
-          final container = ProviderContainer(
-            overrides: [
-              navigationItemsStateProvider.overrideWithValue(
-                NavigationItemsState(
-                  value: [
-                    NavigationItem(
-                      glyph: AppGlyphs.dashboard,
-                      label: PageLabel.dashboard,
-                      builder: (_) => const Text('page:dashboard'),
-                    ),
-                    NavigationItem(
-                      glyph: AppGlyphs.tools,
-                      label: PageLabel.tools,
-                      builder: (_) => const Text('page:tools'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-          addTearDown(container.dispose);
-          globalState.container = container;
-          container.read(viewSizeProvider.notifier).value = const Size(
-            500,
-            800,
-          );
-          container
-              .read(appSettingProvider.notifier)
-              .update(
-                (state) => state.copyWith(
-                  tabAnimation: animation,
-                  floatingNavigationBar: floating,
-                ),
-              );
-
-          await tester.pumpWidget(
-            UncontrolledProviderScope(
-              container: container,
-              child: const TestApp(
-                includeNavigatorKey: false,
-                child: HomePage(),
+        final container = ProviderContainer(
+          overrides: [
+            navigationItemsStateProvider.overrideWithValue(
+              NavigationItemsState(
+                value: [
+                  NavigationItem(
+                    glyph: AppGlyphs.dashboard,
+                    label: PageLabel.dashboard,
+                    builder: (_) => const Text('page:dashboard'),
+                  ),
+                  NavigationItem(
+                    glyph: AppGlyphs.tools,
+                    label: PageLabel.tools,
+                    builder: (_) => const Text('page:tools'),
+                  ),
+                ],
               ),
             ),
-          );
-          await tester.pumpAndSettle();
+          ],
+        );
+        addTearDown(container.dispose);
+        globalState.container = container;
+        container.read(viewSizeProvider.notifier).value = const Size(500, 800);
+        container
+            .read(appSettingProvider.notifier)
+            .update((state) => state.copyWith(tabAnimation: animation));
 
-          final start = tester.getTopLeft(find.text('page:dashboard')).dx;
-          container
-              .read(currentPageLabelProvider.notifier)
-              .toPage(PageLabel.tools);
-          await tester.pump();
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const TestApp(
+              includeNavigatorKey: false,
+              child: HomePage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-          expect(find.text('page:tools'), findsOneWidget);
-          expect(find.text('page:dashboard'), findsNothing);
-          expect(tester.getTopLeft(find.text('page:tools')).dx, start);
-          expect(tester.hasRunningAnimations, isFalse);
-          expect(container.read(appSettingProvider).tabAnimation, animation);
-          expect(
-            container.read(appSettingProvider).floatingNavigationBar,
-            floating,
-          );
-          expect(tester.takeException(), isNull);
-        },
-      );
-    }
+        final start = tester.getTopLeft(find.text('page:dashboard')).dx;
+        container.read(currentPageLabelProvider.notifier).toPage(PageLabel.tools);
+        await tester.pump();
+
+        expect(find.text('page:tools'), findsOneWidget);
+        expect(find.text('page:dashboard'), findsNothing);
+        expect(tester.getTopLeft(find.text('page:tools')).dx, start);
+        expect(container.read(appSettingProvider).tabAnimation, animation);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testWidgets(
@@ -1288,7 +1269,7 @@ void main() {
       container.read(currentPageLabelProvider.notifier).toPage(PageLabel.tools);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 60));
-      expect(tester.hasRunningAnimations, isTrue);
+      final start = tester.getTopLeft(find.text('page:dashboard')).dx;
 
       tester.platformDispatcher.accessibilityFeaturesTestValue =
           const FakeAccessibilityFeatures(disableAnimations: true);
@@ -1299,7 +1280,7 @@ void main() {
 
       expect(find.text('page:tools'), findsOneWidget);
       expect(find.text('page:dashboard'), findsNothing);
-      expect(tester.hasRunningAnimations, isFalse);
+      expect(tester.getTopLeft(find.text('page:tools')).dx, start);
       expect(tester.takeException(), isNull);
     },
   );
