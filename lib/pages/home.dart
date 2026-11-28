@@ -300,7 +300,9 @@ class _HomePageViewState extends ConsumerState<_HomePageView> {
     super.didChangeDependencies();
     final disableAnimations = context.disableAnimations;
     // If the OS setting changes mid-transition, settle on the selected page.
-    if (disableAnimations && !_disableAnimations && _pageController.hasClients) {
+    if (disableAnimations &&
+        !_disableAnimations &&
+        _pageController.hasClients) {
       final index = _pageIndex;
       if (index != -1) {
         _order = null;
