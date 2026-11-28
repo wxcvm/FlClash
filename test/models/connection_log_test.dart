@@ -65,10 +65,9 @@ void main() {
 
   test('a late opening event cannot resurrect a trimmed connection', () {
     final closedAt = _t0.add(const Duration(minutes: 1));
-    var log = ConnectionLog(1).open([
-      _connection('a'),
-      _connection('b', second: 1),
-    ]);
+    var log = ConnectionLog(
+      1,
+    ).open([_connection('a'), _connection('b', second: 1)]);
     log = log.close(['a'], closedAt).close(['b'], closedAt);
 
     expect(log['a'], isNull);
