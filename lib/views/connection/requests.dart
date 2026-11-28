@@ -468,6 +468,7 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
   CoreController get _core => ref.read(coreHandlerProvider);
 
   final _connectionPoller = ConnectionPoller();
+  final _speedRanker = TrackerSpeedRanker();
   late final ScrollController _scrollController;
   var _loaded = false;
   // A sheet's one controller opens where the recent feed reads, its far end.
@@ -492,7 +493,7 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
 
   @override
   Future<void> poll(PollGuard isCurrent) async {
-    await _connectionPoller.read(
+    final succeeded = await _connectionPoller.read(
       ref,
       reader: widget.connectionsReader,
       mounted: () => mounted,
@@ -500,11 +501,13 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
     if (!isCurrent()) {
       return;
     }
-    _showConnections(_openConnections());
+    _showConnections(
+      succeeded ? _speedRanker.rank(_openConnections(), DateTime.now()) : null,
+    );
   }
 
   Future<void> _refreshConnections() async {
-    await _connectionPoller.read(
+    final succeeded = await _connectionPoller.read(
       ref,
       reader: widget.connectionsReader,
       mounted: () => mounted,
@@ -512,7 +515,9 @@ class _LiveFeedState extends ConsumerState<_LiveFeed>
     if (!mounted) {
       return;
     }
-    _showConnections(_openConnections());
+    _showConnections(
+      succeeded ? _speedRanker.rank(_openConnections(), DateTime.now()) : null,
+    );
   }
 
   void _showConnections(List<TrackerInfo>? trackerInfos) {

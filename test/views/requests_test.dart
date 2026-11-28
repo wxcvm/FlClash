@@ -275,9 +275,13 @@ void main() {
     // The hint is pinned to the thumb: at the newest end the thumb center
     // rests 24 dp (half the 48 dp minimum thumb) below the track's top edge,
     // which the list running under the bar leaves at the bar's foot.
+    final statusFilter = find.byWidgetPredicate(
+      (widget) => widget is SegmentedControl,
+    );
+    expect(statusFilter, findsOneWidget);
     expect(
       tester.getCenter(find.byKey(hintKey)).dy,
-      closeTo(tester.getRect(find.byType(AppBar)).bottom + 24, 6),
+      closeTo(tester.getRect(statusFilter).bottom + 24, 6),
     );
 
     await gesture.up();

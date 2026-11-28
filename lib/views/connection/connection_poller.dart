@@ -12,7 +12,7 @@ class ConnectionPoller {
   var _reads = 0;
   var _shownRead = 0;
 
-  Future<void> read(
+  Future<bool> read(
     WidgetRef ref, {
     required Future<List<TrackerInfo>> Function()? reader,
     required bool Function() mounted,
@@ -33,20 +33,29 @@ class ConnectionPoller {
           ? poll(await ref.read(coreHandlerProvider).getConnections())
           : poll(const []);
       // A refresh after closing a connection can overlap a poll.
-      if (read < _shownRead ||
-          !mounted() ||
-          !ref
-              .read(requestsProvider.notifier)
-              .poll(polled, requestedAt: requestedAt, lineage: lineage)) {
-        return;
+      if (!mounted()) {
+        return false;
       }
-      _shownRead = read;
-      _samples = polled.samples;
+      if (read < _shownRead) {
+        return true;
+      }
+      final applied = ref
+          .read(requestsProvider.notifier)
+          .poll(polled, requestedAt: requestedAt, lineage: lineage);
+      if (applied) {
+        _shownRead = read;
+        _samples = polled.samples;
+      }
+      return true;
     } catch (error) {
+      if (read < _shownRead) {
+        return true;
+      }
       commonPrint.log(
         'updateConnections error: $error',
         logLevel: coreFailureLogLevel(error),
       );
+      return false;
     }
   }
 }
